@@ -356,8 +356,8 @@ const ScribbleCore = (() => {
     function tokenize(code: string): string[] { return code.match(tokenRegex) || []; }
 
     class Parser {
-        private tokens: string[] = [];
-        private current = 0;
+        tokens: string[] = [];
+        current = 0;
 
         parse(code: string): GlobalProtocol {
             this.tokens = tokenize(code);
@@ -365,7 +365,7 @@ const ScribbleCore = (() => {
             return this.parseGlobalProtocol();
         }
 
-        private parseGlobalProtocol(): GlobalProtocol {
+        parseGlobalProtocol(): GlobalProtocol {
             this.consume('global');
             this.consume('protocol');
             const protocolName = this.consumeIdentifier();
@@ -383,7 +383,7 @@ const ScribbleCore = (() => {
             return { type: 'GlobalProtocol', protocolName, roles, body: body.interactions };
         }
 
-        private parseProtocolBody(): GlobalProtocolBody {
+        parseProtocolBody(): GlobalProtocolBody {
             const interactions: GlobalInteraction[] = [];
             while (this.peek() !== '}' && this.peek() !== undefined) {
                 interactions.push(this.parseInteraction());
@@ -391,14 +391,14 @@ const ScribbleCore = (() => {
             return { type: 'GlobalProtocolBody', interactions };
         }
 
-        private parseInteraction(): GlobalInteraction {
+        parseInteraction(): GlobalInteraction {
             if (this.peek() === 'choice') return this.parseChoice();
             if (this.peek() === 'rec') return this.parseRecursion();
             if (this.peek() === 'continue') return this.parseContinue();
             return this.parseMessageTransfer();
         }
 
-        private parseMessageTransfer(): MessageTransfer {
+        parseMessageTransfer(): MessageTransfer {
             const label = this.consumeIdentifier();
             this.consume('(');
             const payloadType = this.consumeIdentifier();
@@ -411,7 +411,7 @@ const ScribbleCore = (() => {
             return { type: 'MessageTransfer', label, payloadType, sender, receiver };
         }
 
-        private parseChoice(): Choice {
+        parseChoice(): Choice {
             this.consume('choice');
             this.consume('at');
             const decider = this.consumeIdentifier();
@@ -427,7 +427,7 @@ const ScribbleCore = (() => {
             return { type: 'Choice', decider, branches };
         }
 
-        private parseRecursion(): Recursion {
+        parseRecursion(): Recursion {
             this.consume('rec');
             const label = this.consumeIdentifier();
             this.consume('{');
@@ -436,33 +436,33 @@ const ScribbleCore = (() => {
             return { type: 'Recursion', label, body };
         }
 
-        private parseContinue(): Continue {
+        parseContinue(): Continue {
             this.consume('continue');
             const label = this.consumeIdentifier();
             this.consume(';');
             return { type: 'Continue', label };
         }
 
-        private consume(expected?: string): string {
+        consume(expected?: string): string {
             const token = this.tokens[this.current++];
             if (expected && token !== expected) throw new Error(`Expected '${expected}' but got '${token}'`);
             if (token === undefined) throw new Error('Unexpected end of input.');
             return token;
         }
 
-        private consumeIdentifier(): string {
+        consumeIdentifier(): string {
             const token = this.tokens[this.current++];
             if (!/^[a-zA-Z]/.test(token)) throw new Error(`Expected an identifier but got '${token}'`);
             return token;
         }
 
-        private peek(): string { return this.tokens[this.current]; }
+        peek(): string { return this.tokens[this.current]; }
     }
 
     class Validator {
-        private errors: ValidationError[] = [];
-        private declaredRoles: Set<Role> = new Set();
-        private recursionLabels: Set<RecursionLabel>[] = [];
+        errors: ValidationError[] = [];
+        declaredRoles: Set<Role> = new Set();
+        recursionLabels: Set<RecursionLabel>[] = [];
 
         validate(protocol: GlobalProtocol): ValidationError[] {
             this.errors = [];
@@ -475,7 +475,7 @@ const ScribbleCore = (() => {
             return this.errors;
         }
 
-        private traverseInteractions(interactions: GlobalInteraction[]) {
+        traverseInteractions(interactions: GlobalInteraction[]) {
             for (const interaction of interactions) {
                 if (interaction.type === 'MessageTransfer') this.validateMessageTransfer(interaction);
                 else if (interaction.type === 'Choice') this.validateChoice(interaction);
@@ -484,12 +484,12 @@ const ScribbleCore = (() => {
             }
         }
 
-        private validateMessageTransfer(interaction: MessageTransfer) {
+        validateMessageTransfer(interaction: MessageTransfer) {
             if (!this.declaredRoles.has(interaction.sender)) this.errors.push({ type: 'UndeclaredRole', message: `Sender role '${interaction.sender}' is not declared.`, offendingEntity: interaction.sender });
             if (!this.declaredRoles.has(interaction.receiver)) this.errors.push({ type: 'UndeclaredRole', message: `Receiver role '${interaction.receiver}' is not declared.`, offendingEntity: interaction.receiver });
         }
 
-        private validateChoice(interaction: Choice) {
+        validateChoice(interaction: Choice) {
             if (!this.declaredRoles.has(interaction.decider)) this.errors.push({ type: 'UndeclaredRole', message: `Decider role '${interaction.decider}' in choice is not declared.`, offendingEntity: interaction.decider });
             for (const branch of interaction.branches) {
                 if (branch.interactions.length > 0 && branch.interactions[0].type === 'MessageTransfer') {
@@ -500,7 +500,7 @@ const ScribbleCore = (() => {
             }
         }
 
-        private validateRecursion(interaction: Recursion) {
+        validateRecursion(interaction: Recursion) {
             const currentScope = this.recursionLabels[this.recursionLabels.length - 1];
             if (currentScope.has(interaction.label)) this.errors.push({ type: 'DuplicateRecursionLabel', message: `Recursion label '${interaction.label}' is redefined.`, offendingEntity: interaction.label });
             const newScope = new Set(currentScope);
@@ -510,7 +510,7 @@ const ScribbleCore = (() => {
             this.recursionLabels.pop();
         }
 
-        private validateContinue(interaction: Continue) {
+        validateContinue(interaction: Continue) {
             if (!this.recursionLabels.some(scope => scope.has(interaction.label))) this.errors.push({ type: 'DanglingContinue', message: `Continue '${interaction.label}' has no matching rec block.`, offendingEntity: interaction.label });
         }
     }
@@ -520,11 +520,11 @@ const ScribbleCore = (() => {
             return { type: 'LocalProtocol', role, body: this.projectInteractions(protocol.body, role) };
         }
 
-        private projectInteractions(interactions: GlobalInteraction[], role: Role): LocalInteraction[] {
+        projectInteractions(interactions: GlobalInteraction[], role: Role): LocalInteraction[] {
             return interactions.map(i => this.projectInteraction(i, role)).filter((i): i is LocalInteraction => i !== null);
         }
 
-        private projectInteraction(interaction: GlobalInteraction, role: Role): LocalInteraction | null {
+        projectInteraction(interaction: GlobalInteraction, role: Role): LocalInteraction | null {
             switch (interaction.type) {
                 case 'MessageTransfer':
                     if (interaction.sender === role) return { type: 'Send', label: interaction.label, payloadType: interaction.payloadType, receiver: interaction.receiver };
@@ -554,34 +554,34 @@ const ScribbleCore = (() => {
     }
 
     class FsmGenerator {
-        private nodes: FsmNode[] = [];
-        private edges: FsmEdge[] = [];
-        private nodeCounter = 0;
-        private recursionPoints: { [key: string]: string } = {};
-    private astNodeToFsmNode: Map<LocalInteraction, string> = new Map();
+        nodes: FsmNode[] = [];
+        edges: FsmEdge[] = [];
+        nodeCounter = 0;
+        recursionPoints: { [key: string]: string } = {};
+        astNodeToFsmNode: Map<LocalInteraction, string> = new Map();
 
-    generate(protocol: LocalProtocol): { graph: FsmGraph, mapping: Map<LocalInteraction, string> } {
-        this.nodes = []; this.edges = []; this.nodeCounter = 0; this.recursionPoints = {}; this.astNodeToFsmNode = new Map();
+        generate(protocol: LocalProtocol): { graph: FsmGraph, mapping: Map<LocalInteraction, string> } {
+            this.nodes = []; this.edges = []; this.nodeCounter = 0; this.recursionPoints = {}; this.astNodeToFsmNode = new Map();
             const startId = this.addNode('Start', true);
             const lastNodeId = this.generateFsmFor(protocol.body, startId);
             const endId = this.addNode('End', false, true);
             this.addEdge(lastNodeId, endId, 'end');
-        return { graph: { nodes: this.nodes, edges: this.edges }, mapping: this.astNodeToFsmNode };
+            return { graph: { nodes: this.nodes, edges: this.edges }, mapping: this.astNodeToFsmNode };
         }
 
-        private addNode(label: string, isStart = false, isEnd = false): string {
+        addNode(label: string, isStart = false, isEnd = false): string {
             const id = `s${this.nodeCounter++}`;
             this.nodes.push({ id, label, isStartState: isStart, isEndState: isEnd });
             return id;
         }
 
-        private addEdge(source: string, target: string, label: string) { this.edges.push({ source, target, label }); }
+        addEdge(source: string, target: string, label: string) { this.edges.push({ source, target, label }); }
 
-        private generateFsmFor(interactions: LocalInteraction[], currentId: string): string {
+        generateFsmFor(interactions: LocalInteraction[], currentId: string): string {
             if (interactions.length === 0) return currentId;
 
             const [interaction, ...rest] = interactions;
-        this.astNodeToFsmNode.set(interaction, currentId);
+            this.astNodeToFsmNode.set(interaction, currentId);
             let nextNodeId = currentId;
 
             switch (interaction.type) {
@@ -623,7 +623,7 @@ const ScribbleCore = (() => {
             return `class ${protocol.role}Endpoint {\n${this.generateMethodsFor(protocol.body)}\n}`;
         }
 
-        private generateMethodsFor(interactions: LocalInteraction[], indent = '    '): string {
+        generateMethodsFor(interactions: LocalInteraction[], indent = '    '): string {
             if (interactions.length === 0) return `${indent}// Protocol finished\n`;
             const [interaction, ...rest] = interactions;
             const cont = `{\n${this.generateMethodsFor(rest, indent + '    ')}\n${indent}}`;
@@ -641,9 +641,9 @@ const ScribbleCore = (() => {
     }
 
     class Simulator {
-        private roles: Role[];
-        private localProtocols: { [role: Role]: LocalProtocol };
-        private messageQueue: any[] = [];
+        roles: Role[];
+        localProtocols: { [role: Role]: LocalProtocol };
+        messageQueue: any[] = [];
         public currentStates: { [role: Role]: LocalInteraction[] };
         public possibleActions: any[] = [];
 
@@ -687,7 +687,7 @@ const ScribbleCore = (() => {
             this.updatePossibleActions();
         }
 
-        private updatePossibleActions() {
+        updatePossibleActions() {
             this.possibleActions = [];
             for (const role of this.roles) {
                 const state = this.currentStates[role][0];
