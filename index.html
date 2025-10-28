@@ -558,14 +558,15 @@ const ScribbleCore = (() => {
         private edges: FsmEdge[] = [];
         private nodeCounter = 0;
         private recursionPoints: { [key: string]: string } = {};
+    private astNodeToFsmNode: Map<LocalInteraction, string> = new Map();
 
-        generate(protocol: LocalProtocol): FsmGraph {
-            this.nodes = []; this.edges = []; this.nodeCounter = 0; this.recursionPoints = {};
+    generate(protocol: LocalProtocol): { graph: FsmGraph, mapping: Map<LocalInteraction, string> } {
+        this.nodes = []; this.edges = []; this.nodeCounter = 0; this.recursionPoints = {}; this.astNodeToFsmNode = new Map();
             const startId = this.addNode('Start', true);
             const lastNodeId = this.generateFsmFor(protocol.body, startId);
             const endId = this.addNode('End', false, true);
             this.addEdge(lastNodeId, endId, 'end');
-            return { nodes: this.nodes, edges: this.edges };
+        return { graph: { nodes: this.nodes, edges: this.edges }, mapping: this.astNodeToFsmNode };
         }
 
         private addNode(label: string, isStart = false, isEnd = false): string {
@@ -580,6 +581,7 @@ const ScribbleCore = (() => {
             if (interactions.length === 0) return currentId;
 
             const [interaction, ...rest] = interactions;
+        this.astNodeToFsmNode.set(interaction, currentId);
             let nextNodeId = currentId;
 
             switch (interaction.type) {
@@ -638,42 +640,150 @@ const ScribbleCore = (() => {
         }
     }
 
+    class Simulator {
+        private roles: Role[];
+        private localProtocols: { [role: Role]: LocalProtocol };
+        private messageQueue: any[] = [];
+        public currentStates: { [role: Role]: LocalInteraction[] };
+        public possibleActions: any[] = [];
+
+        constructor(ast: GlobalProtocol) {
+            this.roles = ast.roles;
+            this.localProtocols = ast.roles.reduce((acc, role) => {
+                acc[role] = new Projector().project(ast, role);
+                return acc;
+            }, {});
+            this.reset();
+        }
+
+        reset() {
+            this.messageQueue = [];
+            this.currentStates = this.roles.reduce((acc, role) => {
+                acc[role] = this.localProtocols[role].body;
+                return acc;
+            }, {});
+            this.updatePossibleActions();
+        }
+
+        getPossibleActions() {
+            return this.possibleActions;
+        }
+
+        step(userChoice: any = null) {
+            if (this.possibleActions.length === 0) {
+                this.reset();
+                return;
+            }
+
+            const action = userChoice || this.possibleActions[Math.floor(Math.random() * this.possibleActions.length)];
+
+            if (action.type === 'send') {
+                this.messageQueue.push({ from: action.role, to: action.to, label: action.label });
+                this.currentStates[action.role] = action.continuation;
+            } else if (action.type === 'internal_choice') {
+                this.currentStates[action.role] = action.continuation;
+            }
+
+            this.updatePossibleActions();
+        }
+
+        private updatePossibleActions() {
+            this.possibleActions = [];
+            for (const role of this.roles) {
+                const state = this.currentStates[role][0];
+                if (!state) continue;
+
+                if (state.type === 'Send') {
+                    this.possibleActions.push({ type: 'send', role, to: state.receiver, label: state.label, continuation: this.currentStates[role].slice(1) });
+                } else if (state.type === 'Receive') {
+                    const msgIndex = this.messageQueue.findIndex(m => m.to === role && m.label === state.label && m.from === state.sender);
+                    if (msgIndex !== -1) {
+                        this.messageQueue.splice(msgIndex, 1);
+                        this.currentStates[role] = this.currentStates[role].slice(1);
+                        // This was an automatic step, so we immediately look for the next actions
+                        return this.updatePossibleActions();
+                    }
+                } else if (state.type === 'InternalChoice') {
+                    for (const label in state.branches) {
+                        this.possibleActions.push({ type: 'internal_choice', role, label, continuation: state.branches[label].body });
+                    }
+                }
+            }
+        }
+    }
+
     return {
         parse: (code: string) => { try { return { ast: new Parser().parse(code), error: null }; } catch (e) { return { ast: null, error: e.message }; } },
         validate: (ast: GlobalProtocol) => new Validator().validate(ast),
         project: (ast: GlobalProtocol, role: Role) => new Projector().project(ast, role),
-        generateFsm: (localAst: LocalProtocol) => new FsmGenerator().generate(localAst),
-        generateApi: (localAst: LocalProtocol) => new ApiGenerator().generate(localAst)
+        generateFsmWithMapping: (localAst: LocalProtocol) => new FsmGenerator().generate(localAst),
+        generateApi: (localAst: LocalProtocol) => new ApiGenerator().generate(localAst),
+        createSimulator: (ast: GlobalProtocol) => new Simulator(ast),
     };
 })();
 
 // -----------------
 // FSM VISUALIZER COMPONENT
 // -----------------
-const FsmVisualizer: React.FC<{ graph: FsmGraph }> = ({ graph }) => {
+const FsmVisualizer: React.FC<{ graph: FsmGraph, currentNodeId: string | null }> = ({ graph, currentNodeId }) => {
     const ref = React.useRef<SVGSVGElement>(null);
     React.useEffect(() => {
-        if (!ref.current || !graph) return;
+        if (!ref.current || !graph || graph.nodes.length === 0) return;
+
+        // 1. Calculate node ranks (Y position)
+        const ranks = {};
+        const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
+        let maxRank = 0;
+
+        function calculateRank(nodeId, rank) {
+            if (ranks[nodeId] === undefined || ranks[nodeId] < rank) {
+                ranks[nodeId] = rank;
+                maxRank = Math.max(maxRank, rank);
+                const outgoingEdges = graph.edges.filter(e => e.source === nodeId);
+                outgoingEdges.forEach(edge => calculateRank(edge.target, rank + 1));
+            }
+        }
+        const startNode = graph.nodes.find(n => n.isStartState);
+        if (startNode) calculateRank(startNode.id, 0);
+
         const svg = d3.select(ref.current);
         svg.selectAll("*").remove();
         const width = ref.current.parentElement?.clientWidth || 800;
         const height = ref.current.parentElement?.clientHeight || 600;
+        const ySpacing = height / (maxRank + 1);
         svg.attr('width', width).attr('height', height);
 
-        const simulation = d3.forceSimulation(graph.nodes as any)
-            .force("link", d3.forceLink(graph.edges).id((d: any) => d.id).distance(150))
-            .force("charge", d3.forceManyBody().strength(-300))
-            .force("center", d3.forceCenter(width / 2, height / 2));
+        const nodes = graph.nodes.map(n => ({ ...n, y: ranks[n.id] * ySpacing + 20, fx: null, fy: ranks[n.id] * ySpacing + 20 }));
+
+        const simulation = d3.forceSimulation(nodes as any)
+            .force("link", d3.forceLink(graph.edges).id((d: any) => d.id).distance(100))
+            .force("charge", d3.forceManyBody().strength(-200))
+            .force("x", d3.forceX(width / 2).strength(0.1));
+
         const g = svg.append("g");
         svg.append("defs").append("marker").attr("id", "arrowhead").attr("viewBox", "-0 -5 10 10").attr("refX", 25).attr("refY", 0).attr("orient", "auto").attr("markerWidth", 8).attr("markerHeight", 8).append("svg:path").attr("d", "M 0,-5 L 10 ,0 L 0,5").attr("fill", "#999");
+
         const link = g.append("g").selectAll("line").data(graph.edges).join("line").attr("stroke-width", 2).attr("stroke", "#999").attr("marker-end", "url(#arrowhead)");
         const linkText = g.append("g").selectAll("text").data(graph.edges).join("text").text((d: any) => d.label).attr('fill', '#aaa').style('font-size', '10px');
-        const node = g.append("g").selectAll("g").data(graph.nodes).join("g");
-        node.append("circle").attr("r", (d: any) => d.isStartState || d.isEndState ? 8 : 5).attr("fill", (d: any) => d.isStartState ? '#22c55e' : (d.isEndState ? '#ef4444' : '#3b82f6')).call(d3.drag().on("start", (e, d: any) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }).on("drag", (e, d: any) => { d.fx = e.x; d.fy = e.y; }).on("end", (e, d: any) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }) as any);
+        const node = g.append("g").selectAll("g").data(nodes).join("g");
+
+        node.append("circle").attr("r", (d: any) => d.isStartState || d.isEndState ? 8 : 5)
+            .attr("fill", (d: any) => {
+                if (d.id === currentNodeId) return '#facc15'; // Yellow for current state
+                return d.isStartState ? '#22c55e' : (d.isEndState ? '#ef4444' : '#3b82f6');
+            })
+            .call(d3.drag().on("start", (e, d: any) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }).on("drag", (e, d: any) => { d.fx = e.x; d.fy = e.y; }).on("end", (e, d: any) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; if (ranks[d.id] !== undefined) d.fy = ranks[d.id] * ySpacing + 20; }) as any);
         node.append("text").text((d: any) => d.label).attr("x", 12).attr("y", 4).attr("fill", "white").style('font-size', '12px');
-        simulation.on("tick", () => { link.attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y).attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y); linkText.attr("x", (d: any) => (d.source.x + d.target.x) / 2).attr("y", (d: any) => (d.source.y + d.target.y) / 2); node.attr("transform", (d: any) => `translate(${d.x},${d.y})`); });
+
+        simulation.on("tick", () => {
+            node.each((d: any) => { d.y = d.fy; }); // Enforce y position
+            link.attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y).attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y);
+            linkText.attr("x", (d: any) => (d.source.x + d.target.x) / 2).attr("y", (d: any) => (d.source.y + d.target.y) / 2);
+            node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+        });
+
         svg.call(d3.zoom().on("zoom", (e) => g.attr("transform", e.transform)) as any);
-    }, [graph]);
+    }, [graph, currentNodeId]);
     return <svg ref={ref}></svg>;
 };
 
@@ -686,34 +796,40 @@ function App() {
     const [editorCode, setEditorCode] = useState(examples[0].code);
     const [currentAst, setCurrentAst] = useState<GlobalProtocol | null>(null);
     const [errors, setErrors] = useState<(string | ValidationError)[]>([]);
-    const [selectedRole, setSelectedRole] = useState<Role | null>(null);
-    const [projectionView, setProjectionView] = useState<'FSM' | 'API'>('FSM');
-    const [fsmGraph, setFsmGraph] = useState<FsmGraph | null>(null);
-    const [apiCode, setApiCode] = useState('');
+    const [fsmGraphs, setFsmGraphs] = useState<{ [role: Role]: FsmGraph }>({});
+    const [astToFsmMap, setAstToFsmMap] = useState<{ [role: Role]: Map<LocalInteraction, string> }>({});
     const [protocolExamples, setProtocolExamples] = useState(examples);
+    const [simulator, setSimulator] = useState(null);
+    const [possibleActions, setPossibleActions] = useState([]);
 
     const processCode = useCallback((code: string) => {
         const { ast, error } = ScribbleCore.parse(code);
-        if (error) { setErrors([`Parse Error: ${error}`]); setCurrentAst(null); return; }
+        if (error) { setErrors([`Parse Error: ${error}`]); setCurrentAst(null); setFsmGraphs({}); setSimulator(null); return; }
         if (ast) {
             const validationErrors = ScribbleCore.validate(ast);
             setErrors(validationErrors);
             setCurrentAst(ast);
-            setSelectedRole(ast.roles[0] || null);
+            if (validationErrors.length === 0) {
+                const sim = ScribbleCore.createSimulator(ast);
+                setSimulator(sim);
+                setPossibleActions(sim.getPossibleActions());
+                const newGraphs = {};
+                const newMappings = {};
+                ast.roles.forEach(role => {
+                    const localAst = ScribbleCore.project(ast, role);
+                    const { graph, mapping } = ScribbleCore.generateFsmWithMapping(localAst);
+                    newGraphs[role] = graph;
+                    newMappings[role] = mapping;
+                });
+                setFsmGraphs(newGraphs);
+                setAstToFsmMap(newMappings);
+            } else {
+                setFsmGraphs({});
+            }
         }
     }, []);
 
     useEffect(() => { processCode(editorCode); }, [editorCode, processCode]);
-    useEffect(() => {
-        if (currentAst && selectedRole && errors.length === 0) {
-            const localAst = ScribbleCore.project(currentAst, selectedRole);
-            setFsmGraph(ScribbleCore.generateFsm(localAst));
-            setApiCode(ScribbleCore.generateApi(localAst));
-        } else {
-            setFsmGraph(null);
-            setApiCode('');
-        }
-    }, [currentAst, selectedRole, errors]);
 
     useEffect(() => {
         let passed = 0;
@@ -770,21 +886,32 @@ function App() {
                                 </div>
                             </div>
                         </div>
-                        <div className="flex flex-col">
-                            <div className="flex items-center justify-between mb-2">
-                                <h2 className="text-xl font-semibold text-white">Projection</h2>
-                                <div className="flex items-center space-x-4">
-                                    <select value={selectedRole || ''} onChange={(e) => setSelectedRole(e.target.value)} className="bg-gray-700 border border-gray-600 rounded px-2 py-1" disabled={!currentAst}>
-                                        {currentAst?.roles.map(r => <option key={r} value={r}>{r}</option>)}
-                                    </select>
-                                    <div>
-                                        <button onClick={() => setProjectionView('FSM')} className={`px-3 py-1 rounded ${projectionView === 'FSM' ? 'bg-blue-600' : 'bg-gray-600'}`}>FSM</button>
-                                        <button onClick={() => setProjectionView('API')} className={`px-3 py-1 rounded ${projectionView === 'API' ? 'bg-blue-600' : 'bg-gray-600'}`}>API</button>
-                                    </div>
+                        <div className="flex flex-col overflow-y-auto">
+                            <div className="mb-4">
+                                <h2 className="text-xl font-semibold mb-2 text-white">Simulation Controls</h2>
+                                <div className="flex space-x-2">
+                                    <button onClick={() => simulator && simulator.step()} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Auto-Play Step</button>
+                                    <button onClick={() => simulator && simulator.step(possibleActions[0])} disabled={!simulator || possibleActions.length === 0} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Step</button>
+                                    <button onClick={() => simulator && simulator.reset()} className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Reset</button>
+                                </div>
+                                <div className="mt-2 space-x-2">
+                                    {possibleActions.map((action, i) => (
+                                        <button key={i} onClick={() => simulator.step(action)} className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded text-sm">
+                                            {action.role} chooses {action.label}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
-                            <div className="flex-1 bg-gray-800 border border-gray-600 rounded-lg p-2">
-                                {projectionView === 'FSM' ? (fsmGraph ? <FsmVisualizer graph={fsmGraph} /> : <p>Select a valid protocol and role.</p>) : (<pre className="h-full overflow-y-auto text-sm"><code>{apiCode}</code></pre>)}
+                            <h2 className="text-xl font-semibold mb-2 text-white">Role Projections</h2>
+                            <div className="space-y-4">
+                                {Object.entries(fsmGraphs).map(([role, graph]) => (
+                                    <div key={role} className="bg-gray-800 border border-gray-600 rounded-lg p-2">
+                                        <h3 className="text-lg font-semibold text-white mb-2">{role}</h3>
+                                        <div style={{ height: '300px' }}>
+                                            <FsmVisualizer graph={graph} currentNodeId={astToFsmMap[role]?.get(simulator?.currentStates[role]?.[0]) || null} />
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
