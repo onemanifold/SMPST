@@ -793,6 +793,7 @@ const FsmVisualizer: React.FC<{ graph: FsmGraph, currentNodeId: string | null }>
 function App() {
     const { useState, useEffect, useCallback } = React;
     const [testSummary, setTestSummary] = useState({ passed: 0, failed: 0, total: 0 });
+    const [testFailures, setTestFailures] = useState<{ name: string, reason: string }[]>([]);
     const [editorCode, setEditorCode] = useState(examples[0].code);
     const [currentAst, setCurrentAst] = useState<GlobalProtocol | null>(null);
     const [errors, setErrors] = useState<(string | ValidationError)[]>([]);
@@ -832,17 +833,41 @@ function App() {
     useEffect(() => { processCode(editorCode); }, [editorCode, processCode]);
 
     useEffect(() => {
+        const failures: { name: string, reason: string }[] = [];
         let passed = 0;
         examples.forEach(ex => {
+            let failed = false;
             const { ast, error } = ScribbleCore.parse(ex.code);
-            if (error) { if (ex.shouldFail === 'parse') passed++; return; }
-            if (ex.shouldFail === 'parse' || !ast) return;
-            const validationErrors = ScribbleCore.validate(ast);
-            if (validationErrors.length > 0) { if (ex.shouldFail === 'validate') passed++; return; }
-            if (ex.shouldFail === 'validate') return;
-            passed++;
+
+            if (error) {
+                if (ex.shouldFail === 'parse') {
+                    passed++;
+                } else {
+                    failed = true;
+                    failures.push({ name: ex.name, reason: `Unexpected parser error: ${error}` });
+                }
+            } else if (ex.shouldFail === 'parse') {
+                failed = true;
+                failures.push({ name: ex.name, reason: 'Expected parser to fail, but it succeeded.' });
+            } else if (ast) {
+                const validationErrors = ScribbleCore.validate(ast);
+                if (validationErrors.length > 0) {
+                    if (ex.shouldFail === 'validate') {
+                        passed++;
+                    } else {
+                        failed = true;
+                        failures.push({ name: ex.name, reason: `Unexpected validation error: ${validationErrors[0].message}` });
+                    }
+                } else if (ex.shouldFail === 'validate') {
+                    failed = true;
+                    failures.push({ name: ex.name, reason: 'Expected validation to fail, but it succeeded.' });
+                } else {
+                    passed++;
+                }
+            }
         });
         setTestSummary({ passed, failed: examples.length - passed, total: examples.length });
+        setTestFailures(failures);
     }, []);
 
     return (
@@ -861,6 +886,19 @@ function App() {
                             <p>Failed: <span className="font-bold text-red-400">{testSummary.failed}</span></p>
                             <p>Total: <span className="font-bold text-white">{testSummary.total}</span></p>
                         </div>
+                        {testFailures.length > 0 && (
+                            <div className="mt-4">
+                                <h3 className="text-lg font-semibold text-red-400 mb-2">Failed Tests</h3>
+                                <div className="p-3 bg-gray-800 rounded-lg max-h-40 overflow-y-auto">
+                                    {testFailures.map((failure, i) => (
+                                        <div key={i} className="mb-2">
+                                            <p className="font-bold text-white">{failure.name}</p>
+                                            <p className="text-sm text-gray-400">{failure.reason}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                     <div>
                         <h2 className="text-lg font-semibold mb-2 text-white">Examples</h2>

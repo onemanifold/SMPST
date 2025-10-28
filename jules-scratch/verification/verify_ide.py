@@ -18,8 +18,8 @@ def main():
         expect(page.get_by_text("Protocol Editor")).to_be_visible()
         expect(page.get_by_text("Role Projections")).to_be_visible()
 
-        # Wait for tests to complete and display the total count, indicating the app is ready
-        expect(page.locator("text=Total: 17")).to_be_visible(timeout=10000)
+        # Wait for the "Failed Tests" section to appear
+        expect(page.get_by_role("heading", name="Failed Tests")).to_be_visible(timeout=10000)
 
         # Take a screenshot of the entire page
         page.screenshot(path="jules-scratch/verification/verification.png")
