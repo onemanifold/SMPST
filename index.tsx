@@ -1,10 +1,782 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
+// -----------------
+// TYPE DEFINITIONS
+// -----------------
+type Role = string;
+type ProtocolName = string;
+type RecursionLabel = string;
+type MessageLabel = string;
+type PayloadType = string;
 
-const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+interface GlobalProtocol {
+    type: 'GlobalProtocol';
+    protocolName: ProtocolName;
+    roles: Role[];
+    body: GlobalInteraction[];
+}
+type GlobalInteraction = MessageTransfer | Choice | Recursion | Continue;
+interface MessageTransfer {
+    type: 'MessageTransfer';
+    label: MessageLabel;
+    payloadType: PayloadType;
+    sender: Role;
+    receiver: Role;
+}
+interface Choice {
+    type: 'Choice';
+    decider: Role;
+    branches: GlobalProtocolBody[];
+}
+interface GlobalProtocolBody {
+    type: 'GlobalProtocolBody';
+    interactions: GlobalInteraction[];
+}
+interface Recursion {
+    type: 'Recursion';
+    label: RecursionLabel;
+    body: GlobalProtocolBody;
+}
+interface Continue {
+    type: 'Continue';
+    label: RecursionLabel;
+}
+interface LocalProtocol {
+    type: 'LocalProtocol';
+    role: Role;
+    body: LocalInteraction[];
+}
+type LocalInteraction = Send | Receive | InternalChoice | ExternalChoice | LocalRecursion | LocalContinue;
+interface Send {
+    type: 'Send';
+    label: MessageLabel;
+    payloadType: PayloadType;
+    receiver: Role;
+}
+interface Receive {
+    type: 'Receive';
+    label: MessageLabel;
+    payloadType: PayloadType;
+    sender: Role;
+}
+interface InternalChoice {
+    type: 'InternalChoice';
+    branches: { [label: MessageLabel]: LocalProtocol };
+}
+interface ExternalChoice {
+    type: 'ExternalChoice';
+    branches: { [label: MessageLabel]: LocalProtocol };
+}
+interface LocalRecursion {
+    type: 'LocalRecursion';
+    label: RecursionLabel;
+    body: LocalProtocol;
+}
+interface LocalContinue {
+    type: 'LocalContinue';
+    label: RecursionLabel;
+}
+interface ValidationError {
+    type: 'UndeclaredRole' | 'InconsistentChoice' | 'DanglingContinue' | 'DuplicateRole' | 'DuplicateRecursionLabel';
+    message: string;
+    offendingEntity?: string;
+}
+interface FsmNode {
+    id: string;
+    label: string;
+    isStartState?: boolean;
+    isEndState?: boolean;
+}
+interface FsmEdge {
+    source: string;
+    target: string;
+    label: string;
+}
+interface FsmGraph {
+    nodes: FsmNode[];
+    edges: FsmEdge[];
+}
+interface ProtocolExample {
+    name: string;
+    code: string;
+    shouldFail?: 'parse' | 'validate';
+    description: string;
+}
+
+// -----------------
+// PROTOCOL EXAMPLES
+// -----------------
+const examples: ProtocolExample[] = [
+    {
+        name: 'Ping-Pong',
+        description: 'A basic two-party request-response protocol.',
+        code: `
+global protocol PingPong(role Pinger, role Ponger) {
+    ping(String) from Pinger to Ponger;
+    pong(String) from Ponger to Pinger;
+}`
+    },
+    {
+        name: 'Three-Party Pass',
+        description: 'A simple chain of messages between three parties.',
+        code: `
+global protocol ThreeParty(role A, role B, role C) {
+    msg1(Data) from A to B;
+    msg2(Data) from B to C;
+}`
+    },
+    {
+        name: 'Simple Choice',
+        description: 'Demonstrates a basic choice controlled by one role.',
+        code: `
+global protocol BookInquiry(role Client, role Server) {
+    query(String) from Client to Server;
+    choice at Server {
+        found(Book) from Server to Client;
+    } or {
+        notFound(Error) from Server to Client;
+    }
+}`
+    },
+    {
+        name: 'Simple Recursion',
+        description: 'A protocol that can repeat a sequence of interactions.',
+        code: `
+global protocol Downloader(role Client, role Server) {
+    rec Loop {
+        request(ChunkId) from Client to Server;
+        chunk(Data) from Server to Client;
+        continue Loop;
+    }
+}`
+    },
+    {
+        name: 'Nested Choice',
+        description: 'A choice within another choice, demonstrating nested control flow.',
+        code: `
+global protocol VendingMachine(role User, role Machine) {
+    choice at User {
+        select(Snack) from User to Machine;
+        choice at Machine {
+            available(Price) from Machine to User;
+        } or {
+            unavailable(Reason) from Machine to User;
+        }
+    } or {
+        select(Drink) from User to Machine;
+        dispense(Drink) from Machine to User;
+    }
+}`
+    },
+    {
+        name: 'Recursion in Choice',
+        description: 'A recursive block nested inside a choice branch.',
+        code: `
+global protocol Authenticator(role User, role Auth) {
+    credentials(Creds) from User to Auth;
+    choice at Auth {
+        success(Token) from Auth to User;
+    } or {
+        failure(Reason) from Auth to User;
+        rec Retry {
+            newCredentials(Creds) from User to Auth;
+            continue Retry;
+        }
+    }
+}`
+    },
+    {
+        name: 'Observer Role',
+        description: 'A third party observes a two-party interaction.',
+        code: `
+global protocol AuditLog(role Sender, role Receiver, role Auditor) {
+    sensitiveData(Data) from Sender to Receiver;
+    log(Record) from Receiver to Auditor;
+}`
+    },
+    {
+        name: 'Invalid: Bad Syntax',
+        description: 'A protocol with a syntax error that should fail parsing.',
+        shouldFail: 'parse',
+        code: `
+global protocol Broken(role A, role B) {
+    missingSemicolon from A to B
+}`
+    },
+    {
+        name: 'Invalid: Undeclared Role',
+        description: 'A protocol that uses a role not declared in the header.',
+        shouldFail: 'validate',
+        code: `
+global protocol UndeclaredRole(role A, role B) {
+    hello(String) from A to C; // C is not declared
+}`
+    },
+    {
+        name: 'Auth: Basic Delegation',
+        description: 'A client requests a token and delegates it to a service.',
+        code: `
+global protocol BasicDelegation(role Client, role AuthServer, role Service) {
+    requestToken(Request) from Client to AuthServer;
+    token(AuthToken) from AuthServer to Client;
+    delegate(AuthToken) from Client to Service;
+    result(Data) from Service to Client;
+}`
+    },
+    {
+        name: 'Auth: Chained Trust',
+        description: 'Service A gets a capability from B, then uses it to access C.',
+        code: `
+global protocol ChainedTrust(role A, role B, role C) {
+    requestCap(Req) from A to B;
+    capability(Cap) from B to A;
+    useCap(Cap) from A to C;
+    response(Data) from C to A;
+}`
+    },
+    {
+        name: 'Auth: Scoped Authority',
+        description: 'A client is granted limited-scope access by a manager.',
+        code: `
+global protocol ScopedAuthority(role Client, role Manager, role Resource) {
+    requestAccess(Scope) from Client to Manager;
+    choice at Manager {
+        grant(ScopedToken) from Manager to Client;
+        access(ScopedToken) from Client to Resource;
+        data(Content) from Resource to Client;
+    } or {
+        deny(Reason) from Manager to Client;
+    }
+}`
+    },
+    {
+        name: 'Auth: Dual Authority',
+        description: 'An action requires approval from two separate authorities.',
+        code: `
+global protocol DualAuthority(role Requester, role Approver1, role Approver2, role Executor) {
+    request(Action) from Requester to Approver1;
+    approval1(Sig1) from Approver1 to Requester;
+    forward(Action, Sig1) from Requester to Approver2;
+    approval2(Sig2) from Approver2 to Requester;
+    execute(Action, Sig1, Sig2) from Requester to Executor;
+}`
+    },
+    {
+        name: 'Auth: Invalid Delegation',
+        description: 'A client tries to use a token with the wrong service.',
+        shouldFail: 'validate',
+        code: `
+global protocol InvalidDelegation(role Client, role Auth, role ServiceA, role ServiceB) {
+    request(ForA) from Client to Auth;
+    tokenForA(TokenA) from Auth to Client;
+    // Client incorrectly sends TokenA to ServiceB
+    useToken(TokenA) from Client to ServiceB;
+}`
+    },
+    {
+        name: 'Complex: E-Commerce',
+        description: 'A multi-step shopping protocol with choices and recursion.',
+        code: `
+global protocol ECommerce(role Customer, role Vendor, role Shipper) {
+    rec Search {
+        query(String) from Customer to Vendor;
+        choice at Vendor {
+            results(Items) from Vendor to Customer;
+            choice at Customer {
+                addToCart(Item) from Customer to Vendor;
+                continue Search;
+            } or {
+                checkout(Cart) from Customer to Vendor;
+                address(Address) from Customer to Vendor;
+                dispatch(Order) from Vendor to Shipper;
+                shipped(Confirmation) from Shipper to Customer;
+            }
+        } or {
+            noResults(Info) from Vendor to Customer;
+            continue Search;
+        }
+    }
+}`
+    },
+    {
+        name: 'Complex: Async 3-Party',
+        description: 'Three parties interact without a strict linear sequence.',
+        code: `
+global protocol Async(role A, role B, role C) {
+    // A starts two threads of communication
+    task1(Data) from A to B;
+    task2(Data) from A to C;
+    // B and C work independently and report back
+    result1(Res) from B to A;
+    result2(Res) from C to A;
+}`
+    },
+    {
+        name: 'Complex: Multi-Role Protocol',
+        description: 'A complex interaction involving four roles, choices, and recursion.',
+        code: `
+global protocol MultiRole(role Initiator, role Participant, role Coordinator, role Logger) {
+    start(Config) from Initiator to Coordinator;
+    rec Negotiate {
+        proposal(Data) from Coordinator to Participant;
+        log(Event) from Coordinator to Logger;
+        choice at Participant {
+            accept(Ack) from Participant to Coordinator;
+            done(Report) from Coordinator to Initiator;
+        } or {
+            reject(Nack) from Participant to Coordinator;
+            continue Negotiate;
+        }
+    }
+}`
+    },
+];
+
+// -----------------
+// SCRIBBLE CORE LOGIC
+// -----------------
+const ScribbleCore = (() => {
+    const tokenRegex = /global|protocol|role|choice|at|or|rec|continue|from|to|[A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*|[(){};,:]/g;
+    function tokenize(code: string): string[] { return code.match(tokenRegex) || []; }
+
+    class Parser {
+        private tokens: string[] = [];
+        private current = 0;
+
+        parse(code: string): GlobalProtocol {
+            this.tokens = tokenize(code);
+            this.current = 0;
+            return this.parseGlobalProtocol();
+        }
+
+        private parseGlobalProtocol(): GlobalProtocol {
+            this.consume('global');
+            this.consume('protocol');
+            const protocolName = this.consumeIdentifier();
+            this.consume('(');
+            const roles: Role[] = [];
+            while (this.peek() !== ')') {
+                this.consume('role');
+                roles.push(this.consumeIdentifier());
+                if (this.peek() === ',') this.consume(',');
+            }
+            this.consume(')');
+            this.consume('{');
+            const body = this.parseProtocolBody();
+            this.consume('}');
+            return { type: 'GlobalProtocol', protocolName, roles, body: body.interactions };
+        }
+
+        private parseProtocolBody(): GlobalProtocolBody {
+            const interactions: GlobalInteraction[] = [];
+            while (this.peek() !== '}' && this.peek() !== undefined) {
+                interactions.push(this.parseInteraction());
+            }
+            return { type: 'GlobalProtocolBody', interactions };
+        }
+
+        private parseInteraction(): GlobalInteraction {
+            if (this.peek() === 'choice') return this.parseChoice();
+            if (this.peek() === 'rec') return this.parseRecursion();
+            if (this.peek() === 'continue') return this.parseContinue();
+            return this.parseMessageTransfer();
+        }
+
+        private parseMessageTransfer(): MessageTransfer {
+            const label = this.consumeIdentifier();
+            this.consume('(');
+            const payloadType = this.consumeIdentifier();
+            this.consume(')');
+            this.consume('from');
+            const sender = this.consumeIdentifier();
+            this.consume('to');
+            const receiver = this.consumeIdentifier();
+            this.consume(';');
+            return { type: 'MessageTransfer', label, payloadType, sender, receiver };
+        }
+
+        private parseChoice(): Choice {
+            this.consume('choice');
+            this.consume('at');
+            const decider = this.consumeIdentifier();
+            this.consume('{');
+            const branches: GlobalProtocolBody[] = [this.parseProtocolBody()];
+            this.consume('}');
+            while (this.peek() === 'or') {
+                this.consume('or');
+                this.consume('{');
+                branches.push(this.parseProtocolBody());
+                this.consume('}');
+            }
+            return { type: 'Choice', decider, branches };
+        }
+
+        private parseRecursion(): Recursion {
+            this.consume('rec');
+            const label = this.consumeIdentifier();
+            this.consume('{');
+            const body = this.parseProtocolBody();
+            this.consume('}');
+            return { type: 'Recursion', label, body };
+        }
+
+        private parseContinue(): Continue {
+            this.consume('continue');
+            const label = this.consumeIdentifier();
+            this.consume(';');
+            return { type: 'Continue', label };
+        }
+
+        private consume(expected?: string): string {
+            const token = this.tokens[this.current++];
+            if (expected && token !== expected) throw new Error(`Expected '${expected}' but got '${token}'`);
+            if (token === undefined) throw new Error('Unexpected end of input.');
+            return token;
+        }
+
+        private consumeIdentifier(): string {
+            const token = this.tokens[this.current++];
+            if (!/^[a-zA-Z]/.test(token)) throw new Error(`Expected an identifier but got '${token}'`);
+            return token;
+        }
+
+        private peek(): string { return this.tokens[this.current]; }
+    }
+
+    class Validator {
+        private errors: ValidationError[] = [];
+        private declaredRoles: Set<Role> = new Set();
+        private recursionLabels: Set<RecursionLabel>[] = [];
+
+        validate(protocol: GlobalProtocol): ValidationError[] {
+            this.errors = [];
+            this.declaredRoles = new Set(protocol.roles);
+            const roleCounts = protocol.roles.reduce((acc, role) => ({ ...acc, [role]: (acc[role] || 0) + 1 }), {} as { [key: string]: number });
+            for (const role in roleCounts) if (roleCounts[role] > 1) this.errors.push({ type: 'DuplicateRole', message: `Role '${role}' is declared more than once.`, offendingEntity: role });
+            this.recursionLabels.push(new Set());
+            this.traverseInteractions(protocol.body);
+            this.recursionLabels.pop();
+            return this.errors;
+        }
+
+        private traverseInteractions(interactions: GlobalInteraction[]) {
+            for (const interaction of interactions) {
+                if (interaction.type === 'MessageTransfer') this.validateMessageTransfer(interaction);
+                else if (interaction.type === 'Choice') this.validateChoice(interaction);
+                else if (interaction.type === 'Recursion') this.validateRecursion(interaction);
+                else if (interaction.type === 'Continue') this.validateContinue(interaction);
+            }
+        }
+
+        private validateMessageTransfer(interaction: MessageTransfer) {
+            if (!this.declaredRoles.has(interaction.sender)) this.errors.push({ type: 'UndeclaredRole', message: `Sender role '${interaction.sender}' is not declared.`, offendingEntity: interaction.sender });
+            if (!this.declaredRoles.has(interaction.receiver)) this.errors.push({ type: 'UndeclaredRole', message: `Receiver role '${interaction.receiver}' is not declared.`, offendingEntity: interaction.receiver });
+        }
+
+        private validateChoice(interaction: Choice) {
+            if (!this.declaredRoles.has(interaction.decider)) this.errors.push({ type: 'UndeclaredRole', message: `Decider role '${interaction.decider}' in choice is not declared.`, offendingEntity: interaction.decider });
+            for (const branch of interaction.branches) {
+                if (branch.interactions.length > 0 && branch.interactions[0].type === 'MessageTransfer') {
+                    const first = branch.interactions[0];
+                    if (first.sender !== interaction.decider) this.errors.push({ type: 'InconsistentChoice', message: `A branch in a choice at '${interaction.decider}' is initiated by '${first.sender}'.`, offendingEntity: first.sender });
+                }
+                this.traverseInteractions(branch.interactions);
+            }
+        }
+
+        private validateRecursion(interaction: Recursion) {
+            const currentScope = this.recursionLabels[this.recursionLabels.length - 1];
+            if (currentScope.has(interaction.label)) this.errors.push({ type: 'DuplicateRecursionLabel', message: `Recursion label '${interaction.label}' is redefined.`, offendingEntity: interaction.label });
+            const newScope = new Set(currentScope);
+            newScope.add(interaction.label);
+            this.recursionLabels.push(newScope);
+            this.traverseInteractions(interaction.body.interactions);
+            this.recursionLabels.pop();
+        }
+
+        private validateContinue(interaction: Continue) {
+            if (!this.recursionLabels.some(scope => scope.has(interaction.label))) this.errors.push({ type: 'DanglingContinue', message: `Continue '${interaction.label}' has no matching rec block.`, offendingEntity: interaction.label });
+        }
+    }
+
+    class Projector {
+        project(protocol: GlobalProtocol, role: Role): LocalProtocol {
+            return { type: 'LocalProtocol', role, body: this.projectInteractions(protocol.body, role) };
+        }
+
+        private projectInteractions(interactions: GlobalInteraction[], role: Role): LocalInteraction[] {
+            return interactions.map(i => this.projectInteraction(i, role)).filter((i): i is LocalInteraction => i !== null);
+        }
+
+        private projectInteraction(interaction: GlobalInteraction, role: Role): LocalInteraction | null {
+            switch (interaction.type) {
+                case 'MessageTransfer':
+                    if (interaction.sender === role) return { type: 'Send', label: interaction.label, payloadType: interaction.payloadType, receiver: interaction.receiver };
+                    if (interaction.receiver === role) return { type: 'Receive', label: interaction.label, payloadType: interaction.payloadType, sender: interaction.sender };
+                    return null;
+                case 'Choice':
+                    if (interaction.decider === role) {
+                        return {
+                            type: 'InternalChoice',
+                            branches: Object.fromEntries(interaction.branches.map(b => [(b.interactions[0] as MessageTransfer).label, { type: 'LocalProtocol', role, body: this.projectInteractions(b.interactions.slice(1), role) }]))
+                        };
+                    }
+                    const participating = interaction.branches.filter(b => (b.interactions[0] as MessageTransfer).receiver === role);
+                    if (participating.length > 0) {
+                        return {
+                            type: 'ExternalChoice',
+                            branches: Object.fromEntries(participating.map(b => [(b.interactions[0] as MessageTransfer).label, { type: 'LocalProtocol', role, body: this.projectInteractions(b.interactions.slice(1), role) }]))
+                        };
+                    }
+                    return null;
+                case 'Recursion':
+                    return { type: 'LocalRecursion', label: interaction.label, body: { type: 'LocalProtocol', role, body: this.projectInteractions(interaction.body.interactions, role) } };
+                case 'Continue':
+                    return { type: 'LocalContinue', label: interaction.label };
+            }
+        }
+    }
+
+    class FsmGenerator {
+        private nodes: FsmNode[] = [];
+        private edges: FsmEdge[] = [];
+        private nodeCounter = 0;
+        private recursionPoints: { [key: string]: string } = {};
+
+        generate(protocol: LocalProtocol): FsmGraph {
+            this.nodes = []; this.edges = []; this.nodeCounter = 0; this.recursionPoints = {};
+            const startId = this.addNode('Start', true);
+            const lastNodeId = this.generateFsmFor(protocol.body, startId);
+            const endId = this.addNode('End', false, true);
+            this.addEdge(lastNodeId, endId, 'end');
+            return { nodes: this.nodes, edges: this.edges };
+        }
+
+        private addNode(label: string, isStart = false, isEnd = false): string {
+            const id = `s${this.nodeCounter++}`;
+            this.nodes.push({ id, label, isStartState: isStart, isEndState: isEnd });
+            return id;
+        }
+
+        private addEdge(source: string, target: string, label: string) { this.edges.push({ source, target, label }); }
+
+        private generateFsmFor(interactions: LocalInteraction[], currentId: string): string {
+            if (interactions.length === 0) return currentId;
+
+            const [interaction, ...rest] = interactions;
+            let nextNodeId = currentId;
+
+            switch (interaction.type) {
+                case 'Send':
+                    nextNodeId = this.addNode('');
+                    this.addEdge(currentId, nextNodeId, `!${interaction.receiver}(${interaction.label})`);
+                    break;
+                case 'Receive':
+                    nextNodeId = this.addNode('');
+                    this.addEdge(currentId, nextNodeId, `?${interaction.sender}(${interaction.label})`);
+                    break;
+                case 'InternalChoice':
+                case 'ExternalChoice':
+                    const branchEndNodes = Object.entries(interaction.branches).map(([label, branch]) => {
+                        const choiceNodeId = this.addNode('');
+                        this.addEdge(currentId, choiceNodeId, interaction.type === 'InternalChoice' ? `+${label}` : `&${label}`);
+                        return this.generateFsmFor(branch.body, choiceNodeId);
+                    });
+                    nextNodeId = this.addNode('');
+                    branchEndNodes.forEach(endNodeId => this.addEdge(endNodeId, nextNodeId, ''));
+                    break;
+                case 'LocalRecursion':
+                    this.recursionPoints[interaction.label] = currentId;
+                    nextNodeId = this.generateFsmFor(interaction.body.body, currentId);
+                    break;
+                case 'LocalContinue':
+                    if (this.recursionPoints[interaction.label]) {
+                        this.addEdge(currentId, this.recursionPoints[interaction.label], `continue ${interaction.label}`);
+                        return currentId; // End of path for this branch
+                    }
+                    break;
+            }
+            return this.generateFsmFor(rest, nextNodeId);
+        }
+    }
+
+    class ApiGenerator {
+        generate(protocol: LocalProtocol): string {
+            return `class ${protocol.role}Endpoint {\n${this.generateMethodsFor(protocol.body)}\n}`;
+        }
+
+        private generateMethodsFor(interactions: LocalInteraction[], indent = '    '): string {
+            if (interactions.length === 0) return `${indent}// Protocol finished\n`;
+            const [interaction, ...rest] = interactions;
+            const cont = `{\n${this.generateMethodsFor(rest, indent + '    ')}\n${indent}}`;
+
+            switch (interaction.type) {
+                case 'Send': return `${indent}async send_${interaction.label}(payload: ${interaction.payloadType}): Promise<${cont}> { /* ... */ }`;
+                case 'Receive': return `${indent}async receive_${interaction.label}(): Promise<{ payload: ${interaction.payloadType}, continuation: ${cont} }> { /* ... */ }`;
+                case 'InternalChoice': return `${indent}choose() { return { ${Object.keys(interaction.branches).map(l => `'${l}': () => Promise<${this.generateMethodsFor(interaction.branches[l].body, indent + '    ')}>`).join(', ')} } }`;
+                case 'ExternalChoice': return `${indent}awaitChoice(): Promise<${Object.keys(interaction.branches).map(l => `{ type: '${l}', continuation: ${this.generateMethodsFor(interaction.branches[l].body, indent + '    ')} }`).join(' | ')}> { /* ... */ }`;
+                case 'LocalRecursion': return this.generateMethodsFor(interaction.body.body, indent);
+                case 'LocalContinue': return `${indent}// continue ${interaction.label}`;
+            }
+            return '';
+        }
+    }
+
+    return {
+        parse: (code: string) => { try { return { ast: new Parser().parse(code), error: null }; } catch (e) { return { ast: null, error: e.message }; } },
+        validate: (ast: GlobalProtocol) => new Validator().validate(ast),
+        project: (ast: GlobalProtocol, role: Role) => new Projector().project(ast, role),
+        generateFsm: (localAst: LocalProtocol) => new FsmGenerator().generate(localAst),
+        generateApi: (localAst: LocalProtocol) => new ApiGenerator().generate(localAst)
+    };
+})();
+
+// -----------------
+// FSM VISUALIZER COMPONENT
+// -----------------
+const FsmVisualizer: React.FC<{ graph: FsmGraph }> = ({ graph }) => {
+    const ref = React.useRef<SVGSVGElement>(null);
+    React.useEffect(() => {
+        if (!ref.current || !graph) return;
+        const svg = d3.select(ref.current);
+        svg.selectAll("*").remove();
+        const width = ref.current.parentElement?.clientWidth || 800;
+        const height = ref.current.parentElement?.clientHeight || 600;
+        svg.attr('width', width).attr('height', height);
+
+        const simulation = d3.forceSimulation(graph.nodes as any)
+            .force("link", d3.forceLink(graph.edges).id((d: any) => d.id).distance(150))
+            .force("charge", d3.forceManyBody().strength(-300))
+            .force("center", d3.forceCenter(width / 2, height / 2));
+        const g = svg.append("g");
+        svg.append("defs").append("marker").attr("id", "arrowhead").attr("viewBox", "-0 -5 10 10").attr("refX", 25).attr("refY", 0).attr("orient", "auto").attr("markerWidth", 8).attr("markerHeight", 8).append("svg:path").attr("d", "M 0,-5 L 10 ,0 L 0,5").attr("fill", "#999");
+        const link = g.append("g").selectAll("line").data(graph.edges).join("line").attr("stroke-width", 2).attr("stroke", "#999").attr("marker-end", "url(#arrowhead)");
+        const linkText = g.append("g").selectAll("text").data(graph.edges).join("text").text((d: any) => d.label).attr('fill', '#aaa').style('font-size', '10px');
+        const node = g.append("g").selectAll("g").data(graph.nodes).join("g");
+        node.append("circle").attr("r", (d: any) => d.isStartState || d.isEndState ? 8 : 5).attr("fill", (d: any) => d.isStartState ? '#22c55e' : (d.isEndState ? '#ef4444' : '#3b82f6')).call(d3.drag().on("start", (e, d: any) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }).on("drag", (e, d: any) => { d.fx = e.x; d.fy = e.y; }).on("end", (e, d: any) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }) as any);
+        node.append("text").text((d: any) => d.label).attr("x", 12).attr("y", 4).attr("fill", "white").style('font-size', '12px');
+        simulation.on("tick", () => { link.attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y).attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y); linkText.attr("x", (d: any) => (d.source.x + d.target.x) / 2).attr("y", (d: any) => (d.source.y + d.target.y) / 2); node.attr("transform", (d: any) => `translate(${d.x},${d.y})`); });
+        svg.call(d3.zoom().on("zoom", (e) => g.attr("transform", e.transform)) as any);
+    }, [graph]);
+    return <svg ref={ref}></svg>;
+};
+
+// -----------------
+// MAIN APP COMPONENT
+// -----------------
+function App() {
+    const { useState, useEffect, useCallback } = React;
+    const [testSummary, setTestSummary] = useState({ passed: 0, failed: 0, total: 0 });
+    const [editorCode, setEditorCode] = useState(examples[0].code);
+    const [currentAst, setCurrentAst] = useState<GlobalProtocol | null>(null);
+    const [errors, setErrors] = useState<(string | ValidationError)[]>([]);
+    const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+    const [projectionView, setProjectionView] = useState<'FSM' | 'API'>('FSM');
+    const [fsmGraph, setFsmGraph] = useState<FsmGraph | null>(null);
+    const [apiCode, setApiCode] = useState('');
+    const [protocolExamples, setProtocolExamples] = useState(examples);
+
+    const processCode = useCallback((code: string) => {
+        const { ast, error } = ScribbleCore.parse(code);
+        if (error) { setErrors([`Parse Error: ${error}`]); setCurrentAst(null); return; }
+        if (ast) {
+            const validationErrors = ScribbleCore.validate(ast);
+            setErrors(validationErrors);
+            setCurrentAst(ast);
+            setSelectedRole(ast.roles[0] || null);
+        }
+    }, []);
+
+    useEffect(() => { processCode(editorCode); }, [editorCode, processCode]);
+    useEffect(() => {
+        if (currentAst && selectedRole && errors.length === 0) {
+            const localAst = ScribbleCore.project(currentAst, selectedRole);
+            setFsmGraph(ScribbleCore.generateFsm(localAst));
+            setApiCode(ScribbleCore.generateApi(localAst));
+        } else {
+            setFsmGraph(null);
+            setApiCode('');
+        }
+    }, [currentAst, selectedRole, errors]);
+
+    useEffect(() => {
+        let passed = 0;
+        examples.forEach(ex => {
+            const { ast, error } = ScribbleCore.parse(ex.code);
+            if (error) { if (ex.shouldFail === 'parse') passed++; return; }
+            if (ex.shouldFail === 'parse' || !ast) return;
+            const validationErrors = ScribbleCore.validate(ast);
+            if (validationErrors.length > 0) { if (ex.shouldFail === 'validate') passed++; return; }
+            if (ex.shouldFail === 'validate') return;
+            passed++;
+        });
+        setTestSummary({ passed, failed: examples.length - passed, total: examples.length });
+    }, []);
+
+    return (
+        <div className="flex flex-col h-screen bg-gray-900 text-gray-300 font-sans">
+            <header className="bg-gray-800 shadow-md flex-shrink-0">
+                <div className="max-w-full mx-auto py-3 px-4 sm:px-6 lg:px-8">
+                    <h1 className="text-xl font-bold text-white">Secure Scribble IDE</h1>
+                </div>
+            </header>
+            <div className="flex flex-1 overflow-hidden">
+                <aside className="w-1/4 bg-gray-800 p-4 overflow-y-auto">
+                    <div className="mb-6">
+                        <h2 className="text-lg font-semibold mb-2 text-white">Test Suite Status</h2>
+                        <div className="p-3 bg-gray-700 rounded-lg">
+                            <p>Passed: <span className="font-bold text-green-400">{testSummary.passed}</span></p>
+                            <p>Failed: <span className="font-bold text-red-400">{testSummary.failed}</span></p>
+                            <p>Total: <span className="font-bold text-white">{testSummary.total}</span></p>
+                        </div>
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-semibold mb-2 text-white">Examples</h2>
+                        <div className="max-h-96 overflow-y-auto">
+                            {protocolExamples.map((ex, i) => (
+                                <div key={i} onClick={() => setEditorCode(ex.code)} className="p-3 bg-gray-700 rounded-lg mb-2 cursor-pointer hover:bg-gray-600">
+                                    <h3 className="font-bold text-white">{ex.name}</h3>
+                                    <p className="text-sm text-gray-400">{ex.description}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </aside>
+                <main className="flex-1 flex flex-col p-4 overflow-y-auto">
+                    <div className="flex-1 grid grid-cols-2 gap-4">
+                        <div className="flex flex-col">
+                             <h2 className="text-xl font-semibold mb-2 text-white">Protocol Editor</h2>
+                             <textarea value={editorCode} onChange={(e) => setEditorCode(e.target.value)} className="flex-1 bg-gray-800 border border-gray-600 rounded-lg p-4 font-mono text-sm resize-none" spellCheck="false" />
+                            <div className="mt-4">
+                                <h3 className="text-lg font-semibold text-white">Errors & Validation</h3>
+                                <div className="h-32 bg-gray-800 border border-gray-600 rounded-lg p-2 overflow-y-auto text-sm">
+                                    {errors.length === 0 ? <p className="text-green-400">No errors detected.</p> : errors.map((e, i) => <p key={i} className="text-red-400">{typeof e === 'string' ? e : e.message}</p>)}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex flex-col">
+                            <div className="flex items-center justify-between mb-2">
+                                <h2 className="text-xl font-semibold text-white">Projection</h2>
+                                <div className="flex items-center space-x-4">
+                                    <select value={selectedRole || ''} onChange={(e) => setSelectedRole(e.target.value)} className="bg-gray-700 border border-gray-600 rounded px-2 py-1" disabled={!currentAst}>
+                                        {currentAst?.roles.map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                    <div>
+                                        <button onClick={() => setProjectionView('FSM')} className={`px-3 py-1 rounded ${projectionView === 'FSM' ? 'bg-blue-600' : 'bg-gray-600'}`}>FSM</button>
+                                        <button onClick={() => setProjectionView('API')} className={`px-3 py-1 rounded ${projectionView === 'API' ? 'bg-blue-600' : 'bg-gray-600'}`}>API</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex-1 bg-gray-800 border border-gray-600 rounded-lg p-2">
+                                {projectionView === 'FSM' ? (fsmGraph ? <FsmVisualizer graph={fsmGraph} /> : <p>Select a valid protocol and role.</p>) : (<pre className="h-full overflow-y-auto text-sm"><code>{apiCode}</code></pre>)}
+                            </div>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </div>
+    );
+}
+
+// -----------------
+// RENDER THE APP
+// -----------------
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
