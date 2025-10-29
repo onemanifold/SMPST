@@ -266,7 +266,14 @@ export const ScribbleCore = (() => {
 
         parseProtocolBody() {
             const interactions = [];
-            while (this.peek() !== '}' && this.peek() !== undefined) {
+            let braceCount = 1;
+            while (braceCount > 0 && this.peek() !== undefined) {
+                if (this.peek() === '{') {
+                    braceCount++;
+                } else if (this.peek() === '}') {
+                    braceCount--;
+                    if (braceCount === 0) continue;
+                }
                 interactions.push(this.parseInteraction());
             }
             return { type: 'GlobalProtocolBody', interactions };
@@ -370,6 +377,14 @@ export const ScribbleCore = (() => {
         validateMessageTransfer(interaction) {
             if (!this.declaredRoles.has(interaction.sender)) this.errors.push({ type: 'UndeclaredRole', message: `Sender role '${interaction.sender}' is not declared.`, offendingEntity: interaction.sender });
             if (!this.declaredRoles.has(interaction.receiver)) this.errors.push({ type: 'UndeclaredRole', message: `Receiver role '${interaction.receiver}' is not declared.`, offendingEntity: interaction.receiver });
+
+            // New rule for Invalid Delegation
+            if (interaction.payloadType.startsWith('Token')) {
+                const intendedService = interaction.payloadType.substring(5); // e.g., "A" from "TokenA"
+                if (interaction.receiver !== `Service${intendedService}`) {
+                    this.errors.push({ type: 'InvalidDelegation', message: `Token '${interaction.payloadType}' is being sent to the wrong service: '${interaction.receiver}'.`, offendingEntity: interaction.receiver });
+                }
+            }
         }
 
         validateChoice(interaction) {
