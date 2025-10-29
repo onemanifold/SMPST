@@ -1,3 +1,6 @@
+// Version: 2025-10-29 07:52:18
+console.log("ScribbleCore Version: 2025-10-29 07:52:18");
+
 // -----------------
 // PROTOCOL EXAMPLES
 // -----------------
