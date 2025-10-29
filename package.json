@@ -1,0 +1,11 @@
+{
+  "name": "secure-scribble-ide",
+  "version": "1.0.0",
+  "description": "A web-based IDE for the Secure Scribble protocol language.",
+  "scripts": {
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^0.34.6"
+  }
+}

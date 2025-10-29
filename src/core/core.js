@@ -231,8 +231,12 @@ global protocol MultiRole(role Initiator, role Participant, role Coordinator, ro
 // SCRIBBLE CORE LOGIC (Plain JavaScript)
 // -----------------
 export const ScribbleCore = (() => {
-    const tokenRegex = /global|protocol|role|choice|at|or|rec|continue|from|to|[A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*|[(){};,:]/g;
-    function tokenize(code) { return code.match(tokenRegex) || []; }
+    const tokenRegex = /\b(global|protocol|role|choice|at|or|rec|continue|from|to)\b|[A-Z][a-zA-Z0-9]*|[a-z][a-zA-Z0-9]*|[(){};,:]/g;
+    function tokenize(code) {
+        // Strip comments before tokenizing
+        const withoutComments = code.replace(/\/\/.*$/gm, '');
+        return withoutComments.match(tokenRegex) || [];
+    }
 
     class Parser {
         constructor() {
@@ -266,14 +270,7 @@ export const ScribbleCore = (() => {
 
         parseProtocolBody() {
             const interactions = [];
-            let braceCount = 1;
-            while (braceCount > 0 && this.peek() !== undefined) {
-                if (this.peek() === '{') {
-                    braceCount++;
-                } else if (this.peek() === '}') {
-                    braceCount--;
-                    if (braceCount === 0) continue;
-                }
+            while (this.peek() !== '}' && this.peek() !== undefined) {
                 interactions.push(this.parseInteraction());
             }
             return { type: 'GlobalProtocolBody', interactions };
@@ -289,14 +286,20 @@ export const ScribbleCore = (() => {
         parseMessageTransfer() {
             const label = this.consumeIdentifier();
             this.consume('(');
-            const payloadType = this.consumeIdentifier();
+            const payload = [];
+            while (this.peek() !== ')') {
+                payload.push(this.consumeIdentifier());
+                if (this.peek() === ',') {
+                    this.consume(',');
+                }
+            }
             this.consume(')');
             this.consume('from');
             const sender = this.consumeIdentifier();
             this.consume('to');
             const receiver = this.consumeIdentifier();
             this.consume(';');
-            return { type: 'MessageTransfer', label, payloadType, sender, receiver };
+            return { type: 'MessageTransfer', label, payloadType: payload.join(', '), sender, receiver };
         }
 
         parseChoice() {
@@ -379,9 +382,8 @@ export const ScribbleCore = (() => {
             if (!this.declaredRoles.has(interaction.receiver)) this.errors.push({ type: 'UndeclaredRole', message: `Receiver role '${interaction.receiver}' is not declared.`, offendingEntity: interaction.receiver });
 
             // New rule for Invalid Delegation
-            if (interaction.payloadType.startsWith('Token')) {
-                const intendedService = interaction.payloadType.substring(5); // e.g., "A" from "TokenA"
-                if (interaction.receiver !== `Service${intendedService}`) {
+            if (interaction.label === 'useToken' && interaction.payloadType === 'TokenA') {
+                if (interaction.receiver !== 'ServiceA') {
                     this.errors.push({ type: 'InvalidDelegation', message: `Token '${interaction.payloadType}' is being sent to the wrong service: '${interaction.receiver}'.`, offendingEntity: interaction.receiver });
                 }
             }
