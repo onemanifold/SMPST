@@ -1,0 +1,17 @@
+// Parallel Data Fetch Protocol
+// Client fetches data from two servers concurrently
+
+protocol ParallelDataFetch(role Client, role ServerA, role ServerB) {
+  // Initiate parallel requests
+  par {
+    Client -> ServerA: FetchRequest(String);
+    ServerA -> Client: FetchResponse(Int);
+  } and {
+    Client -> ServerB: FetchRequest(String);
+    ServerB -> Client: FetchResponse(Int);
+  }
+
+  // After both complete, send acknowledgment
+  Client -> ServerA: Ack();
+  Client -> ServerB: Ack();
+}

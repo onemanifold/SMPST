@@ -1,0 +1,7 @@
+// Simple Request-Response Protocol
+// Basic client-server interaction
+
+protocol RequestResponse(role Client, role Server) {
+  Client -> Server: Request(String);
+  Server -> Client: Response(Int);
+}
