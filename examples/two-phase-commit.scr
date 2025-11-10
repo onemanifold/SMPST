@@ -1,0 +1,24 @@
+// Two-Phase Commit Protocol
+// Classic distributed consensus protocol
+
+protocol TwoPhaseCommit(role Coordinator, role Participant1, role Participant2) {
+  // Phase 1: Voting
+  Coordinator -> Participant1: VoteRequest();
+  Coordinator -> Participant2: VoteRequest();
+
+  // Participants respond in parallel
+  par {
+    Participant1 -> Coordinator: Vote(Bool);
+  } and {
+    Participant2 -> Coordinator: Vote(Bool);
+  }
+
+  // Phase 2: Commit or Abort based on votes
+  choice at Coordinator {
+    Coordinator -> Participant1: Commit();
+    Coordinator -> Participant2: Commit();
+  } or {
+    Coordinator -> Participant1: Abort();
+    Coordinator -> Participant2: Abort();
+  }
+}

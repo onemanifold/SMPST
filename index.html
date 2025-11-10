@@ -1,38 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Scribble IDE</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        gray: {
-                            800: '#1F2937',
-                            900: '#111827',
-                        },
-                    },
-                },
-            },
-        };
-    </script>
-    <!-- React and ReactDOM from CDN -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel Standalone for JSX/TS transpilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
-<body class="bg-gray-900 text-white">
-    <div id="root"></div>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <!--
-      The 'data-presets' attribute tells Babel to use the React and TypeScript presets.
-      This is crucial for in-browser transpilation of TSX files.
-    -->
-    <script type="text/babel" data-presets="react,typescript" src="./index.tsx"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scribble MPST IDE</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

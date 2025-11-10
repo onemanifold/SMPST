@@ -1,0 +1,15 @@
+// Streaming Protocol with Recursion
+// Server streams data to client until done
+
+protocol Streaming(role Client, role Server) {
+  Client -> Server: StartStream();
+
+  rec StreamLoop {
+    choice at Server {
+      Server -> Client: Data(String);
+      continue StreamLoop;
+    } or {
+      Server -> Client: EndOfStream();
+    }
+  }
+}
