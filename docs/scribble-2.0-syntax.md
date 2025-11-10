@@ -314,7 +314,7 @@ do SubProtocol(A as X);  // ✅ OK: No actions after do
 
 ---
 
-### Parallel Composition 🚧
+### Parallel Composition ✅
 
 #### Syntax
 
@@ -324,14 +324,24 @@ do SubProtocol(A as X);  // ✅ OK: No actions after do
 
 #### Semantics
 
-Parallel composition allows **independent interaction sequences** to occur concurrently.
+Parallel composition allows **independent interaction sequences** to occur concurrently. This is **essential for P2P protocols** where multiple independent communications happen simultaneously.
 
-**Constraints:**
-- Branches must be **independent** (no causal dependencies between them)
-- Roles in different branches can interleave freely
+**Execution Model:**
+- Branches execute **concurrently** (interleaved execution)
+- Each branch progresses independently
+- The parallel block completes when **all branches** reach their end
+
+**Independence Requirement:**
+For parallel composition to be well-formed, branches should be **causally independent**:
+- No shared causal dependencies between branches
+- Roles in different branches can execute actions in any order
+- No role should be waiting for actions in multiple branches simultaneously
+
+**Note:** While full causal independence is ideal, practical P2P protocols may have coordinated parallel actions. The verifier will check for potential race conditions and deadlocks.
 
 #### Examples
 
+**Example 1: Parallel Data Fetch**
 ```scribble
 global protocol ParallelFetch(role Client, role ServiceA, role ServiceB) {
     par {
@@ -344,9 +354,106 @@ global protocol ParallelFetch(role Client, role ServiceA, role ServiceB) {
 }
 ```
 
-#### Note
+**Example 2: P2P File Sharing**
+```scribble
+global protocol P2PFileSharing(role PeerA, role PeerB, role PeerC, role Tracker) {
+    // PeerA requests file from Tracker
+    request(FileId) from PeerA to Tracker;
 
-We will **defer** implementing `par` in the initial version, as it complicates CFG generation and verification significantly.
+    par {
+        // Tracker responds to PeerA with peer list
+        peers(List) from Tracker to PeerA;
+    } and {
+        // Meanwhile, PeerB and PeerC exchange chunks independently
+        chunkRequest(ChunkId) from PeerB to PeerC;
+        chunkData(Bytes) from PeerC to PeerB;
+    }
+}
+```
+
+**Example 3: Distributed Consensus with Parallel Voting**
+```scribble
+global protocol DistributedConsensus(role Proposer, role Voter1, role Voter2, role Voter3) {
+    // Proposer broadcasts proposal
+    proposal(Value) from Proposer to Voter1, Voter2, Voter3;
+
+    // Voters respond in parallel
+    par {
+        vote1(Decision) from Voter1 to Proposer;
+    } and {
+        vote2(Decision) from Voter2 to Proposer;
+    } and {
+        vote3(Decision) from Voter3 to Proposer;
+    }
+
+    // Proposer aggregates votes
+    result(Outcome) from Proposer to Voter1, Voter2, Voter3;
+}
+```
+
+#### Verification Considerations
+
+**1. Race Conditions**
+- Check if roles in different branches can interfere with each other
+- Ensure message ordering is preserved within each branch
+
+**2. Deadlock in Parallel Context**
+- Verify no role waits for actions in multiple branches simultaneously
+- Example violation: Role R receives from branch 1, sends to branch 2, but branch 2 waits for R to receive first
+
+**3. Determinism**
+- Parallel branches should be distinguishable by the roles involved
+- No ambiguity about which branch a message belongs to
+
+**4. Progress**
+- All branches must be able to make progress independently
+- No branch should be blocked waiting for another branch indefinitely
+
+#### Projection Behavior
+
+When projecting parallel composition to a local protocol:
+
+**Case 1: Role participates in single branch**
+- Keep only that branch (others are eliminated)
+
+**Case 2: Role participates in multiple branches**
+- Project becomes a **local parallel** (role must handle concurrent actions)
+- Code generation creates concurrent threads/handlers
+
+**Example:**
+```scribble
+global protocol Multi(role Client, role S1, role S2) {
+    par {
+        req1(Q) from Client to S1;
+        res1(D) from S1 to Client;
+    } and {
+        req2(Q) from Client to S2;
+        res2(D) from S2 to Client;
+    }
+}
+```
+
+**Client's local projection:**
+```scribble
+local protocol Multi at Client(...) {
+    par {
+        req1(Q) to S1;
+        res1(D) from S1;
+    } and {
+        req2(Q) to S2;
+        res2(D) from S2;
+    }
+}
+```
+
+**S1's local projection:**
+```scribble
+local protocol Multi at S1(...) {
+    req1(Q) from Client;
+    res1(D) to Client;
+}
+```
+(No parallel needed - S1 only participates in one branch)
 
 ---
 
@@ -440,6 +547,7 @@ Role reacts to a choice made by another role (receives different messages).
                      | <ExternalChoice>
                      | <LocalRecursion>
                      | <LocalContinue>
+                     | <LocalParallel>
 
 <Send>    ::= <MessageSignature> "to" <RoleName> ("," <RoleName>)* ";"
 <Receive> ::= <MessageSignature> "from" <RoleName> ";"
@@ -451,6 +559,8 @@ Role reacts to a choice made by another role (receives different messages).
 
 <LocalRecursion> ::= "rec" <RecursionLabel> "{" <LocalProtocolBody> "}"
 <LocalContinue>  ::= "continue" <RecursionLabel> ";"
+
+<LocalParallel> ::= "par" "{" <LocalProtocolBody> "}" ("and" "{" <LocalProtocolBody> "}")+
 
 (* Messages *)
 <MessageSignature> ::= <MessageLabel> "(" <PayloadType> ("," <PayloadType>)* ")"
@@ -479,17 +589,19 @@ Role reacts to a choice made by another role (receives different messages).
 
 ## Implementation Priority
 
-### Phase 1 (MVP) ✅
+### Phase 1 (Core Features) ✅
 - [x] Message transfers with basic payload types
 - [x] Choice
 - [x] Recursion/Continue
+- [ ] **Parallel composition** (essential for P2P protocols)
 - [ ] **Do statements** (subprotocol invocation)
 - [ ] **Import declarations**
 - [ ] **Rich payload types** (generics)
 
 ### Phase 2 (Extensions) 🚧
-- [ ] Parallel composition
 - [ ] Local protocol declarations (manual authoring)
+- [ ] Nested parallel with complex interleaving
+- [ ] Multicast optimizations
 
 ### Phase 3 (Advanced) 🔮
 - [ ] Role parameters
@@ -498,19 +610,28 @@ Role reacts to a choice made by another role (receives different messages).
 
 ---
 
-## Low-Hanging Extensions
+## Feature Complexity Analysis
 
-Based on the research, here are **easy-to-add extensions** that don't complicate CFG/verification:
+### Core Features (Phase 1)
 
+**Low Complexity:**
 1. ✅ **`do` statements**: Inline expansion during CFG construction
 2. ✅ **Import declarations**: Metadata only, doesn't affect control flow
 3. ✅ **Rich payload types**: Parsing extension, doesn't affect semantics
 4. ✅ **Multicast messages**: `to R1, R2, R3` → multiple edges in CFG
 
-**NOT low-hanging (defer):**
-- ❌ **Parallel composition**: Requires interleaving semantics, complex verification
-- ❌ **Role parameters**: Requires instantiation logic
-- ❌ **Dynamic roles**: Fundamentally changes execution model
+**Medium Complexity:**
+5. ✅ **Parallel composition**:
+   - **CFG**: Fork/join nodes with interleaving semantics
+   - **Verification**: Product automaton for deadlock detection across branches
+   - **Projection**: Role may participate in multiple branches concurrently
+   - **Worth the complexity**: Essential for P2P and distributed protocols
+
+### Advanced Features (Phase 3)
+
+**High Complexity (deferred):**
+- ❌ **Role parameters**: Requires instantiation logic, type system changes
+- ❌ **Dynamic roles**: Fundamentally changes execution model, unbounded state space
 
 ---
 
