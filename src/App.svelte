@@ -1,86 +1,176 @@
 <script lang="ts">
-  let appTitle = "Scribble MPST IDE";
+  import Header from './lib/components/Header.svelte';
+  import ProtocolLibrary from './lib/components/ProtocolLibrary.svelte';
+  import Editor from './lib/components/Editor.svelte';
+  import Visualizer from './lib/components/Visualizer.svelte';
+  import OutputPanel from './lib/components/OutputPanel.svelte';
+  import { libraryOpen } from './lib/stores/editor';
+
+  let editorWidth = 45; // percentage
+  let outputHeight = 30; // percentage
+  let isDraggingHorizontal = false;
+  let isDraggingVertical = false;
+
+  function handleHorizontalDragStart() {
+    isDraggingHorizontal = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  function handleVerticalDragStart() {
+    isDraggingVertical = true;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  function handleMouseMove(e: MouseEvent) {
+    if (isDraggingHorizontal) {
+      const container = document.querySelector('.main-content');
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
+        editorWidth = Math.max(20, Math.min(80, newWidth));
+      }
+    }
+    if (isDraggingVertical) {
+      const container = document.querySelector('.workspace');
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const newHeight = ((rect.bottom - e.clientY) / rect.height) * 100;
+        outputHeight = Math.max(20, Math.min(60, newHeight));
+      }
+    }
+  }
+
+  function handleMouseUp() {
+    isDraggingHorizontal = false;
+    isDraggingVertical = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
 </script>
 
-<main class="container">
-  <h1>{appTitle}</h1>
-  <p class="subtitle">
-    Modern Multiparty Session Type IDE with CFG-based verification
-  </p>
+<svelte:window on:mousemove={handleMouseMove} on:mouseup={handleMouseUp} />
 
-  <div class="info-box">
-    <h2>Architecture Overview</h2>
-    <p>This IDE follows a layered architecture:</p>
-    <ol>
-      <li><strong>Parser</strong> - Scribble source → AST</li>
-      <li><strong>CFG Builder</strong> - AST → Control Flow Graph</li>
-      <li><strong>Verification</strong> - CFG analysis for deadlock, liveness, etc.</li>
-      <li><strong>Projection</strong> - CFG → CFSM per role</li>
-      <li><strong>Runtime</strong> - CFSM → State Machine execution</li>
-      <li><strong>Code Generation</strong> - State Machine → TypeScript/JavaScript</li>
-    </ol>
-  </div>
+<div class="app">
+  <Header />
 
-  <div class="status">
-    <p>✅ Vite + Svelte + TypeScript configured</p>
-    <p>⏳ Parser, CFG, and verification layers coming soon...</p>
+  <div class="main-content">
+    <ProtocolLibrary />
+
+    <div class="workspace">
+      <div class="top-section">
+        <div class="editor-section" style="width: {editorWidth}%">
+          <Editor />
+        </div>
+
+        <div
+          class="horizontal-resizer"
+          on:mousedown={handleHorizontalDragStart}
+          role="separator"
+          aria-orientation="vertical"
+          tabindex="0"
+        ></div>
+
+        <div class="visualizer-section" style="width: {100 - editorWidth}%">
+          <Visualizer />
+        </div>
+      </div>
+
+      <div
+        class="vertical-resizer"
+        on:mousedown={handleVerticalDragStart}
+        role="separator"
+        aria-orientation="horizontal"
+        tabindex="0"
+      ></div>
+
+      <div class="bottom-section" style="height: {outputHeight}%">
+        <OutputPanel />
+      </div>
+    </div>
   </div>
-</main>
+</div>
 
 <style>
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
   }
 
-  h1 {
-    font-size: 3rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  .main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
   }
 
-  .subtitle {
-    font-size: 1.2rem;
-    color: #9ca3af;
-    margin-bottom: 2rem;
+  .workspace {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
   }
 
-  .info-box {
-    background: #1f2937;
-    border: 1px solid #374151;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
+  .top-section {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
   }
 
-  .info-box h2 {
-    margin-top: 0;
-    color: #f3f4f6;
+  .editor-section {
+    min-width: 200px;
+    overflow: hidden;
   }
 
-  .info-box ol {
-    line-height: 1.8;
-    color: #d1d5db;
+  .visualizer-section {
+    min-width: 200px;
+    overflow: hidden;
   }
 
-  .info-box strong {
-    color: #f9fafb;
+  .bottom-section {
+    min-height: 150px;
+    overflow: hidden;
   }
 
-  .status {
-    padding: 1rem;
-    background: #064e3b;
-    border: 1px solid #047857;
-    border-radius: 8px;
+  .horizontal-resizer {
+    width: 4px;
+    background: #374151;
+    cursor: col-resize;
+    transition: background 0.2s;
+    flex-shrink: 0;
   }
 
-  .status p {
-    margin: 0.5rem 0;
-    color: #d1fae5;
+  .horizontal-resizer:hover,
+  .horizontal-resizer:focus {
+    background: #667eea;
+    outline: none;
+  }
+
+  .vertical-resizer {
+    height: 4px;
+    background: #374151;
+    cursor: row-resize;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .vertical-resizer:hover,
+  .vertical-resizer:focus {
+    background: #667eea;
+    outline: none;
+  }
+
+  /* Global resets for the IDE */
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  :global(#app) {
+    height: 100vh;
   }
 </style>
