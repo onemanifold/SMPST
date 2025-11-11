@@ -63,63 +63,60 @@
               <span class="result-label">Safety</span>
             </div>
           </div>
-          {#if $verificationResult.warnings.length > 0}
-            <div class="warnings-section">
-              <h4 class="subsection-title">Warnings</h4>
-              {#each $verificationResult.warnings as warning}
-                <div class="warning-item">{warning}</div>
-              {/each}
-            </div>
-          {/if}
-        {:else}
-          <p class="empty-message">Parse a protocol to see verification results</p>
-        {/if}
-      </div>
-    {:else if $activeTab === 'projection'}
-      <div class="content-section">
-        <h3 class="section-title">Projected CFSMs</h3>
-        {#if $parseStatus === 'success' && $projectionData.length > 0}
-          {#each $projectionData as projection}
-            <div class="projection-card">
-              <h4 class="projection-role">{projection.role}</h4>
-              <div class="projection-details">
-                <div class="detail-item">
-                  <span class="detail-label">States:</span>
-                  <span class="detail-value">{projection.states.join(', ')}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Transitions:</span>
-                  <div class="transitions-list">
-                    {#each projection.transitions as transition}
-                      <div class="transition-item">
-                        {transition.from} → {transition.to}: <code>{transition.label}</code>
+        </Tabs.Content>
+
+        <Tabs.Content value="projection">
+          <div class="tab-content">
+            <div class="content-section">
+              <h3 class="section-title">Projected CFSMs</h3>
+              {#if $parseStatus === 'success' && $projectionData.length > 0}
+                {#each $projectionData as projection}
+                  <div class="projection-card">
+                    <h4 class="projection-role">{projection.role}</h4>
+                    <div class="projection-details">
+                      <div class="detail-item">
+                        <span class="detail-label">States:</span>
+                        <span class="detail-value">{projection.states.join(', ')}</span>
                       </div>
-                    {/each}
+                      <div class="detail-item">
+                        <span class="detail-label">Transitions:</span>
+                        <div class="transitions-list">
+                          {#each projection.transitions as transition}
+                            <div class="transition-item">
+                              {transition.from} → {transition.to}: <code>{transition.label}</code>
+                            </div>
+                          {/each}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                {/each}
+              {:else}
+                <p class="empty-message">Parse a protocol to see projections</p>
+              {/if}
             </div>
-          {/each}
-        {:else}
-          <p class="empty-message">Parse a protocol to see projections</p>
-        {/if}
-      </div>
-    {:else if $activeTab === 'errors'}
-      <div class="content-section">
-        <h3 class="section-title">Parse Errors</h3>
-        {#if $parseError}
-          <div class="error-card">
-            <div class="error-icon">⚠</div>
-            <div class="error-message">{$parseError}</div>
           </div>
-        {:else}
-          <p class="empty-message success">✓ No errors</p>
-        {/if}
-      </div>
-    {/if}
+        </Tabs.Content>
+
+        <Tabs.Content value="errors">
+          <div class="tab-content">
+            <div class="content-section">
+              <h3 class="section-title">Parse Errors</h3>
+              {#if $parseError}
+                <div class="error-card">
+                  <div class="error-icon">⚠</div>
+                  <div class="error-message">{$parseError}</div>
+                </div>
+              {:else}
+                <p class="empty-message success">✓ No errors</p>
+              {/if}
+            </div>
+          </div>
+        </Tabs.Content>
+      </Collapsible.Content>
+    </Tabs.Root>
   </div>
-  {/if}
-</div>
+</Collapsible.Root>
 
 <style>
   .output-panel {
@@ -139,11 +136,6 @@
     padding: 0.5rem 1rem 0;
   }
 
-  .tabs-group {
-    display: flex;
-    gap: 0;
-  }
-
   .collapse-btn {
     padding: 0.5rem 0.75rem;
     background: transparent;
@@ -158,28 +150,6 @@
   .collapse-btn:hover {
     color: #d1d5db;
     background: rgba(102, 126, 234, 0.1);
-  }
-
-  .tab {
-    padding: 0.625rem 1rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: #9ca3af;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-  }
-
-  .tab:hover {
-    color: #d1d5db;
-  }
-
-  .tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
   }
 
   .error-badge {

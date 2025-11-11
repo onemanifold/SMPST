@@ -1,5 +1,6 @@
 <script lang="ts">
   import Editor from './Editor.svelte';
+  import * as Tabs from "$lib/components/ui/tabs";
   import { editorView, viewMode, generatedCode, projectionData } from '../stores/editor';
   import { onMount } from 'svelte';
   import { EditorView, basicSetup } from 'codemirror';
@@ -77,10 +78,6 @@
     typescriptView.destroy();
     typescriptView = null;
   }
-
-  function selectView(view: typeof $editorView) {
-    editorView.set(view);
-  }
 </script>
 
 <div class="code-editor">
@@ -115,8 +112,8 @@
         </div>
         <div class="typescript-container" bind:this={typescriptEditorContainer}></div>
       </div>
-    {/if}
-  </div>
+    </Tabs.Content>
+  </Tabs.Root>
 </div>
 
 <style>
