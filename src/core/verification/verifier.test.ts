@@ -843,6 +843,81 @@ describe('Recursion in Parallel', () => {
     expect(result.isValid).toBe(true);
     expect(result.violations.length).toBe(0);
   });
+
+  it('should reject continue in nested parallel branch', () => {
+    // INVALID: continue in nested parallel targeting outer rec
+    const source = `
+      protocol NestedParallelRec(role A, role B, role C, role D) {
+        rec Outer {
+          A -> B: Start();
+          par {
+            par {
+              A -> C: Inner();
+              continue Outer;
+            } and {
+              B -> D: Other();
+            }
+          } and {
+            C -> A: Branch2();
+          }
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkRecursionInParallel(cfg);
+
+    // Should detect continue spanning parallel boundary
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+  });
+
+  it('should reject multiple continues in different parallel branches', () => {
+    // INVALID: multiple continues in parallel branches
+    const source = `
+      protocol MultipleContinues(role A, role B, role C, role D) {
+        rec Loop {
+          par {
+            A -> B: M1();
+            continue Loop;
+          } and {
+            C -> D: M2();
+            continue Loop;
+          }
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkRecursionInParallel(cfg);
+
+    // Should detect both violations
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should accept parallel outside of recursion', () => {
+    // VALID: parallel not nested in recursion
+    const source = `
+      protocol ParallelOutsideRec(role A, role B, role C, role D) {
+        par {
+          A -> B: M1();
+        } and {
+          C -> D: M2();
+        }
+        rec Loop {
+          A -> C: InRec();
+          continue Loop;
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkRecursionInParallel(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
 });
 
 // ============================================================================
@@ -920,6 +995,51 @@ describe('Fork-Join Structure', () => {
     expect(result.isValid).toBe(true);
     expect(result.violations.length).toBe(0);
   });
+
+  it('should detect orphaned fork node (manual CFG test)', () => {
+    // Test verifier can detect structural violations
+    // This would only happen if CFG builder has a bug
+    const ast = parse('protocol Test(role A, role B) { A -> B: M(); }');
+    const cfg = buildCFG(ast.declarations[0]);
+
+    // Manually inject an orphaned fork node to test detection
+    const orphanedFork = {
+      id: 'orphan_fork',
+      type: 'fork' as const,
+      parallel_id: 'orphaned_parallel',
+    };
+    cfg.nodes.push(orphanedFork);
+
+    const result = checkForkJoinStructure(cfg);
+
+    // Should detect the orphaned fork
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0].type).toBe('orphaned-fork');
+    expect(result.violations[0].forkNodeId).toBe('orphan_fork');
+  });
+
+  it('should detect orphaned join node (manual CFG test)', () => {
+    // Test verifier can detect structural violations
+    const ast = parse('protocol Test(role A, role B) { A -> B: M(); }');
+    const cfg = buildCFG(ast.declarations[0]);
+
+    // Manually inject an orphaned join node to test detection
+    const orphanedJoin = {
+      id: 'orphan_join',
+      type: 'join' as const,
+      parallel_id: 'orphaned_parallel',
+    };
+    cfg.nodes.push(orphanedJoin);
+
+    const result = checkForkJoinStructure(cfg);
+
+    // Should detect the orphaned join
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0].type).toBe('orphaned-join');
+    expect(result.violations[0].joinNodeId).toBe('orphan_join');
+  });
 });
 
 // ============================================================================
@@ -929,7 +1049,6 @@ describe('Fork-Join Structure', () => {
 describe('Multicast', () => {
   it('should accept protocols without multicast', () => {
     // VALID: Standard single-receiver message
-    // Note: Parser may not support multicast syntax yet
     const source = `
       protocol NoMulticast(role A, role B) {
         A -> B: Message(String);
@@ -943,19 +1062,46 @@ describe('Multicast', () => {
     expect(result.warnings.length).toBe(0);
   });
 
-  it('should detect multicast in CFG if present', () => {
-    // This test verifies the multicast checker works on CFG structure
-    // Even if parser doesn't support multicast syntax
-    const source = `
-      protocol Standard(role A, role B) {
-        A -> B: Msg();
-      }
-    `;
+  it('should detect multicast with array receivers (manual CFG test)', () => {
+    // Parser doesn't support multicast syntax yet (A -> B, C, D: Msg)
+    // But verifier should handle CFG with multicast structure
+    const source = `protocol Test(role A, role B, role C) { A -> B: M(); }`;
     const ast = parse(source);
     const cfg = buildCFG(ast.declarations[0]);
+
+    // Find the action node and modify it to have multiple receivers
+    const actionNode = cfg.nodes.find(n => n.type === 'action');
+    if (actionNode && actionNode.type === 'action') {
+      // Modify action to have multicast (array of receivers)
+      (actionNode.action as any).to = ['B', 'C'];
+    }
+
+    const result = checkMulticast(cfg);
+
+    // Should detect multicast and generate warning
+    expect(result.isValid).toBe(true); // Multicast is valid, just warns
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings[0].sender).toBe('A');
+    expect(result.warnings[0].receivers).toEqual(['B', 'C']);
+  });
+
+  it('should detect multicast to three receivers (manual CFG test)', () => {
+    const source = `protocol Test(role A, role B, role C, role D) { A -> B: M(); }`;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+
+    // Modify action to have multicast to 3 receivers
+    const actionNode = cfg.nodes.find(n => n.type === 'action');
+    if (actionNode && actionNode.type === 'action') {
+      (actionNode.action as any).to = ['B', 'C', 'D'];
+    }
+
     const result = checkMulticast(cfg);
 
     expect(result.isValid).toBe(true);
+    expect(result.warnings.length).toBe(1);
+    expect(result.warnings[0].receivers).toHaveLength(3);
+    expect(result.warnings[0].description).toContain('B, C, D');
   });
 });
 
@@ -978,6 +1124,45 @@ describe('Self-Communication', () => {
     // Self-communication is semantically questionable
     expect(result.isValid).toBe(false);
     expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0].role).toBe('A');
+    expect(result.violations[0].description).toContain('sends message to itself');
+  });
+
+  it('should detect self in multicast receiver list (manual CFG test)', () => {
+    // INVALID: Role sends multicast including itself
+    const source = `protocol Test(role A, role B, role C) { A -> B: M(); }`;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+
+    // Modify action to have multicast including sender
+    const actionNode = cfg.nodes.find(n => n.type === 'action');
+    if (actionNode && actionNode.type === 'action') {
+      (actionNode.action as any).to = ['A', 'B', 'C']; // A includes itself
+    }
+
+    const result = checkSelfCommunication(cfg);
+
+    // Should detect self in multicast
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0].role).toBe('A');
+    expect(result.violations[0].description).toContain('multicast receiver list');
+    expect(result.violations[0].description).toContain('self-communication');
+  });
+
+  it('should accept normal communication', () => {
+    // VALID: Normal role-to-role communication
+    const source = `
+      protocol Normal(role A, role B) {
+        A -> B: Message();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkSelfCommunication(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
   });
 });
 
@@ -986,10 +1171,10 @@ describe('Self-Communication', () => {
 // ============================================================================
 
 describe('Empty Choice Branch', () => {
-  it('should detect empty choice branches', () => {
-    // INVALID or questionable: Empty branch
+  it('should accept choice with both branches having content', () => {
+    // VALID: Both branches have actions
     const source = `
-      protocol EmptyBranch(role A, role B) {
+      protocol BothBranchesHaveContent(role A, role B) {
         choice at A {
           A -> B: Something();
         } or {
@@ -997,13 +1182,50 @@ describe('Empty Choice Branch', () => {
         }
       }
     `;
-    // Note: Parser may not support truly empty branches
-    // This tests the verifier's ability to detect structural issues
     const ast = parse(source);
     const cfg = buildCFG(ast.declarations[0]);
     const result = checkEmptyChoiceBranch(cfg);
 
-    expect(result.isValid).toBe(true); // Both branches have content
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+
+  it('should detect empty choice branch (manual CFG test)', () => {
+    // Parser doesn't support truly empty branches
+    // Test verifier can detect empty branch in CFG structure
+    const source = `
+      protocol Test(role A, role B) {
+        choice at A {
+          A -> B: Opt1();
+        } or {
+          A -> B: Opt2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+
+    // Find the branch node and one of its outgoing edges
+    const branchNode = cfg.nodes.find(n => n.type === 'branch');
+    const mergeNode = cfg.nodes.find(n => n.type === 'merge');
+
+    if (branchNode && mergeNode) {
+      // Add a branch edge that goes directly to merge (empty branch)
+      cfg.edges.push({
+        from: branchNode.id,
+        to: mergeNode.id,
+        edgeType: 'branch',
+        label: 'empty_branch',
+      });
+    }
+
+    const result = checkEmptyChoiceBranch(cfg);
+
+    // Should detect the empty branch
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0].emptyBranchLabel).toContain('empty_branch');
+    expect(result.violations[0].description).toContain('empty');
   });
 });
 
@@ -1032,11 +1254,81 @@ describe('Merge Node Reachability', () => {
     expect(result.violations.length).toBe(0);
   });
 
-  it('should detect branches with no common merge', () => {
-    // This is hard to create in Scribble as the syntax enforces merging
-    // But the verifier should check the CFG structure
+  it('should verify sequential choices merge correctly', () => {
+    // VALID: Sequential choices (not nested)
     const source = `
-      protocol SimpleBranch(role A, role B) {
+      protocol SequentialChoices(role A, role B) {
+        choice at A {
+          A -> B: First1();
+        } or {
+          A -> B: First2();
+        }
+        choice at A {
+          A -> B: Second1();
+        } or {
+          A -> B: Second2();
+        }
+        A -> B: AfterAll();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkMergeReachability(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+
+  it('should verify parallel in choice branches merges correctly', () => {
+    // VALID: Parallel constructs within choice branches
+    const source = `
+      protocol ParallelInChoice(role A, role B, role C, role D) {
+        choice at A {
+          par {
+            A -> B: P1();
+          } and {
+            C -> D: P2();
+          }
+        } or {
+          A -> B: Simple();
+        }
+        A -> B: After();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkMergeReachability(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+
+  it('should verify three-way choice merges correctly', () => {
+    // VALID: Three branches all converging to same merge
+    const source = `
+      protocol ThreeWayChoice(role A, role B) {
+        choice at A {
+          A -> B: Option1();
+        } or {
+          A -> B: Option2();
+        } or {
+          A -> B: Option3();
+        }
+        A -> B: AfterChoice();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkMergeReachability(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+
+  it('should accept terminal branches without explicit merge', () => {
+    // VALID: Branches can terminate without continuation
+    const source = `
+      protocol TerminalBranches(role A, role B) {
         choice at A {
           A -> B: Branch1();
         } or {
@@ -1048,7 +1340,7 @@ describe('Merge Node Reachability', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = checkMergeReachability(cfg);
 
-    // CFG builder creates proper merge nodes
+    // CFG builder creates proper merge nodes even for terminal cases
     expect(result.isValid).toBe(true);
   });
 });
