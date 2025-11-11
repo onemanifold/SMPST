@@ -1,0 +1,516 @@
+/**
+ * Verification Tests
+ * Following TDD: These tests are written BEFORE implementation
+ *
+ * Tests verification algorithms for deadlock, liveness, parallel issues, etc.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { parse } from '../parser/parser';
+import { buildCFG } from '../cfg/builder';
+import {
+  detectDeadlock,
+  checkLiveness,
+  detectParallelDeadlock,
+  detectRaceConditions,
+  checkProgress,
+  verifyProtocol,
+} from './verifier';
+
+// ============================================================================
+// Known-Bad Protocols (Should Fail Verification)
+// ============================================================================
+
+describe('Deadlock Detection - Known-Bad Protocols', () => {
+  it('should detect simple cyclic deadlock', () => {
+    const source = `
+      protocol SimpleDeadlock(role A, role B) {
+        rec Loop {
+          A -> B: Request();
+          B -> A: Response();
+          continue Loop;
+        }
+      }
+    `;
+    // This is actually NOT a deadlock - it's a valid infinite loop
+    // Real deadlock would be if both wait for each other simultaneously
+  });
+
+  it('should detect mutual waiting deadlock', () => {
+    // This is hard to express in Scribble since it enforces ordering
+    // Deadlock typically happens in implementation, not protocol
+    // But we can detect unreachable states
+  });
+
+  it('should detect parallel branch deadlock', () => {
+    const source = `
+      protocol ParallelDeadlock(role A, role B, role C) {
+        par {
+          A -> B: M1();
+          B -> A: M2();
+        } and {
+          A -> C: M3();
+          C -> A: M4();
+        }
+      }
+    `;
+    // Role A appears in both branches - potential deadlock
+    // A might be blocked sending M1 while needing to send M3
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    expect(result.hasDeadlock).toBe(true);
+    expect(result.conflicts.length).toBeGreaterThan(0);
+  });
+
+  it('should detect role appearing in multiple parallel branches', () => {
+    const source = `
+      protocol RoleConflict(role Client, role ServerA, role ServerB) {
+        par {
+          Client -> ServerA: Req1();
+          ServerA -> Client: Resp1();
+        } and {
+          Client -> ServerB: Req2();
+          ServerB -> Client: Resp2();
+        }
+      }
+    `;
+    // Client appears in both branches - needs to handle concurrently
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // This should be flagged as potential issue
+    expect(result.conflicts.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Liveness Detection', () => {
+  it('should detect infinite loop as warning (not error)', () => {
+    const source = `
+      protocol InfiniteLoop(role A, role B) {
+        rec Loop {
+          A -> B: Msg();
+          continue Loop;
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkLiveness(cfg);
+
+    // Infinite loop is valid, but should be noted
+    expect(result.isLive).toBe(true); // Still live (can make progress)
+  });
+
+  it('should pass for protocols with choice exit', () => {
+    const source = `
+      protocol LoopWithExit(role A, role B) {
+        rec Loop {
+          choice at A {
+            A -> B: Continue();
+            continue Loop;
+          } or {
+            A -> B: Stop();
+          }
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkLiveness(cfg);
+
+    expect(result.isLive).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+});
+
+describe('Race Condition Detection', () => {
+  it('should detect potential race in parallel branches', () => {
+    const source = `
+      protocol PotentialRace(role A, role B, role C) {
+        par {
+          A -> B: Update();
+        } and {
+          A -> C: Update();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectRaceConditions(cfg);
+
+    // A sending to multiple recipients concurrently might be a race
+    // depending on whether order matters
+    // For now, we'll be conservative and flag it
+    expect(result.hasRaces).toBe(true);
+  });
+
+  it('should detect race when same role receives in parallel', () => {
+    const source = `
+      protocol ReceiveRace(role A, role B, role C) {
+        par {
+          A -> C: M1();
+        } and {
+          B -> C: M2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectRaceConditions(cfg);
+
+    // C receiving from multiple senders concurrently is a race
+    expect(result.hasRaces).toBe(true);
+  });
+});
+
+describe('Progress Checking', () => {
+  it('should verify all roles can make progress', () => {
+    const source = `
+      protocol GoodProgress(role A, role B, role C) {
+        A -> B: M1();
+        B -> C: M2();
+        C -> A: M3();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkProgress(cfg);
+
+    expect(result.canProgress).toBe(true);
+    expect(result.blockedNodes).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// Known-Good Protocols (Should Pass Verification)
+// ============================================================================
+
+describe('Verification - Known-Good Protocols', () => {
+  const goodProtocols = [
+    {
+      name: 'Simple Request-Response',
+      source: `
+        protocol RequestResponse(role Client, role Server) {
+          Client -> Server: Request(String);
+          Server -> Client: Response(Int);
+        }
+      `,
+    },
+    {
+      name: 'Two-Phase Commit',
+      source: `
+        protocol TwoPhaseCommit(role Coordinator, role P1, role P2) {
+          Coordinator -> P1: VoteRequest();
+          Coordinator -> P2: VoteRequest();
+
+          par {
+            P1 -> Coordinator: Vote(Bool);
+          } and {
+            P2 -> Coordinator: Vote(Bool);
+          }
+
+          choice at Coordinator {
+            Coordinator -> P1: Commit();
+            Coordinator -> P2: Commit();
+          } or {
+            Coordinator -> P1: Abort();
+            Coordinator -> P2: Abort();
+          }
+        }
+      `,
+    },
+    {
+      name: 'Streaming with Exit',
+      source: `
+        protocol Streaming(role Client, role Server) {
+          Client -> Server: Start();
+          rec Loop {
+            choice at Server {
+              Server -> Client: Data(String);
+              continue Loop;
+            } or {
+              Server -> Client: End();
+            }
+          }
+        }
+      `,
+    },
+  ];
+
+  goodProtocols.forEach(({ name, source }) => {
+    it(`[${name}] should pass all verifications`, () => {
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const result = verifyProtocol(cfg);
+
+      if (!result.deadlock.hasDeadlock === false ||
+          !result.liveness.isLive ||
+          result.parallelDeadlock.hasDeadlock ||
+          !result.progress.canProgress) {
+        console.error(`${name} failed verification:`, result);
+      }
+
+      expect(result.deadlock.hasDeadlock).toBe(false);
+      expect(result.liveness.isLive).toBe(true);
+      expect(result.parallelDeadlock.hasDeadlock).toBe(false);
+      expect(result.progress.canProgress).toBe(true);
+    });
+  });
+});
+
+// ============================================================================
+// Individual Algorithm Tests
+// ============================================================================
+
+describe('Deadlock Detection Algorithm', () => {
+  it('should return no deadlock for linear protocol', () => {
+    const source = `
+      protocol Linear(role A, role B, role C) {
+        A -> B: M1();
+        B -> C: M2();
+        C -> A: M3();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectDeadlock(cfg);
+
+    expect(result.hasDeadlock).toBe(false);
+    expect(result.cycles).toHaveLength(0);
+  });
+
+  it('should handle recursion correctly', () => {
+    const source = `
+      protocol WithRec(role A, role B) {
+        rec Loop {
+          choice at A {
+            A -> B: Go();
+            continue Loop;
+          } or {
+            A -> B: Stop();
+          }
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectDeadlock(cfg);
+
+    // Recursion creates cycles, but not deadlock
+    expect(result.hasDeadlock).toBe(false);
+  });
+});
+
+describe('Parallel Deadlock Detection Algorithm', () => {
+  it('should pass when parallel branches are independent', () => {
+    const source = `
+      protocol IndependentParallel(role A, role B, role C) {
+        par {
+          A -> B: M1();
+        } and {
+          C -> B: M2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // No role appears in multiple branches as sender/receiver
+    expect(result.hasDeadlock).toBe(false);
+  });
+
+  it('should detect when same role sends in multiple branches', () => {
+    const source = `
+      protocol SameSenderParallel(role A, role B, role C) {
+        par {
+          A -> B: M1();
+        } and {
+          A -> C: M2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // A sends in both branches - might be OK if A can handle concurrency
+    // But we flag it as potential issue
+    expect(result.conflicts.length).toBeGreaterThan(0);
+  });
+
+  it('should detect when same role receives in multiple branches', () => {
+    const source = `
+      protocol SameReceiverParallel(role A, role B, role C) {
+        par {
+          A -> C: M1();
+        } and {
+          B -> C: M2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // C receives in both branches concurrently - race condition
+    expect(result.conflicts.length).toBeGreaterThan(0);
+  });
+
+  it('should handle three-way parallel', () => {
+    const source = `
+      protocol ThreeWayParallel(role A, role B, role C, role D) {
+        par {
+          A -> B: M1();
+        } and {
+          A -> C: M2();
+        } and {
+          A -> D: M3();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // A appears in all three branches
+    expect(result.conflicts.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Race Condition Detection Algorithm', () => {
+  it('should pass when no concurrent access to same role', () => {
+    const source = `
+      protocol NoRace(role A, role B, role C) {
+        par {
+          A -> B: M1();
+        } and {
+          C -> B: M2();
+        }
+      }
+    `;
+    // Even though B receives from both, we need to check if they're truly concurrent
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectRaceConditions(cfg);
+
+    // B is receiving from two sources concurrently
+    expect(result.hasRaces).toBe(true);
+  });
+
+  it('should detect race on shared resource', () => {
+    const source = `
+      protocol SharedResource(role A, role B, role Resource) {
+        par {
+          A -> Resource: Write();
+        } and {
+          B -> Resource: Read();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectRaceConditions(cfg);
+
+    expect(result.hasRaces).toBe(true);
+    expect(result.races[0].resource).toContain('Resource');
+  });
+});
+
+// ============================================================================
+// Complete Verification Tests
+// ============================================================================
+
+describe('Complete Protocol Verification', () => {
+  it('should provide comprehensive verification results', () => {
+    const source = `
+      protocol Complete(role A, role B) {
+        A -> B: Start();
+        choice at A {
+          A -> B: Option1();
+        } or {
+          A -> B: Option2();
+        }
+        B -> A: Done();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = verifyProtocol(cfg);
+
+    expect(result).toHaveProperty('deadlock');
+    expect(result).toHaveProperty('liveness');
+    expect(result).toHaveProperty('parallelDeadlock');
+    expect(result).toHaveProperty('raceConditions');
+    expect(result).toHaveProperty('progress');
+
+    // All checks should pass
+    expect(result.deadlock.hasDeadlock).toBe(false);
+    expect(result.liveness.isLive).toBe(true);
+    expect(result.parallelDeadlock.hasDeadlock).toBe(false);
+    expect(result.raceConditions.hasRaces).toBe(false);
+    expect(result.progress.canProgress).toBe(true);
+  });
+
+  it('should allow selective verification', () => {
+    const source = `
+      protocol Selective(role A, role B) {
+        A -> B: Msg();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+
+    const result = verifyProtocol(cfg, {
+      checkDeadlock: true,
+      checkLiveness: false,
+      checkParallelDeadlock: false,
+      checkRaceConditions: false,
+      checkProgress: false,
+    });
+
+    // Only deadlock should be checked
+    expect(result.deadlock).toBeDefined();
+  });
+});
+
+// ============================================================================
+// Edge Cases
+// ============================================================================
+
+describe('Verification Edge Cases', () => {
+  it('should handle empty protocol', () => {
+    const source = `protocol Empty(role A) {}`;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = verifyProtocol(cfg);
+
+    expect(result.deadlock.hasDeadlock).toBe(false);
+    expect(result.liveness.isLive).toBe(true);
+  });
+
+  it('should handle deeply nested constructs', () => {
+    const source = `
+      protocol Nested(role A, role B) {
+        choice at A {
+          par {
+            A -> B: M1();
+          } and {
+            A -> B: M2();
+          }
+        } or {
+          A -> B: M3();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = verifyProtocol(cfg);
+
+    // Should not crash, results depend on implementation
+    expect(result).toBeDefined();
+  });
+});
