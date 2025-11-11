@@ -147,7 +147,10 @@ This project automatically deploys to GitHub Pages on push to `main` branch.
 - ✅ Parallel deadlock detection
 - ✅ Race condition detection
 - ✅ Progress checking
-- ✅ 24/24 tests passing
+- ✅ Choice determinism (P0 - projection-critical)
+- ✅ Choice mergeability (P0 - projection-critical)
+- ✅ Connectedness (P0 - projection-critical)
+- ✅ 33/33 tests passing
 
 **Layer 4: CFG Simulator**
 - ✅ Orchestration-based execution

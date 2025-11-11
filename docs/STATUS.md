@@ -68,9 +68,12 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
   - Parallel deadlock detection ✅
   - Race condition detection ✅
   - Progress checking ✅
-- **Test Coverage**: 24/24 tests passing (100%)
-- **Tests**: Known-good and known-bad protocols
-- **Confidence**: HIGH (comprehensive test suite)
+  - **Choice determinism (P0 - CRITICAL)** ✅
+  - **Choice mergeability (P0 - CRITICAL)** ✅
+  - **Connectedness (P0 - CRITICAL)** ✅
+- **Test Coverage**: 33/33 tests passing (100%)
+- **Tests**: Known-good and known-bad protocols + P0 projection-critical checks
+- **Confidence**: HIGH (comprehensive test suite + projection-ready)
 
 **Algorithms**:
 1. **Deadlock Detection**: Tarjan's SCC algorithm, excludes continue edges
@@ -78,15 +81,18 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
 3. **Parallel Deadlock**: Detects roles sending in multiple branches
 4. **Race Conditions**: Identifies concurrent access to same roles
 5. **Progress**: Ensures all nodes have outgoing edges
+6. **Choice Determinism (P0)**: BFS to find first message per branch, detects duplicate labels
+7. **Choice Mergeability (P0)**: Path analysis to verify consistent role participation across branches
+8. **Connectedness (P0)**: Set comparison of declared vs. used roles
 
 **Files**:
 - `src/core/verification/verifier.ts` - Verification algorithms
 - `src/core/verification/types.ts` - Result type definitions
 - `src/core/verification/verifier.test.ts` - Test suite
 
-**Test Results**: ✅ All 24 tests passing
+**Test Results**: ✅ All 33 tests passing
 
-**Last Modified**: 2024-12-XX
+**Last Modified**: 2025-01-11 (P0 verification checks added)
 
 ---
 
@@ -189,19 +195,42 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
 ├─────────────────────┼────────────────┼──────────────┼───────────────┤
 │ 1. Parser           │ ✅ Complete    │ ✅ All pass  │ 100% (stmt)   │
 │ 2. CFG Builder      │ ✅ Complete    │ ✅ All pass  │ 100% (rules)  │
-│ 3. Verification     │ ✅ Complete    │ ✅ 24/24     │ 100% (tests)  │
+│ 3. Verification     │ ✅ Complete    │ ✅ 33/33     │ 100% (tests)  │
 │ 4. CFG Simulator    │ ✅ Complete    │ ✅ 23/23     │ 100% (tests)  │
 │ 5. Projection       │ ⏸️  Planned    │ ⏸️  N/A      │ 0%            │
 │ 6. Code Generation  │ ⏸️  Planned    │ ⏸️  N/A      │ 0%            │
 └─────────────────────┴────────────────┴──────────────┴───────────────┘
 
-Total Tests: ~70+ passing
+Total Tests: ~80+ passing (including P0 verification checks)
 Overall Coverage: Layers 1-4 complete (67% of planned architecture)
+**Projection-Ready**: P0 critical checks implemented
 ```
 
 ---
 
 ## Recent Changes
+
+### 2025-01-11: Implement P0 verification checks (projection-critical)
+
+**Commit**: `0bbf6a9`
+
+**P0 Verification Checks Added**:
+1. **Choice Determinism**: External choices must have distinguishable message labels
+2. **Choice Mergeability**: All branches must have consistent continuations for roles
+3. **Connectedness**: All declared roles must participate in protocol
+
+**Test Coverage**:
+- Added 9 new tests (3 determinism + 4 mergeability + 2 connectedness)
+- Total: 33/33 verification tests passing
+
+**Why Critical**: These checks prevent projection from producing invalid CFSMs due to:
+- Ambiguous external choices (receiver can't distinguish branches)
+- Unmergeable branches (roles have inconsistent behavior)
+- Orphaned roles (projection would fail for unused roles)
+
+**Impact**: Verification layer is now projection-ready. Safe to proceed to Layer 5.
+
+---
 
 ### 2025-01-11: Fix recursion semantics throughout stack
 
