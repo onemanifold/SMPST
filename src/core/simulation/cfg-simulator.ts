@@ -138,8 +138,28 @@ export class CFGSimulator {
         return;
       }
 
-      // Auto-advance from structural nodes (initial, merge, join)
-      // Note: recursive nodes are handled by executeRecursive, not auto-advance
+      // Auto-advance from structural nodes (initial, merge, join, recursive)
+      // For recursive nodes, take the forward edge and set up recursion state
+      if (node.type === 'recursive') {
+        const edges = this.getOutgoingEdges(node.id);
+        const forwardEdge = edges.find(e => e.edgeType === 'sequence' && !this.isTerminalNode(e.to));
+
+        if (forwardEdge) {
+          // First entry into recursion - set up stack
+          this.recursionStack.push({
+            label: (node as any).label,
+            nodeId: node.id,
+            iterations: 0,
+          });
+
+          this.currentNode = forwardEdge.to;
+          this.visitedNodes.push(this.currentNode);
+          continue; // Continue auto-advancing through the forward edge
+        } else {
+          return; // No forward edge - stop here
+        }
+      }
+
       const edges = this.getOutgoingEdges(this.currentNode);
       if (edges.length !== 1) return; // Stop if multiple exits or none
 
@@ -282,13 +302,16 @@ export class CFGSimulator {
           return result;
         }
 
-        if (currentNode.type === 'action' || currentNode.type === 'branch' || currentNode.type === 'recursive') {
+        if (currentNode.type === 'action' || currentNode.type === 'branch') {
           // Next node requires user visibility - return the event
           return {
             ...result,
             event: lastEvent,
           };
         }
+
+        // Recursive nodes are transparent - continue through them
+        // They will be handled by executeRecursive() in the next iteration
 
         // If in parallel mode and at join, check if this completes all branches
         if (this.inParallel && currentNode.type === 'join') {
@@ -529,11 +552,16 @@ export class CFGSimulator {
       inStack.iterations++;
 
       // Check exit conditions
-      const shouldExit = this.stepCount >= this.config.maxSteps;
+      // Exit if: maxSteps reached OR we came from a merge node (implicit exit branch)
+      const cameFromMerge = this.visitedNodes.length > 1 &&
+        this.isNodeType(this.visitedNodes[this.visitedNodes.length - 2], 'merge');
+      const shouldExit = this.stepCount >= this.config.maxSteps || cameFromMerge;
 
       if (shouldExit) {
         // Exit recursion
-        this.reachedMaxSteps = true;
+        if (this.stepCount >= this.config.maxSteps) {
+          this.reachedMaxSteps = true;
+        }
 
         // Record exit event if tracing
         if (this.config.recordTrace) {
@@ -594,6 +622,14 @@ export class CFGSimulator {
   private isTerminalNode(nodeId: string): boolean {
     const node = this.cfg.nodes.find(n => n.id === nodeId);
     return node?.type === 'terminal';
+  }
+
+  /**
+   * Helper to check if a node ID has a specific type
+   */
+  private isNodeType(nodeId: string, type: string): boolean {
+    const node = this.cfg.nodes.find(n => n.id === nodeId);
+    return node?.type === type;
   }
 
 
