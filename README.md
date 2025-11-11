@@ -150,7 +150,10 @@ This project automatically deploys to GitHub Pages on push to `main` branch.
 - ✅ Choice determinism (P0 - projection-critical)
 - ✅ Choice mergeability (P0 - projection-critical)
 - ✅ Connectedness (P0 - projection-critical)
-- ✅ 33/33 tests passing
+- ✅ Nested recursion (P1 - correctness)
+- ✅ Recursion in parallel (P1 - well-formedness)
+- ✅ Fork-join structure (P1 - well-formedness)
+- ✅ 41/41 tests passing
 
 **Layer 4: CFG Simulator**
 - ✅ Orchestration-based execution

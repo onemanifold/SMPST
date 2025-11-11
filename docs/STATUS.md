@@ -71,9 +71,12 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
   - **Choice determinism (P0 - CRITICAL)** ✅
   - **Choice mergeability (P0 - CRITICAL)** ✅
   - **Connectedness (P0 - CRITICAL)** ✅
-- **Test Coverage**: 33/33 tests passing (100%)
-- **Tests**: Known-good and known-bad protocols + P0 projection-critical checks
-- **Confidence**: HIGH (comprehensive test suite + projection-ready)
+  - **Nested recursion (P1 - HIGH)** ✅
+  - **Recursion in parallel (P1 - HIGH)** ✅
+  - **Fork-join structure (P1 - HIGH)** ✅
+- **Test Coverage**: 41/41 tests passing (100%)
+- **Tests**: Known-good and known-bad protocols + P0 projection-critical + P1 correctness checks
+- **Confidence**: HIGH (comprehensive test suite + projection-ready + well-formedness)
 
 **Algorithms**:
 1. **Deadlock Detection**: Tarjan's SCC algorithm, excludes continue edges
@@ -84,15 +87,18 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
 6. **Choice Determinism (P0)**: BFS to find first message per branch, detects duplicate labels
 7. **Choice Mergeability (P0)**: Path analysis to verify consistent role participation across branches
 8. **Connectedness (P0)**: Set comparison of declared vs. used roles
+9. **Nested Recursion (P1)**: Validates continue targets and rec label scoping
+10. **Recursion in Parallel (P1)**: Enforces Scribble spec 4.1.3 (rec must be in same parallel branch)
+11. **Fork-Join Structure (P1)**: Verifies matching fork-join pairs
 
 **Files**:
 - `src/core/verification/verifier.ts` - Verification algorithms
 - `src/core/verification/types.ts` - Result type definitions
 - `src/core/verification/verifier.test.ts` - Test suite
 
-**Test Results**: ✅ All 33 tests passing
+**Test Results**: ✅ All 41 tests passing
 
-**Last Modified**: 2025-01-11 (P0 verification checks added)
+**Last Modified**: 2025-01-11 (P0 + P1 verification checks added)
 
 ---
 
@@ -195,20 +201,46 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
 ├─────────────────────┼────────────────┼──────────────┼───────────────┤
 │ 1. Parser           │ ✅ Complete    │ ✅ All pass  │ 100% (stmt)   │
 │ 2. CFG Builder      │ ✅ Complete    │ ✅ All pass  │ 100% (rules)  │
-│ 3. Verification     │ ✅ Complete    │ ✅ 33/33     │ 100% (tests)  │
+│ 3. Verification     │ ✅ Complete    │ ✅ 41/41     │ 100% (tests)  │
 │ 4. CFG Simulator    │ ✅ Complete    │ ✅ 23/23     │ 100% (tests)  │
 │ 5. Projection       │ ⏸️  Planned    │ ⏸️  N/A      │ 0%            │
 │ 6. Code Generation  │ ⏸️  Planned    │ ⏸️  N/A      │ 0%            │
 └─────────────────────┴────────────────┴──────────────┴───────────────┘
 
-Total Tests: ~80+ passing (including P0 verification checks)
+Total Tests: ~85+ passing (P0 + P1 verification checks)
 Overall Coverage: Layers 1-4 complete (67% of planned architecture)
-**Projection-Ready**: P0 critical checks implemented
+**Projection-Ready**: P0 + P1 checks ensure correctness and well-formedness
 ```
 
 ---
 
 ## Recent Changes
+
+### 2025-01-11: Implement P1 verification checks (correctness & well-formedness)
+
+**Commit**: `2187da4`
+
+**P1 Verification Checks Added**:
+1. **Nested Recursion**: Verifies multiple rec labels can coexist, continue targets valid nodes
+2. **Recursion in Parallel**: Enforces Scribble spec 4.1.3 (rec must be in same parallel branch as continue)
+3. **Fork-Join Structure**: Validates matching fork-join pairs for parallel blocks
+
+**Test Coverage**:
+- Added 8 new tests (3 nested recursion + 2 recursion in parallel + 3 fork-join)
+- Total: 41/41 verification tests passing
+
+**Why High Priority**: These checks prevent subtle bugs in complex recursive and parallel protocols:
+- Nested recursion scope violations
+- Continue spanning parallel boundaries (spec violation)
+- Mismatched or orphaned fork/join nodes
+
+**Key Bug Fix**: Original helper followed continue edges during branch traversal, causing rec nodes
+OUTSIDE parallel branches to appear INSIDE. Fixed by creating specialized traversal that excludes
+continue edges.
+
+**Impact**: P1 + P0 checks provide comprehensive correctness and well-formedness verification.
+
+---
 
 ### 2025-01-11: Implement P0 verification checks (projection-critical)
 
