@@ -12,6 +12,7 @@ export const selectedExample = writable<ProtocolExample | null>(null);
 export const activeTab = writable<'verification' | 'projection' | 'errors'>('verification');
 export const libraryOpen = writable<boolean>(true);
 export const visualizerOpen = writable<boolean>(true);
+export const outputPanelCollapsed = writable<boolean>(false);
 
 // View mode: 'global' shows CFG, role names show CFSM for that role
 export type ViewMode = 'global' | string; // 'global' or role name

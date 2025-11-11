@@ -1,18 +1,16 @@
 <script lang="ts">
-  import { activeTab, parseStatus, verificationResult, projectionData, parseError } from '../stores/editor';
-
-  let isCollapsed = false;
+  import { activeTab, parseStatus, verificationResult, projectionData, parseError, outputPanelCollapsed } from '../stores/editor';
 
   function selectTab(tab: typeof $activeTab) {
     activeTab.set(tab);
   }
 
   function toggleCollapse() {
-    isCollapsed = !isCollapsed;
+    outputPanelCollapsed.update(v => !v);
   }
 </script>
 
-<div class="output-panel" class:collapsed={isCollapsed}>
+<div class="output-panel" class:collapsed={$outputPanelCollapsed}>
   <div class="tabs-header">
     <div class="tabs-group">
       <button
@@ -40,12 +38,12 @@
         {/if}
       </button>
     </div>
-    <button class="collapse-btn" on:click={toggleCollapse} title={isCollapsed ? 'Expand panel' : 'Collapse panel'}>
-      {isCollapsed ? '▲' : '▼'}
+    <button class="collapse-btn" on:click={toggleCollapse} title={$outputPanelCollapsed ? 'Expand panel' : 'Collapse panel'}>
+      {$outputPanelCollapsed ? '▲' : '▼'}
     </button>
   </div>
 
-  {#if !isCollapsed}
+  {#if !$outputPanelCollapsed}
   <div class="tab-content">
     {#if $activeTab === 'verification'}
       <div class="content-section">
@@ -130,12 +128,6 @@
     height: 100%;
     background: #1f2937;
     border-top: 1px solid #374151;
-    transition: height 0.3s ease;
-  }
-
-  .output-panel.collapsed {
-    height: auto;
-    min-height: 0;
   }
 
   .tabs-header {
