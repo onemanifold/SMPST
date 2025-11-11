@@ -1,31 +1,53 @@
 <script lang="ts">
-  import { parseStatus, clearEditor, mockParse, editorContent, simulationState, projectionData } from '../stores/editor';
-  import { protocolExamples, type ProtocolExample } from '../data/examples';
-  import { loadExample } from '../stores/editor';
-  import { Button } from "$lib/components/ui/button";
-  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import {
+    Header,
+    HeaderNav,
+    HeaderUtilities,
+    HeaderAction,
+    HeaderActionLink,
+    Button,
+    InlineNotification
+  } from 'carbon-components-svelte';
+  import { Play, Add, Document, Restart, SkipForward, Pause } from 'carbon-icons-svelte';
+  import { parseStatus, simulationState, mockParse, editorContent } from '../stores/editor';
+  import { protocolExamples } from '../data/examples';
+  import type { ProtocolExample } from '../data/examples';
+
+  let showProtocolMenu = false;
+  let notificationMessage = '';
+  let notificationType: 'success' | 'error' | 'warning' | 'info' = 'info';
+  let showNotification = false;
+
+  function handleLoadProtocol(example: ProtocolExample) {
+    editorContent.set(example.code);
+    showProtocolMenu = false;
+    showMessage('success', `Loaded: ${example.name}`);
+  }
 
   function handleNew() {
-    if (confirm('Clear current protocol?')) {
-      clearEditor();
-    }
+    editorContent.set('');
+    showMessage('info', 'New protocol created');
   }
 
   function handleParse() {
     mockParse($editorContent);
+    setTimeout(() => {
+      if ($parseStatus === 'success') {
+        showMessage('success', 'Protocol parsed successfully');
+      } else if ($parseStatus === 'error') {
+        showMessage('error', 'Parse failed');
+      }
+    }, 600);
   }
 
-  function handleLoadProtocol(example: ProtocolExample) {
-    loadExample(example);
-  }
-
-  // Simulation controls
   function handleStart() {
-    simulationState.update(s => ({ ...s, running: true }));
+    simulationState.update(s => ({ ...s, running: true, step: 0 }));
+    showMessage('info', 'Simulation started');
   }
 
   function handlePause() {
     simulationState.update(s => ({ ...s, running: false }));
+    showMessage('info', 'Simulation paused');
   }
 
   function handleStep() {
@@ -33,137 +55,166 @@
   }
 
   function handleReset() {
-    simulationState.set({
-      running: false,
-      step: 0,
-      maxSteps: 100,
-      currentRoleStates: {},
-      messageQueue: []
-    });
+    simulationState.update(s => ({ ...s, running: false, step: 0 }));
+    showMessage('info', 'Simulation reset');
   }
 
-  $: statusColor = {
-    idle: '#6b7280',
-    parsing: '#f59e0b',
-    success: '#10b981',
-    error: '#ef4444'
-  }[$parseStatus];
+  function showMessage(type: typeof notificationType, message: string) {
+    notificationType = type;
+    notificationMessage = message;
+    showNotification = true;
+    setTimeout(() => {
+      showNotification = false;
+    }, 3000);
+  }
 
-  $: statusText = {
-    idle: 'Ready',
-    parsing: 'Parsing...',
-    success: 'Valid Protocol',
-    error: 'Parse Error'
-  }[$parseStatus];
-
-  $: canSimulate = $parseStatus === 'success' && $projectionData.length > 0;
+  $: canSimulate = $parseStatus === 'success';
 </script>
 
-<header class="flex items-center justify-between px-6 py-3 bg-gradient-to-br from-dark-800 to-dark-900 border-b border-dark-700 gap-8">
-  <!-- Left Section -->
-  <div class="flex items-center gap-3">
-    <h1 class="text-lg font-bold m-0 bg-gradient-to-br from-primary-500 to-primary-600 bg-clip-text text-transparent">
-      Scribble MPST IDE
-    </h1>
-    <span class="text-[0.7rem] text-dark-500 px-2 py-1 bg-dark-800 rounded">v0.1.0</span>
+<Header company="Scribble MPST" platformName="IDE">
+  <HeaderNav>
+    <div class="protocol-menu">
+      <Button kind="ghost" on:click={() => showProtocolMenu = !showProtocolMenu}>
+        <Document />
+        Protocols
+      </Button>
+      {#if showProtocolMenu}
+        <div class="protocol-dropdown">
+          <div class="dropdown-header">Example Protocols</div>
+          {#each protocolExamples as example}
+            <button class="dropdown-item" on:click={() => handleLoadProtocol(example)}>
+              <div class="item-title">{example.name}</div>
+              <div class="item-desc">{example.description}</div>
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
 
-    <!-- Protocol Dropdown with shadcn DropdownMenu -->
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger>
-        <Button variant="secondary" class="gap-2">
-          📚 Protocols ▾
-        </Button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content class="w-80">
-        <DropdownMenu.Label>Example Protocols</DropdownMenu.Label>
-        <DropdownMenu.Separator />
-        {#each protocolExamples as example}
-          <DropdownMenu.Item on:click={() => handleLoadProtocol(example)}>
-            <div class="flex flex-col gap-0.5">
-              <span class="font-semibold text-sm">{example.name}</span>
-              <span class="text-xs text-dark-400">{example.description}</span>
-            </div>
-          </DropdownMenu.Item>
-        {/each}
-      </DropdownMenu.Content>
-    </DropdownMenu.Root>
-
-    <Button variant="secondary" on:click={handleNew}>
-      ✚ New
+    <Button kind="ghost" size="sm" on:click={handleNew}>
+      <Add />
+      New
     </Button>
-  </div>
+  </HeaderNav>
 
-  <!-- Center Section: Simulation Controls -->
-  <div class="flex items-center gap-3 flex-1 justify-center">
-    <div class="flex gap-1 p-1 bg-dark-700 rounded-md">
+  <div slot="skip-to-content" />
+
+  <HeaderUtilities>
+    <!-- Simulation Controls -->
+    <div class="sim-controls">
       <Button
-        variant="simulation"
+        kind="tertiary"
+        size="sm"
+        iconDescription="Start"
+        icon={Play}
+        disabled={$simulationState.running || !canSimulate}
         on:click={handleStart}
-        disabled={$simulationState.running || !canSimulate}
-        title="Start simulation"
-        class="{$simulationState.running ? 'bg-primary-500 text-white' : ''}"
-      >
-        ▶
-      </Button>
+      />
       <Button
-        variant="simulation"
-        on:click={handlePause}
+        kind="tertiary"
+        size="sm"
+        iconDescription="Pause"
+        icon={Pause}
         disabled={!$simulationState.running}
-        title="Pause simulation"
-      >
-        ⏸
-      </Button>
+        on:click={handlePause}
+      />
       <Button
-        variant="simulation"
-        on:click={handleStep}
+        kind="tertiary"
+        size="sm"
+        iconDescription="Step"
+        icon={SkipForward}
         disabled={$simulationState.running || !canSimulate}
-        title="Step forward"
-      >
-        ⏭
-      </Button>
+        on:click={handleStep}
+      />
       <Button
-        variant="simulation"
+        kind="tertiary"
+        size="sm"
+        iconDescription="Reset"
+        icon={Restart}
+        disabled={!canSimulate}
         on:click={handleReset}
-        title="Reset simulation"
-      >
-        ↻
-      </Button>
+      />
     </div>
 
-    <div class="flex items-center gap-2 px-3 py-2 bg-dark-700 rounded-md">
-      <span class="text-xs text-dark-300 font-semibold tabular-nums">
-        Step {$simulationState.step}/{$simulationState.maxSteps}
-      </span>
-      <span class="w-1.5 h-1.5 rounded-full {$simulationState.running ? 'bg-success animate-pulse' : 'bg-dark-500'}"></span>
-    </div>
-  </div>
-
-  <!-- Right Section -->
-  <div class="flex items-center gap-3">
-    <div class="flex items-center gap-2">
-      <div class="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]" style="background-color: {statusColor}"></div>
-      <span class="text-sm text-dark-300 font-medium">{statusText}</span>
-    </div>
-
-    <Button
-      variant="default"
-      on:click={handleParse}
-      disabled={$parseStatus === 'parsing'}
-      class="hover:translate-y-[-1px] hover:shadow-[0_4px_12px_rgba(102,126,234,0.4)]"
-    >
-      ▶ Parse & Verify
+    <Button kind="primary" size="sm" disabled={$parseStatus === 'parsing'} on:click={handleParse}>
+      Parse & Verify
     </Button>
+  </HeaderUtilities>
+</Header>
+
+{#if showNotification}
+  <div class="notification-container">
+    <InlineNotification
+      kind={notificationType}
+      title={notificationMessage}
+      hideCloseButton={false}
+      on:close={() => showNotification = false}
+    />
   </div>
-</header>
+{/if}
 
 <style>
-  /* Animation for pulse */
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+  .protocol-menu {
+    position: relative;
   }
 
-  .animate-pulse {
-    animation: pulse 2s ease-in-out infinite;
+  .protocol-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 320px;
+    background: var(--cds-ui-01);
+    border: 1px solid var(--cds-ui-03);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    z-index: 9999;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+
+  .dropdown-header {
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--cds-text-02);
+    border-bottom: 1px solid var(--cds-ui-03);
+  }
+
+  .dropdown-item {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: none;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .dropdown-item:hover {
+    background: var(--cds-ui-03);
+  }
+
+  .item-title {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--cds-text-01);
+    margin-bottom: 0.25rem;
+  }
+
+  .item-desc {
+    font-size: 0.75rem;
+    color: var(--cds-text-02);
+  }
+
+  .sim-controls {
+    display: flex;
+    gap: 0.25rem;
+  }
+
+  .notification-container {
+    position: fixed;
+    top: 4rem;
+    right: 1rem;
+    z-index: 10000;
+    max-width: 400px;
   }
 </style>
