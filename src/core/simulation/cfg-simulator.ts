@@ -51,6 +51,8 @@ export class CFGSimulator {
   private inParallel: boolean = false;
   private parallelBranches: string[][] = [];
   private parallelBranchIndex: number = 0;
+  private parallelBranchesCompleted: Set<number> = new Set(); // Track which branches reached join
+  private parallelJoinNode: string | null = null; // The join node all branches must reach
 
   // Recursion state
   private recursionStack: RecursionContext[] = [];
@@ -90,7 +92,7 @@ export class CFGSimulator {
 
   /**
    * Auto-advance from initial to first meaningful state
-   * (action, choice, or terminal)
+   * (action, choice, fork, or terminal)
    */
   private advanceToNextMeaningfulState(): void {
     let limit = 100;
@@ -99,8 +101,8 @@ export class CFGSimulator {
       const node = this.getNode(this.currentNode);
       if (!node) return;
 
-      // Stop at action, branch, or terminal
-      if (node.type === 'action' || node.type === 'branch' || node.type === 'terminal') {
+      // Stop at action, branch, fork, or terminal
+      if (node.type === 'action' || node.type === 'branch' || node.type === 'fork' || node.type === 'terminal') {
         // If it's a branch, set up the choice
         if (node.type === 'branch') {
           const edges = this.getOutgoingEdges(node.id);
@@ -110,6 +112,20 @@ export class CFGSimulator {
             firstNode: edge.to,
             description: this.getNodeDescription(edge.to),
           }));
+        }
+
+        // If it's a fork, set up parallel state so getState() shows inParallel = true
+        if (node.type === 'fork') {
+          const forkEdges = this.getOutgoingEdges(node.id).filter(e => e.edgeType === 'fork');
+          const joinNode = this.cfg.nodes.find(n =>
+            n.type === 'join' && (n as any).parallel_id === (node as any).parallel_id
+          );
+          this.inParallel = true;
+          this.parallelBranches = forkEdges.map(edge => [edge.to]);
+          this.parallelBranchIndex = 0;
+          this.parallelBranchesCompleted = new Set();
+          this.parallelJoinNode = joinNode?.id || null;
+          // Don't transition yet - let first step() handle it
         }
 
         // If it's terminal, mark as complete
@@ -122,7 +138,28 @@ export class CFGSimulator {
         return;
       }
 
-      // Auto-advance from structural nodes (initial, merge, fork, join)
+      // Auto-advance from structural nodes (initial, merge, join, recursive)
+      // For recursive nodes, take the forward edge and set up recursion state
+      if (node.type === 'recursive') {
+        const edges = this.getOutgoingEdges(node.id);
+        const forwardEdge = edges.find(e => e.edgeType === 'sequence' && !this.isTerminalNode(e.to));
+
+        if (forwardEdge) {
+          // First entry into recursion - set up stack
+          this.recursionStack.push({
+            label: (node as any).label,
+            nodeId: node.id,
+            iterations: 0,
+          });
+
+          this.currentNode = forwardEdge.to;
+          this.visitedNodes.push(this.currentNode);
+          continue; // Continue auto-advancing through the forward edge
+        } else {
+          return; // No forward edge - stop here
+        }
+      }
+
       const edges = this.getOutgoingEdges(this.currentNode);
       if (edges.length !== 1) return; // Stop if multiple exits or none
 
@@ -254,30 +291,56 @@ export class CFGSimulator {
         return result;
       }
 
-      // If we got an event, check if we should continue through structural nodes
+      // Capture any event
       if (result.event) {
         lastEvent = result.event;
-
-        // Only continue if next node is structural (merge, terminal, fork, join)
-        // Stop if next node is an action or choice
-        const currentNode = this.getNode(this.currentNode);
-        if (!currentNode) {
-          return result;
-        }
-
-        if (currentNode.type === 'action' || currentNode.type === 'branch' || currentNode.type === 'recursive') {
-          // Next node requires user visibility - return the event
-          return {
-            ...result,
-            event: lastEvent,
-          };
-        }
-
-        // Current node is structural - continue loop to auto-advance
       }
 
-      // No event - we auto-advanced through a structural node
-      // Continue looping to find the next action
+      // After executing current node, check if we should stop
+      const currentNode = this.getNode(this.currentNode);
+      if (!currentNode) {
+        return {
+          success: false,
+          error: {
+            type: 'invalid-node',
+            message: `Node ${this.currentNode} not found`,
+            nodeId: this.currentNode,
+          },
+          state: this.getState(),
+        };
+      }
+
+      // Stop if we have an event AND we're now at an action node
+      // This prevents executing the same action multiple times in one step
+      // (Branch nodes need to be executed to set up choice state, so don't stop at them)
+      if (lastEvent && currentNode.type === 'action') {
+        return {
+          success: true,
+          event: lastEvent,
+          state: this.getState(),
+        };
+      }
+
+      // If in parallel mode and at join, check if this completes all branches
+      if (this.inParallel && currentNode.type === 'join') {
+        // Mark current branch as complete
+        this.parallelBranchesCompleted.add(this.parallelBranchIndex);
+
+        // If all branches are now complete, continue to execute join and auto-complete
+        if (this.parallelBranchesCompleted.size === this.parallelBranches.length) {
+          // Continue loop to execute the join and exit parallel
+          // This allows auto-completion like we do for sequential protocols
+        } else {
+          // Not all branches done - stop and wait for next step
+          return {
+            success: true,
+            event: lastEvent,
+            state: this.getState(),
+          };
+        }
+      }
+
+      // No event or structural node - continue looping to find the next action
     }
 
     throw new Error('Too many structural nodes traversed (possible cycle)');
@@ -444,100 +507,231 @@ export class CFGSimulator {
 
   /**
    * Execute recursive node (recursion entry point)
+   * Follows Scribble semantics: rec Label creates a loop point, continue returns to it
    */
   private executeRecursive(node: RecursiveNode): CFGStepResult {
+    const edges = this.getOutgoingEdges(node.id);
+
+    // Recursive node has two outgoing edges:
+    // - Forward edge (sequence) into loop body
+    // - Exit edge (sequence) to terminal or next block
+    const forwardEdge = edges.find(e => e.edgeType === 'sequence' && !this.isTerminalNode(e.to));
+    const exitEdge = edges.find(e => e.edgeType === 'sequence' && this.isTerminalNode(e.to));
+
+    if (!forwardEdge) {
+      throw new Error(`Recursive node ${node.id} has no forward edge into loop body`);
+    }
+
     // Check if we're entering for the first time or continuing
     const inStack = this.recursionStack.find(c => c.label === node.label);
 
     if (!inStack) {
-      // First time entering - push context
+      // First time entering - push context and take forward edge
       this.recursionStack.push({
         label: node.label,
         nodeId: node.id,
         iterations: 0,
       });
 
-      const event: RecursionEvent = {
-        type: 'recursion',
-        timestamp: Date.now(),
-        action: 'enter',
-        label: node.label,
-        nodeId: node.id,
-      };
+      // Record enter event if tracing
+      if (this.config.recordTrace) {
+        const event: RecursionEvent = {
+          type: 'recursion',
+          timestamp: Date.now(),
+          action: 'enter',
+          label: node.label,
+          nodeId: node.id,
+        };
+        this.trace.events.push(event);
+      }
 
-      const result = this.transitionToNext();
-
-      return {
-        ...result,
-        event,
-      };
-    } else {
-      // Continuing (via continue edge)
-      inStack.iterations++;
-
-      const event: RecursionEvent = {
-        type: 'recursion',
-        timestamp: Date.now(),
-        action: 'continue',
-        label: node.label,
-        iteration: inStack.iterations,
-        nodeId: node.id,
-      };
-
-      const result = this.transitionToNext();
-
-      return {
-        ...result,
-        event,
-      };
-    }
-  }
-
-
-  /**
-   * Execute fork node (branch point in parallel)
-   */
-  private executeFork(): CFGStepResult {
-    return this.transitionToNext();
-  }
-
-  /**
-   * Execute join node (merge parallel branches)
-   */
-  private executeJoin(): CFGStepResult {
-    // Check if all branches completed
-    this.parallelBranchIndex++;
-
-    if (this.parallelBranchIndex < this.parallelBranches.length) {
-      // Move to next branch
-      const nextBranch = this.parallelBranches[this.parallelBranchIndex];
-      this.currentNode = nextBranch[0];
-      this.visitedNodes.push(this.currentNode);
+      // Take forward edge into loop body
+      this.transitionTo(forwardEdge.to);
 
       return {
         success: true,
         state: this.getState(),
       };
+    } else {
+      // Returning via continue edge - check if we should exit
+      inStack.iterations++;
+
+      // Check exit conditions
+      // With correct CFG: only exit when maxSteps reached
+      // (Branches without 'continue' will never reach this recursive node)
+      const shouldExit = this.stepCount >= this.config.maxSteps;
+
+      if (shouldExit) {
+        // Exit recursion due to maxSteps limit
+        this.reachedMaxSteps = true;
+
+        // Record exit event if tracing
+        if (this.config.recordTrace) {
+          const event: RecursionEvent = {
+            type: 'recursion',
+            timestamp: Date.now(),
+            action: 'exit',
+            label: node.label,
+            iteration: inStack.iterations,
+            nodeId: node.id,
+          };
+          this.trace.events.push(event);
+        }
+
+        // Remove from stack
+        const index = this.recursionStack.findIndex(c => c.label === node.label);
+        if (index !== -1) {
+          this.recursionStack.splice(index, 1);
+        }
+
+        // Don't transition when exiting due to maxSteps
+        // The protocol is incomplete, so stay at current node
+        // (If we took the exit edge to terminal, it would incorrectly mark as completed)
+
+        return {
+          success: true,
+          state: this.getState(),
+        };
+      } else {
+        // Continue looping - take forward edge again
+        if (this.config.recordTrace) {
+          const event: RecursionEvent = {
+            type: 'recursion',
+            timestamp: Date.now(),
+            action: 'continue',
+            label: node.label,
+            iteration: inStack.iterations,
+            nodeId: node.id,
+          };
+          this.trace.events.push(event);
+        }
+
+        // Take forward edge back into loop body
+        this.transitionTo(forwardEdge.to);
+
+        return {
+          success: true,
+          state: this.getState(),
+        };
+      }
+    }
+  }
+
+  /**
+   * Helper to check if a node ID is a terminal node
+   */
+  private isTerminalNode(nodeId: string): boolean {
+    const node = this.cfg.nodes.find(n => n.id === nodeId);
+    return node?.type === 'terminal';
+  }
+
+
+  /**
+   * Execute fork node (branch point in parallel)
+   * Sets up interleaving execution of parallel branches
+   */
+  private executeFork(): CFGStepResult {
+    const forkNode = this.getNode(this.currentNode);
+    if (!forkNode || forkNode.type !== 'fork') {
+      throw new Error(`Expected fork node at ${this.currentNode}`);
+    }
+
+    const forkEdges = this.getOutgoingEdges(this.currentNode).filter(e => e.edgeType === 'fork');
+
+    if (forkEdges.length === 0) {
+      throw new Error(`Fork node ${this.currentNode} has no fork edges`);
+    }
+
+    // Find the matching join node
+    const joinNode = this.cfg.nodes.find(n =>
+      n.type === 'join' && (n as any).parallel_id === (forkNode as any).parallel_id
+    );
+    if (!joinNode) {
+      throw new Error(`No matching join node for fork ${this.currentNode}`);
+    }
+
+    // Set up parallel state with all branches
+    this.inParallel = true;
+    this.parallelBranches = forkEdges.map(edge => [edge.to]); // Each branch starts with one node
+    this.parallelBranchIndex = 0;
+    this.parallelBranchesCompleted = new Set();
+    this.parallelJoinNode = joinNode.id;
+
+    // Record fork event if tracing
+    if (this.config.recordTrace) {
+      const event: ParallelEvent = {
+        type: 'parallel',
+        timestamp: Date.now(),
+        action: 'fork',
+        branches: forkEdges.length,
+        nodeId: this.currentNode,
+      };
+      this.trace.events.push(event);
+    }
+
+    // Transition to first node of first branch
+    this.currentNode = this.parallelBranches[0][0];
+    this.visitedNodes.push(this.currentNode);
+
+    // Return without event - let executeUntilAction continue to action
+    return {
+      success: true,
+      state: this.getState(),
+    };
+  }
+
+  /**
+   * Execute join node (merge parallel branches)
+   * Marks current branch as complete and checks if all branches done
+   */
+  private executeJoin(): CFGStepResult {
+    // Mark current branch as complete
+    this.parallelBranchesCompleted.add(this.parallelBranchIndex);
+
+    // Check if all branches have reached join
+    if (this.parallelBranchesCompleted.size < this.parallelBranches.length) {
+      // Not all branches complete yet - switch to next incomplete branch
+      this.parallelBranchIndex++;
+
+      // Find next incomplete branch
+      while (this.parallelBranchIndex < this.parallelBranches.length &&
+             this.parallelBranchesCompleted.has(this.parallelBranchIndex)) {
+        this.parallelBranchIndex++;
+      }
+
+      if (this.parallelBranchIndex < this.parallelBranches.length) {
+        // Move to next incomplete branch
+        const nextBranch = this.parallelBranches[this.parallelBranchIndex];
+        this.currentNode = nextBranch[0];
+        this.visitedNodes.push(this.currentNode);
+
+        return {
+          success: true,
+          state: this.getState(),
+        };
+      }
     }
 
     // All branches complete - exit parallel
     this.inParallel = false;
     this.parallelBranches = [];
     this.parallelBranchIndex = 0;
+    this.parallelBranchesCompleted = new Set();
+    this.parallelJoinNode = null;
 
-    const event: ParallelEvent = {
-      type: 'parallel',
-      timestamp: Date.now(),
-      action: 'join',
-      nodeId: this.currentNode,
-    };
+    // Record join event if tracing
+    if (this.config.recordTrace) {
+      const event: ParallelEvent = {
+        type: 'parallel',
+        timestamp: Date.now(),
+        action: 'join',
+        nodeId: this.currentNode,
+      };
+      this.trace.events.push(event);
+    }
 
-    const result = this.transitionToNext();
-
-    return {
-      ...result,
-      event,
-    };
+    // Transition to next node without returning join event
+    return this.transitionToNext();
   }
 
   /**
@@ -566,19 +760,10 @@ export class CFGSimulator {
    * Transition to specific node
    */
   private transitionTo(nodeId: string): void {
-    const fromNode = this.currentNode;
     this.currentNode = nodeId;
     this.visitedNodes.push(nodeId);
-
-    if (this.config.recordTrace) {
-      const event: StateChangeEvent = {
-        type: 'state-change',
-        timestamp: Date.now(),
-        fromNode,
-        toNode: nodeId,
-      };
-      this.trace.events.push(event);
-    }
+    // Note: state-change events are too low-level for the trace
+    // Only protocol-level events (messages, choices, recursion, parallel) are recorded
   }
 
   /**

@@ -81,32 +81,36 @@
 </script>
 
 <div class="code-editor">
-  <Tabs.Root value={$editorView} onValueChange={(v) => editorView.set(v)}>
-    <Tabs.List class="bg-dark-800 border-b-2 border-dark-700 px-4 py-3">
-      <Tabs.Trigger value="scribble">Scribble Protocol</Tabs.Trigger>
-      {#if $viewMode !== 'global'}
-        <Tabs.Trigger value="typescript">
-          TypeScript
-          <span class="role-badge ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
-            {$viewMode}
-          </span>
-        </Tabs.Trigger>
-      {/if}
-    </Tabs.List>
+  <div class="editor-tabs">
+    <button
+      class="tab"
+      class:active={$editorView === 'scribble'}
+      on:click={() => selectView('scribble')}
+    >
+      Scribble Protocol
+    </button>
+    {#if $viewMode !== 'global'}
+      <button
+        class="tab"
+        class:active={$editorView === 'typescript'}
+        on:click={() => selectView('typescript')}
+      >
+        TypeScript
+        <span class="role-badge">{$viewMode}</span>
+      </button>
+    {/if}
+  </div>
 
-    <Tabs.Content value={$editorView} class="flex-1">
-      <div class="editor-content">
-        {#if $editorView === 'scribble'}
-          <Editor />
-        {:else}
-          <div class="typescript-editor-wrapper">
-            <div class="editor-header">
-              <span class="editor-title">Generated TypeScript - {currentRole}</span>
-              <span class="editor-hint">Read-only</span>
-            </div>
-            <div class="typescript-container" bind:this={typescriptEditorContainer}></div>
-          </div>
-        {/if}
+  <div class="editor-content">
+    {#if $editorView === 'scribble'}
+      <Editor />
+    {:else}
+      <div class="typescript-editor-wrapper">
+        <div class="editor-header">
+          <span class="editor-title">Generated TypeScript - {currentRole}</span>
+          <span class="editor-hint">Read-only</span>
+        </div>
+        <div class="typescript-container" bind:this={typescriptEditorContainer}></div>
       </div>
     </Tabs.Content>
   </Tabs.Root>
@@ -118,6 +122,52 @@
     flex-direction: column;
     height: 100%;
     background: #282c34;
+  }
+
+  .editor-tabs {
+    display: flex;
+    flex-direction: row; /* explicitly horizontal */
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #1f2937;
+    border-bottom: 2px solid #374151;
+  }
+
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 6px 6px 0 0;
+    color: #9ca3af;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .tab:hover:not(.active) {
+    color: #d1d5db;
+    background: #1f2937;
+    border-color: #4b5563;
+  }
+
+  .tab.active {
+    color: #ffffff;
+    background: #667eea;
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  }
+
+  .role-badge {
+    font-size: 0.75rem;
+    color: #667eea;
+    background: rgba(102, 126, 234, 0.1);
+    padding: 0.125rem 0.5rem;
+    border-radius: 3px;
+    font-weight: 600;
   }
 
   .editor-content {

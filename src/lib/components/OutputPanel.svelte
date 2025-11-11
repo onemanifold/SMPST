@@ -1,65 +1,66 @@
 <script lang="ts">
-  import * as Tabs from "$lib/components/ui/tabs";
-  import * as Collapsible from "$lib/components/ui/collapsible";
   import { activeTab, parseStatus, verificationResult, projectionData, parseError, outputPanelCollapsed } from '../stores/editor';
+
+  function selectTab(tab: typeof $activeTab) {
+    activeTab.set(tab);
+  }
+
+  function toggleCollapse() {
+    outputPanelCollapsed.update(v => !v);
+  }
 </script>
 
-<Collapsible.Root open={!$outputPanelCollapsed} onOpenChange={(open) => outputPanelCollapsed.set(!open)}>
-  <div class="output-panel">
-    <Tabs.Root value={$activeTab} onValueChange={(v) => activeTab.set(v)}>
-      <div class="tabs-header">
-        <Tabs.List class="bg-dark-900 border-0 p-0 h-auto gap-0">
-          <Tabs.Trigger value="verification" class="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
-            ✓ Verification
-          </Tabs.Trigger>
-          <Tabs.Trigger value="projection" class="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
-            ⚙ Projection
-          </Tabs.Trigger>
-          <Tabs.Trigger value="errors" class="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none relative">
-            ⚠ Errors
-            {#if $parseError}
-              <span class="error-badge">1</span>
-            {/if}
-          </Tabs.Trigger>
-        </Tabs.List>
-        <Collapsible.Trigger asChild let:builder>
-          <button use:builder.action {...builder} class="collapse-btn" title={$outputPanelCollapsed ? 'Expand panel' : 'Collapse panel'}>
-            {$outputPanelCollapsed ? '▲' : '▼'}
-          </button>
-        </Collapsible.Trigger>
-      </div>
+<div class="output-panel" class:collapsed={$outputPanelCollapsed}>
+  <div class="tabs-header">
+    <div class="tabs-group">
+      <button
+        class="tab"
+        class:active={$activeTab === 'verification'}
+        on:click={() => selectTab('verification')}
+      >
+        ✓ Verification
+      </button>
+      <button
+        class="tab"
+        class:active={$activeTab === 'projection'}
+        on:click={() => selectTab('projection')}
+      >
+        ⚙ Projection
+      </button>
+      <button
+        class="tab"
+        class:active={$activeTab === 'errors'}
+        on:click={() => selectTab('errors')}
+      >
+        ⚠ Errors
+        {#if $parseError}
+          <span class="error-badge">1</span>
+        {/if}
+      </button>
+    </div>
+    <button class="collapse-btn" on:click={toggleCollapse} title={$outputPanelCollapsed ? 'Expand panel' : 'Collapse panel'}>
+      {$outputPanelCollapsed ? '▲' : '▼'}
+    </button>
+  </div>
 
-      <Collapsible.Content>
-        <Tabs.Content value="verification">
-          <div class="tab-content">
-            <div class="content-section">
-              <h3 class="section-title">Verification Results</h3>
-              {#if $parseStatus === 'success' && $verificationResult}
-                <div class="result-grid">
-                  <div class="result-item" class:success={$verificationResult.deadlockFree}>
-                    <span class="result-icon">{$verificationResult.deadlockFree ? '✓' : '✗'}</span>
-                    <span class="result-label">Deadlock-Free</span>
-                  </div>
-                  <div class="result-item" class:success={$verificationResult.livenessSatisfied}>
-                    <span class="result-icon">{$verificationResult.livenessSatisfied ? '✓' : '✗'}</span>
-                    <span class="result-label">Liveness</span>
-                  </div>
-                  <div class="result-item" class:success={$verificationResult.safetySatisfied}>
-                    <span class="result-icon">{$verificationResult.safetySatisfied ? '✓' : '✗'}</span>
-                    <span class="result-label">Safety</span>
-                  </div>
-                </div>
-                {#if $verificationResult.warnings.length > 0}
-                  <div class="warnings-section">
-                    <h4 class="subsection-title">Warnings</h4>
-                    {#each $verificationResult.warnings as warning}
-                      <div class="warning-item">{warning}</div>
-                    {/each}
-                  </div>
-                {/if}
-              {:else}
-                <p class="empty-message">Parse a protocol to see verification results</p>
-              {/if}
+  {#if !$outputPanelCollapsed}
+  <div class="tab-content">
+    {#if $activeTab === 'verification'}
+      <div class="content-section">
+        <h3 class="section-title">Verification Results</h3>
+        {#if $parseStatus === 'success' && $verificationResult}
+          <div class="result-grid">
+            <div class="result-item" class:success={$verificationResult.deadlockFree}>
+              <span class="result-icon">{$verificationResult.deadlockFree ? '✓' : '✗'}</span>
+              <span class="result-label">Deadlock-Free</span>
+            </div>
+            <div class="result-item" class:success={$verificationResult.livenessSatisfied}>
+              <span class="result-icon">{$verificationResult.livenessSatisfied ? '✓' : '✗'}</span>
+              <span class="result-label">Liveness</span>
+            </div>
+            <div class="result-item" class:success={$verificationResult.safetySatisfied}>
+              <span class="result-icon">{$verificationResult.safetySatisfied ? '✓' : '✗'}</span>
+              <span class="result-label">Safety</span>
             </div>
           </div>
         </Tabs.Content>

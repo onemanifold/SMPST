@@ -113,6 +113,157 @@ export interface ProgressResult {
 }
 
 // ============================================================================
+// Choice Determinism Results
+// ============================================================================
+
+export interface ChoiceDeterminismResult {
+  isDeterministic: boolean;
+  violations: DeterminismViolation[];
+}
+
+export interface DeterminismViolation {
+  branchNodeId: string;
+  duplicateLabel: string;
+  branches: string[]; // Node IDs of action nodes with same label
+  description: string;
+}
+
+// ============================================================================
+// Choice Mergeability Results
+// ============================================================================
+
+export interface ChoiceMergeabilityResult {
+  isMergeable: boolean;
+  violations: MergeabilityViolation[];
+}
+
+export interface MergeabilityViolation {
+  branchNodeId: string;
+  role: string; // Role that has inconsistent behavior
+  description: string;
+  branches: { [branchLabel: string]: string[] }; // Branch label -> roles involved
+}
+
+// ============================================================================
+// Connectedness Results
+// ============================================================================
+
+export interface ConnectednessResult {
+  isConnected: boolean;
+  orphanedRoles: string[]; // Roles declared but never used
+  description?: string;
+}
+
+// ============================================================================
+// Nested Recursion Results (P1 - HIGH)
+// ============================================================================
+
+export interface NestedRecursionResult {
+  isValid: boolean;
+  violations: RecursionViolation[];
+}
+
+export interface RecursionViolation {
+  continueEdgeId?: string;
+  targetLabel?: string;
+  description: string;
+  type: 'undefined-label' | 'scope-violation';
+}
+
+// ============================================================================
+// Recursion in Parallel Results (P1 - HIGH)
+// ============================================================================
+
+export interface RecursionInParallelResult {
+  isValid: boolean;
+  violations: RecursionParallelViolation[];
+}
+
+export interface RecursionParallelViolation {
+  continueEdgeId: string;
+  recursiveNodeId: string;
+  parallelId: string;
+  description: string;
+}
+
+// ============================================================================
+// Fork-Join Structure Results (P1 - HIGH)
+// ============================================================================
+
+export interface ForkJoinStructureResult {
+  isValid: boolean;
+  violations: ForkJoinViolation[];
+}
+
+export interface ForkJoinViolation {
+  forkNodeId?: string;
+  joinNodeId?: string;
+  description: string;
+  type: 'mismatched-pair' | 'orphaned-fork' | 'orphaned-join';
+}
+
+// ============================================================================
+// Multicast Results (P2 - MEDIUM)
+// ============================================================================
+
+export interface MulticastResult {
+  isValid: boolean;
+  warnings: MulticastWarning[];
+}
+
+export interface MulticastWarning {
+  actionNodeId: string;
+  sender: string;
+  receivers: string[];
+  description: string;
+}
+
+// ============================================================================
+// Self-Communication Results (P2 - MEDIUM)
+// ============================================================================
+
+export interface SelfCommunicationResult {
+  isValid: boolean;
+  violations: SelfCommunicationViolation[];
+}
+
+export interface SelfCommunicationViolation {
+  actionNodeId: string;
+  role: string;
+  description: string;
+}
+
+// ============================================================================
+// Empty Choice Branch Results (P2 - MEDIUM)
+// ============================================================================
+
+export interface EmptyChoiceBranchResult {
+  isValid: boolean;
+  violations: EmptyBranchViolation[];
+}
+
+export interface EmptyBranchViolation {
+  branchNodeId: string;
+  emptyBranchLabel: string;
+  description: string;
+}
+
+// ============================================================================
+// Merge Reachability Results (P3 - Structural Correctness)
+// ============================================================================
+
+export interface MergeReachabilityResult {
+  isValid: boolean;
+  violations: MergeViolation[];
+}
+
+export interface MergeViolation {
+  branchNodeId: string;
+  description: string;
+  branches: { [branchLabel: string]: string }; // Branch label -> merge node ID
+}
+
+// ============================================================================
 // Complete Verification
 // ============================================================================
 
@@ -123,6 +274,16 @@ export interface CompleteVerification {
   parallelDeadlock: ParallelDeadlockResult;
   raceConditions: RaceConditionResult;
   progress: ProgressResult;
+  choiceDeterminism: ChoiceDeterminismResult;
+  choiceMergeability: ChoiceMergeabilityResult;
+  connectedness: ConnectednessResult;
+  nestedRecursion: NestedRecursionResult;
+  recursionInParallel: RecursionInParallelResult;
+  forkJoinStructure: ForkJoinStructureResult;
+  multicast: MulticastResult;
+  selfCommunication: SelfCommunicationResult;
+  emptyChoiceBranch: EmptyChoiceBranchResult;
+  mergeReachability: MergeReachabilityResult;
 }
 
 // ============================================================================
@@ -135,6 +296,16 @@ export interface VerificationOptions {
   checkParallelDeadlock?: boolean;   // Default: true
   checkRaceConditions?: boolean;     // Default: true
   checkProgress?: boolean;           // Default: true
+  checkChoiceDeterminism?: boolean;  // Default: true
+  checkChoiceMergeability?: boolean; // Default: true
+  checkConnectedness?: boolean;      // Default: true
+  checkNestedRecursion?: boolean;    // Default: true
+  checkRecursionInParallel?: boolean;// Default: true
+  checkForkJoinStructure?: boolean;  // Default: true
+  checkMulticast?: boolean;          // Default: true
+  checkSelfCommunication?: boolean;  // Default: true
+  checkEmptyChoiceBranch?: boolean;  // Default: true
+  checkMergeReachability?: boolean;  // Default: true
   strictMode?: boolean;              // Fail on warnings too
 }
 
@@ -144,5 +315,15 @@ export const DEFAULT_VERIFICATION_OPTIONS: VerificationOptions = {
   checkParallelDeadlock: true,
   checkRaceConditions: true,
   checkProgress: true,
+  checkChoiceDeterminism: true,
+  checkChoiceMergeability: true,
+  checkConnectedness: true,
+  checkNestedRecursion: true,
+  checkRecursionInParallel: true,
+  checkForkJoinStructure: true,
+  checkMulticast: true,
+  checkSelfCommunication: true,
+  checkEmptyChoiceBranch: true,
+  checkMergeReachability: true,
   strictMode: false,
 };
