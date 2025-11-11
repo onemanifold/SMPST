@@ -155,6 +155,54 @@ export interface ConnectednessResult {
 }
 
 // ============================================================================
+// Nested Recursion Results (P1 - HIGH)
+// ============================================================================
+
+export interface NestedRecursionResult {
+  isValid: boolean;
+  violations: RecursionViolation[];
+}
+
+export interface RecursionViolation {
+  continueEdgeId?: string;
+  targetLabel?: string;
+  description: string;
+  type: 'undefined-label' | 'scope-violation';
+}
+
+// ============================================================================
+// Recursion in Parallel Results (P1 - HIGH)
+// ============================================================================
+
+export interface RecursionInParallelResult {
+  isValid: boolean;
+  violations: RecursionParallelViolation[];
+}
+
+export interface RecursionParallelViolation {
+  continueEdgeId: string;
+  recursiveNodeId: string;
+  parallelId: string;
+  description: string;
+}
+
+// ============================================================================
+// Fork-Join Structure Results (P1 - HIGH)
+// ============================================================================
+
+export interface ForkJoinStructureResult {
+  isValid: boolean;
+  violations: ForkJoinViolation[];
+}
+
+export interface ForkJoinViolation {
+  forkNodeId?: string;
+  joinNodeId?: string;
+  description: string;
+  type: 'mismatched-pair' | 'orphaned-fork' | 'orphaned-join';
+}
+
+// ============================================================================
 // Complete Verification
 // ============================================================================
 
@@ -168,6 +216,9 @@ export interface CompleteVerification {
   choiceDeterminism: ChoiceDeterminismResult;
   choiceMergeability: ChoiceMergeabilityResult;
   connectedness: ConnectednessResult;
+  nestedRecursion: NestedRecursionResult;
+  recursionInParallel: RecursionInParallelResult;
+  forkJoinStructure: ForkJoinStructureResult;
 }
 
 // ============================================================================
@@ -183,6 +234,9 @@ export interface VerificationOptions {
   checkChoiceDeterminism?: boolean;  // Default: true
   checkChoiceMergeability?: boolean; // Default: true
   checkConnectedness?: boolean;      // Default: true
+  checkNestedRecursion?: boolean;    // Default: true
+  checkRecursionInParallel?: boolean;// Default: true
+  checkForkJoinStructure?: boolean;  // Default: true
   strictMode?: boolean;              // Fail on warnings too
 }
 
@@ -195,5 +249,8 @@ export const DEFAULT_VERIFICATION_OPTIONS: VerificationOptions = {
   checkChoiceDeterminism: true,
   checkChoiceMergeability: true,
   checkConnectedness: true,
+  checkNestedRecursion: true,
+  checkRecursionInParallel: true,
+  checkForkJoinStructure: true,
   strictMode: false,
 };

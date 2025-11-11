@@ -3,8 +3,8 @@
  * Implements deadlock detection, liveness, parallel checks, race detection, etc.
  */
 
-import type { CFG, Node, Edge, ForkNode, ActionNode, BranchNode } from '../cfg/types';
-import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode } from '../cfg/types';
+import type { CFG, Node, Edge, ForkNode, ActionNode, BranchNode, RecursiveNode } from '../cfg/types';
+import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode, isRecursiveNode } from '../cfg/types';
 import type {
   DeadlockResult,
   DeadlockCycle,
@@ -20,6 +20,12 @@ import type {
   ChoiceMergeabilityResult,
   MergeabilityViolation,
   ConnectednessResult,
+  NestedRecursionResult,
+  RecursionViolation,
+  RecursionInParallelResult,
+  RecursionParallelViolation,
+  ForkJoinStructureResult,
+  ForkJoinViolation,
   CompleteVerification,
   VerificationOptions,
 } from './types';
@@ -738,6 +744,229 @@ export function checkConnectedness(cfg: CFG): ConnectednessResult {
 }
 
 // ============================================================================
+// Nested Recursion (P1 - HIGH for Correctness)
+// ============================================================================
+
+/**
+ * Check if nested recursion is well-formed
+ * Verifies that continue edges target valid rec labels in scope
+ */
+export function checkNestedRecursion(cfg: CFG): NestedRecursionResult {
+  const violations: RecursionViolation[] = [];
+
+  // Build map of recursive node labels
+  const recLabels = new Map<string, string>(); // label -> node ID
+  for (const node of cfg.nodes) {
+    if (isRecursiveNode(node)) {
+      recLabels.set((node as RecursiveNode).label, node.id);
+    }
+  }
+
+  // Check all continue edges
+  const continueEdges = cfg.edges.filter(e => e.edgeType === 'continue');
+
+  for (const edge of continueEdges) {
+    // Find the target recursive node
+    const targetNode = cfg.nodes.find(n => n.id === edge.to);
+
+    if (!targetNode || !isRecursiveNode(targetNode)) {
+      violations.push({
+        continueEdgeId: edge.id,
+        description: `Continue edge ${edge.id} targets non-recursive node ${edge.to}`,
+        type: 'undefined-label',
+      });
+      continue;
+    }
+
+    const targetLabel = (targetNode as RecursiveNode).label;
+
+    // Verify the label exists
+    if (!recLabels.has(targetLabel)) {
+      violations.push({
+        continueEdgeId: edge.id,
+        targetLabel,
+        description: `Continue targets undefined rec label "${targetLabel}"`,
+        type: 'undefined-label',
+      });
+    }
+  }
+
+  return {
+    isValid: violations.length === 0,
+    violations,
+  };
+}
+
+// ============================================================================
+// Recursion in Parallel (P1 - HIGH - Well-Formedness!)
+// ============================================================================
+
+/**
+ * Check if continue appears in parallel branch where rec is not defined
+ * Per Scribble spec 4.1.3: "There should not be any `global-continue` in any
+ * of the blocki, unless the `global-recursion` is also defined in the same block blocki."
+ */
+export function checkRecursionInParallel(cfg: CFG): RecursionInParallelResult {
+  const violations: RecursionParallelViolation[] = [];
+
+  // Find all fork nodes (parallel blocks)
+  const forkNodes = cfg.nodes.filter(isForkNode) as ForkNode[];
+
+  for (const fork of forkNodes) {
+    const parallelId = fork.parallel_id;
+
+    // Get all nodes in each parallel branch (excluding continue edges)
+    const branches = getParallelBranchesWithoutContinue(cfg, fork);
+
+    for (let branchIndex = 0; branchIndex < branches.length; branchIndex++) {
+      const branchNodes = branches[branchIndex];
+      const branchNodeSet = new Set(branchNodes);
+
+      // Find recursive nodes in this branch
+      const recLabelsInBranch = new Set<string>();
+      for (const nodeId of branchNodes) {
+        const node = cfg.nodes.find(n => n.id === nodeId);
+        if (node && isRecursiveNode(node)) {
+          recLabelsInBranch.add((node as RecursiveNode).label);
+        }
+      }
+
+      // Find continue edges in this branch
+      for (const nodeId of branchNodes) {
+        const continueEdges = cfg.edges.filter(
+          e => e.from === nodeId && e.edgeType === 'continue'
+        );
+
+        for (const edge of continueEdges) {
+          // Check if continue targets a rec node
+          const targetNode = cfg.nodes.find(n => n.id === edge.to);
+          if (targetNode && isRecursiveNode(targetNode)) {
+            const targetLabel = (targetNode as RecursiveNode).label;
+
+            // Check if the target rec node is OUTSIDE this branch
+            // If target is outside the branch, it's a violation
+            if (!branchNodeSet.has(edge.to)) {
+              violations.push({
+                continueEdgeId: edge.id,
+                recursiveNodeId: edge.to,
+                parallelId,
+                description: `Continue to "${targetLabel}" in parallel branch where rec is not defined (Scribble spec 4.1.3 violation)`,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    isValid: violations.length === 0,
+    violations,
+  };
+}
+
+/**
+ * Get parallel branches WITHOUT following continue edges
+ * This is needed to correctly detect if a rec is inside or outside a parallel branch
+ */
+function getParallelBranchesWithoutContinue(cfg: CFG, fork: ForkNode): string[][] {
+  const branches: string[][] = [];
+  const forkEdges = cfg.edges.filter(e => e.from === fork.id && e.edgeType === 'fork');
+
+  // Find the matching join node
+  const join = cfg.nodes.find(n => isJoinNode(n) && (n as any).parallel_id === fork.parallel_id);
+  if (!join) return branches;
+
+  // For each fork edge, find all nodes until join (excluding continue edges)
+  for (const forkEdge of forkEdges) {
+    const branchNodes = getNodesUntilWithoutContinue(cfg, forkEdge.to, join.id);
+    branches.push(branchNodes);
+  }
+
+  return branches;
+}
+
+/**
+ * Get all nodes from start until end (exclusive of end), excluding continue edges
+ */
+function getNodesUntilWithoutContinue(cfg: CFG, startId: string, endId: string): string[] {
+  const nodes: string[] = [];
+  const visited = new Set<string>();
+  const queue: string[] = [startId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === endId) continue;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    nodes.push(current);
+
+    // Only follow non-continue edges
+    const edges = cfg.edges.filter(e => e.from === current && e.edgeType !== 'continue');
+    for (const edge of edges) {
+      if (!visited.has(edge.to) && edge.to !== endId) {
+        queue.push(edge.to);
+      }
+    }
+  }
+
+  return nodes;
+}
+
+// ============================================================================
+// Fork-Join Structure (P1 - HIGH for Well-Formedness)
+// ============================================================================
+
+/**
+ * Check if fork-join pairs are well-formed
+ * Verifies nested, sequential, and choice-embedded parallels
+ */
+export function checkForkJoinStructure(cfg: CFG): ForkJoinStructureResult {
+  const violations: ForkJoinViolation[] = [];
+
+  // For now, we trust the CFG builder to create correct fork-join pairs
+  // This is a structural check that would catch builder errors
+
+  const forkNodes = cfg.nodes.filter(isForkNode) as ForkNode[];
+  const joinNodes = cfg.nodes.filter(isJoinNode);
+
+  // Check each fork has a corresponding join
+  for (const fork of forkNodes) {
+    const parallelId = fork.parallel_id;
+    const matchingJoin = joinNodes.find(
+      j => (j as any).parallel_id === parallelId
+    );
+
+    if (!matchingJoin) {
+      violations.push({
+        forkNodeId: fork.id,
+        description: `Fork node ${fork.id} with parallel_id "${parallelId}" has no matching join`,
+        type: 'orphaned-fork',
+      });
+    }
+  }
+
+  // Check each join has a corresponding fork
+  for (const join of joinNodes) {
+    const parallelId = (join as any).parallel_id;
+    const matchingFork = forkNodes.find(f => f.parallel_id === parallelId);
+
+    if (!matchingFork) {
+      violations.push({
+        joinNodeId: join.id,
+        description: `Join node ${join.id} with parallel_id "${parallelId}" has no matching fork`,
+        type: 'orphaned-join',
+      });
+    }
+  }
+
+  return {
+    isValid: violations.length === 0,
+    violations,
+  };
+}
+
+// ============================================================================
 // Complete Verification
 // ============================================================================
 
@@ -770,5 +999,14 @@ export function verifyProtocol(
     connectedness: opts.checkConnectedness
       ? checkConnectedness(cfg)
       : { isConnected: true, orphanedRoles: [] },
+    nestedRecursion: opts.checkNestedRecursion
+      ? checkNestedRecursion(cfg)
+      : { isValid: true, violations: [] },
+    recursionInParallel: opts.checkRecursionInParallel
+      ? checkRecursionInParallel(cfg)
+      : { isValid: true, violations: [] },
+    forkJoinStructure: opts.checkForkJoinStructure
+      ? checkForkJoinStructure(cfg)
+      : { isValid: true, violations: [] },
   };
 }

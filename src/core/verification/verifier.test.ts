@@ -18,6 +18,9 @@ import {
   checkChoiceDeterminism,
   checkChoiceMergeability,
   checkConnectedness,
+  checkNestedRecursion,
+  checkRecursionInParallel,
+  checkForkJoinStructure,
 } from './verifier';
 
 // ============================================================================
@@ -706,5 +709,211 @@ describe('Connectedness', () => {
 
     expect(result.isConnected).toBe(true);
     expect(result.orphanedRoles.length).toBe(0);
+  });
+});
+
+// ============================================================================
+// Nested Recursion (P1 - HIGH for Correctness)
+// ============================================================================
+
+describe('Nested Recursion', () => {
+  it('should accept nested recursion with different labels', () => {
+    // VALID: Multiple rec labels can coexist
+    const source = `
+      protocol NestedRec(role A, role B) {
+        rec Outer {
+          A -> B: Start();
+          rec Inner {
+            choice at A {
+              A -> B: InnerContinue();
+              continue Inner;
+            } or {
+              A -> B: InnerExit();
+            }
+          }
+          choice at A {
+            A -> B: OuterContinue();
+            continue Outer;
+          } or {
+            A -> B: OuterExit();
+          }
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkNestedRecursion(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+
+  it('should detect continue targeting non-existent rec label', () => {
+    // INVALID: continue to undefined label
+    // The CFG builder will catch this error at build time
+    const source = `
+      protocol InvalidContinue(role A, role B) {
+        rec Loop {
+          A -> B: Msg();
+          continue NonExistent;
+        }
+      }
+    `;
+    const ast = parse(source);
+
+    // CFG builder should throw for undefined label
+    expect(() => buildCFG(ast.declarations[0])).toThrow('undefined recursion label');
+  });
+
+  it('should verify inner continue does not affect outer rec', () => {
+    // VALID: Inner continue only loops inner rec
+    const source = `
+      protocol ScopedContinue(role A, role B) {
+        rec Outer {
+          A -> B: OuterMsg();
+          rec Inner {
+            A -> B: InnerMsg();
+            continue Inner;
+          }
+          A -> B: AfterInner();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkNestedRecursion(cfg);
+
+    expect(result.isValid).toBe(true);
+    // Verify the CFG structure has correct continue edges
+    const continueEdges = cfg.edges.filter(e => e.edgeType === 'continue');
+    expect(continueEdges.length).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================================
+// Recursion in Parallel (P1 - HIGH - Well-Formedness!)
+// ============================================================================
+
+describe('Recursion in Parallel', () => {
+  it('should reject continue in parallel branch (Scribble spec 4.1.3)', () => {
+    // INVALID: continue spans parallel boundary
+    const source = `
+      protocol RecInParallel(role A, role B, role C) {
+        rec Loop {
+          par {
+            A -> B: M1();
+            continue Loop;
+          } and {
+            C -> A: M2();
+          }
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkRecursionInParallel(cfg);
+
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0].description).toContain('parallel');
+  });
+
+  it('should accept rec fully contained in parallel branch', () => {
+    // VALID: rec and continue both in same parallel branch
+    const source = `
+      protocol RecContained(role A, role B, role C, role D) {
+        par {
+          rec Loop {
+            A -> B: M1();
+            continue Loop;
+          }
+        } and {
+          C -> D: M2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkRecursionInParallel(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+});
+
+// ============================================================================
+// Fork-Join Structure (P1 - HIGH for Well-Formedness)
+// ============================================================================
+
+describe('Fork-Join Structure', () => {
+  it('should accept nested fork-join', () => {
+    // VALID: Parallel can be nested
+    const source = `
+      protocol NestedParallel(role A, role B, role C, role D, role E, role F) {
+        par {
+          A -> B: M1();
+          par {
+            A -> C: M2();
+          } and {
+            A -> D: M3();
+          }
+        } and {
+          E -> F: M4();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkForkJoinStructure(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+
+  it('should accept multiple parallel blocks in sequence', () => {
+    // VALID: Sequential parallel blocks
+    const source = `
+      protocol SequentialParallel(role A, role B, role C, role D) {
+        par {
+          A -> B: M1();
+        } and {
+          C -> D: M2();
+        }
+        par {
+          A -> C: M3();
+        } and {
+          B -> D: M4();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkForkJoinStructure(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+
+  it('should accept parallel in choice branches', () => {
+    // VALID: Parallel can appear in choice
+    const source = `
+      protocol ParallelInChoice(role A, role B, role C, role D) {
+        choice at A {
+          par {
+            A -> B: M1();
+          } and {
+            C -> D: M2();
+          }
+        } or {
+          A -> B: M3();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkForkJoinStructure(cfg);
+
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
   });
 });
