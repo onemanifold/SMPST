@@ -160,7 +160,7 @@ describe('CFG Builder - Rule 3: Sequential Messages', () => {
 
     // Path should go through actions in order
     const path = paths[0];
-    expect(path).toHaveLength(5); // initial, action1, action2, terminal
+    expect(path).toHaveLength(4); // initial, action1, action2, terminal
   });
 });
 
@@ -459,12 +459,8 @@ describe('CFG Structural Invariants', () => {
         A -> C: M2();
       }
     }`,
-    `protocol Loop(role A, role B) {
-      rec L {
-        A -> B: Msg();
-        continue L;
-      }
-    }`,
+    // Note: Infinite loop protocol (rec with only continue) is tested separately
+    // because its terminal is intentionally unreachable
   ];
 
   testProtocols.forEach((source) => {
@@ -550,6 +546,33 @@ describe('CFG Structural Invariants', () => {
     const cfg = buildCFG(ast.declarations[0]);
 
     expect(branchesMatchMerges(cfg)).toBe(true);
+  });
+
+  it('infinite loop protocols have exit edges for composability', () => {
+    const source = `
+      protocol InfiniteLoop(role A, role B) {
+        rec Loop {
+          A -> B: Msg();
+          continue Loop;
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+
+    // Even infinite loops have exit edges to allow composition with outer protocols
+    expect(hasAtLeastOneTerminal(cfg)).toBe(true);
+
+    // All nodes should be reachable (including terminal via exit edge)
+    expect(allNodesReachable(cfg)).toBe(true);
+
+    // Should have a continue edge for the loop
+    const continueEdges = cfg.edges.filter(e => e.edgeType === 'continue');
+    expect(continueEdges.length).toBeGreaterThanOrEqual(1);
+
+    // Should have a recursive node
+    const recNodes = cfg.nodes.filter(n => n.type === 'recursive');
+    expect(recNodes).toHaveLength(1);
   });
 });
 
