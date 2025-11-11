@@ -138,7 +138,8 @@ export class CFGSimulator {
         return;
       }
 
-      // Auto-advance from structural nodes (initial, merge, join, recursive)
+      // Auto-advance from structural nodes (initial, merge, join)
+      // Note: recursive nodes are handled by executeRecursive, not auto-advance
       const edges = this.getOutgoingEdges(this.currentNode);
       if (edges.length !== 1) return; // Stop if multiple exits or none
 
@@ -478,53 +479,121 @@ export class CFGSimulator {
 
   /**
    * Execute recursive node (recursion entry point)
+   * Follows Scribble semantics: rec Label creates a loop point, continue returns to it
    */
   private executeRecursive(node: RecursiveNode): CFGStepResult {
+    const edges = this.getOutgoingEdges(node.id);
+
+    // Recursive node has two outgoing edges:
+    // - Forward edge (sequence) into loop body
+    // - Exit edge (sequence) to terminal or next block
+    const forwardEdge = edges.find(e => e.edgeType === 'sequence' && !this.isTerminalNode(e.to));
+    const exitEdge = edges.find(e => e.edgeType === 'sequence' && this.isTerminalNode(e.to));
+
+    if (!forwardEdge) {
+      throw new Error(`Recursive node ${node.id} has no forward edge into loop body`);
+    }
+
     // Check if we're entering for the first time or continuing
     const inStack = this.recursionStack.find(c => c.label === node.label);
 
     if (!inStack) {
-      // First time entering - push context
+      // First time entering - push context and take forward edge
       this.recursionStack.push({
         label: node.label,
         nodeId: node.id,
         iterations: 0,
       });
 
-      const event: RecursionEvent = {
-        type: 'recursion',
-        timestamp: Date.now(),
-        action: 'enter',
-        label: node.label,
-        nodeId: node.id,
-      };
+      // Record enter event if tracing
+      if (this.config.recordTrace) {
+        const event: RecursionEvent = {
+          type: 'recursion',
+          timestamp: Date.now(),
+          action: 'enter',
+          label: node.label,
+          nodeId: node.id,
+        };
+        this.trace.events.push(event);
+      }
 
-      const result = this.transitionToNext();
+      // Take forward edge into loop body
+      this.transitionTo(forwardEdge.to);
 
       return {
-        ...result,
-        event,
+        success: true,
+        state: this.getState(),
       };
     } else {
-      // Continuing (via continue edge)
+      // Returning via continue edge - check if we should exit
       inStack.iterations++;
 
-      const event: RecursionEvent = {
-        type: 'recursion',
-        timestamp: Date.now(),
-        action: 'continue',
-        label: node.label,
-        iteration: inStack.iterations,
-        nodeId: node.id,
-      };
+      // Check exit conditions
+      const shouldExit = this.stepCount >= this.config.maxSteps;
 
-      const result = this.transitionToNext();
+      if (shouldExit) {
+        // Exit recursion
+        this.reachedMaxSteps = true;
 
-      return {
-        ...result,
-        event,
-      };
+        // Record exit event if tracing
+        if (this.config.recordTrace) {
+          const event: RecursionEvent = {
+            type: 'recursion',
+            timestamp: Date.now(),
+            action: 'exit',
+            label: node.label,
+            iteration: inStack.iterations,
+            nodeId: node.id,
+          };
+          this.trace.events.push(event);
+        }
+
+        // Remove from stack
+        const index = this.recursionStack.findIndex(c => c.label === node.label);
+        if (index !== -1) {
+          this.recursionStack.splice(index, 1);
+        }
+
+        // Take exit edge if available, otherwise just stay at current node
+        if (exitEdge) {
+          this.transitionTo(exitEdge.to);
+        }
+
+        return {
+          success: true,
+          state: this.getState(),
+        };
+      } else {
+        // Continue looping - take forward edge again
+        if (this.config.recordTrace) {
+          const event: RecursionEvent = {
+            type: 'recursion',
+            timestamp: Date.now(),
+            action: 'continue',
+            label: node.label,
+            iteration: inStack.iterations,
+            nodeId: node.id,
+          };
+          this.trace.events.push(event);
+        }
+
+        // Take forward edge back into loop body
+        this.transitionTo(forwardEdge.to);
+
+        return {
+          success: true,
+          state: this.getState(),
+        };
+      }
     }
+  }
+
+  /**
+   * Helper to check if a node ID is a terminal node
+   */
+  private isTerminalNode(nodeId: string): boolean {
+    const node = this.cfg.nodes.find(n => n.id === nodeId);
+    return node?.type === 'terminal';
   }
 
 
