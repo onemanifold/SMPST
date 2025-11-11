@@ -22,12 +22,22 @@ import type {
   Edge,
   ActionNode,
   MessageAction,
+  BranchNode,
+  MergeNode,
+  ForkNode,
+  JoinNode,
+  RecursiveNode,
 } from '../cfg/types';
 import {
   isInitialNode,
   isTerminalNode,
   isActionNode,
   isMessageAction,
+  isBranchNode,
+  isMergeNode,
+  isForkNode,
+  isJoinNode,
+  isRecursiveNode,
 } from '../cfg/types';
 import type {
   CFSM,
@@ -61,8 +71,8 @@ export function project(cfg: CFG, role: string): CFSM {
 
   const states: CFSMState[] = [];
   const transitions: CFSMTransition[] = [];
-  const cfgNodeToState = new Map<string, string>(); // CFG node → CFSM state (for nodes where role is involved)
-  const cfgNodeToLastRelevantState = new Map<string, string>(); // CFG node → last CFSM state where role was involved
+  const cfgNodeToState = new Map<string, string>(); // CFG node → CFSM state (for relevant nodes)
+  const recNodeToState = new Map<string, string>(); // Recursion label node → entry state
   let stateCounter = 0;
   let transitionCounter = 0;
 
@@ -116,8 +126,12 @@ export function project(cfg: CFG, role: string): CFSM {
   /**
    * Get outgoing edges from a CFG node
    */
-  const getOutgoingEdges = (nodeId: string): Edge[] => {
-    return cfg.edges.filter(e => e.from === nodeId);
+  const getOutgoingEdges = (nodeId: string, includeType?: Edge['edgeType']): Edge[] => {
+    const edges = cfg.edges.filter(e => e.from === nodeId);
+    if (includeType) {
+      return edges.filter(e => e.edgeType === includeType);
+    }
+    return edges;
   };
 
   // ============================================================================
@@ -135,6 +149,7 @@ export function project(cfg: CFG, role: string): CFSM {
   cfgNodeToState.set(initialNode.id, initialState.id);
 
   // BFS traversal of CFG
+  // Track (cfgNodeId, lastStateId) to prevent infinite loops
   const visited = new Set<string>();
   const queue: Array<{ cfgNodeId: string; lastStateId: string }> = [
     { cfgNodeId: initialNode.id, lastStateId: initialState.id },
@@ -143,19 +158,23 @@ export function project(cfg: CFG, role: string): CFSM {
   while (queue.length > 0) {
     const { cfgNodeId, lastStateId } = queue.shift()!;
 
-    // Skip if already visited from this state
+    // Create visit key to prevent loops
     const visitKey = `${cfgNodeId}:${lastStateId}`;
     if (visited.has(visitKey)) continue;
     visited.add(visitKey);
 
     const cfgNode = cfg.nodes.find(n => n.id === cfgNodeId)!;
-    const outgoingEdges = getOutgoingEdges(cfgNodeId);
+
+    // Get outgoing edges (EXCLUDE continue edges - handle separately)
+    const outgoingEdges = getOutgoingEdges(cfgNodeId).filter(
+      e => e.edgeType !== 'continue'
+    );
 
     for (const edge of outgoingEdges) {
       const targetNode = cfg.nodes.find(n => n.id === edge.to)!;
 
       // ========================================================================
-      // Projection Rules
+      // Projection Rules (by node type)
       // ========================================================================
 
       if (isActionNode(targetNode)) {
@@ -165,7 +184,7 @@ export function project(cfg: CFG, role: string): CFSM {
           // RULE 1: Role IS involved in message
           // Create new state and transition with send/receive action
 
-          const newState = createState(targetNode.label);
+          const newState = createState(targetNode.id);
           cfgNodeToState.set(targetNode.id, newState.id);
 
           // Determine action type based on formal rules:
@@ -215,14 +234,106 @@ export function project(cfg: CFG, role: string): CFSM {
 
         // Create transition from last relevant state
         createTransition(lastStateId, terminalStateId);
+      } else if (isBranchNode(targetNode)) {
+        // Branch node (choice point)
+        // Pass through - branches are handled by following all outgoing edges
+        queue.push({
+          cfgNodeId: targetNode.id,
+          lastStateId,
+        });
+      } else if (isMergeNode(targetNode)) {
+        // Merge node (convergence point)
+        // Pass through - multiple paths converge
+        queue.push({
+          cfgNodeId: targetNode.id,
+          lastStateId,
+        });
+      } else if (isForkNode(targetNode)) {
+        // Fork node (parallel split)
+        // For now, pass through
+        // TODO: Handle fork/join when role in multiple branches
+        queue.push({
+          cfgNodeId: targetNode.id,
+          lastStateId,
+        });
+      } else if (isJoinNode(targetNode)) {
+        // Join node (parallel synchronization)
+        // Pass through
+        queue.push({
+          cfgNodeId: targetNode.id,
+          lastStateId,
+        });
+      } else if (isRecursiveNode(targetNode)) {
+        // Recursion node (rec label)
+        // Record the entry point for this recursion
+        recNodeToState.set(targetNode.id, lastStateId);
+
+        // Continue traversal
+        queue.push({
+          cfgNodeId: targetNode.id,
+          lastStateId,
+        });
       } else {
-        // Other node types (branch, merge, fork, join, recursion)
-        // For now, pass through with same last state
+        // Unknown node type - pass through
         queue.push({
           cfgNodeId: targetNode.id,
           lastStateId,
         });
       }
+    }
+  }
+
+  // ============================================================================
+  // Second Pass: Handle Continue Edges (Back-Edges for Recursion)
+  // ============================================================================
+
+  // For each continue edge, find what CFSM state it should connect from/to
+  const processedContinues = new Set<string>();
+
+  for (const edge of cfg.edges.filter(e => e.edgeType === 'continue')) {
+    const key = `${edge.from}:${edge.to}`;
+    if (processedContinues.has(key)) continue;
+    processedContinues.add(key);
+
+    // Find the target recursion node
+    const targetRec = cfg.nodes.find(n => n.id === edge.to);
+    if (!targetRec || !isRecursiveNode(targetRec)) continue;
+
+    // Find the entry state for this recursion
+    const toStateId = recNodeToState.get(targetRec.id);
+    if (!toStateId) continue; // Recursion not visited for this role
+
+    // Find the "from" state - this is trickier
+    // We need to find the last relevant state before the continue
+    // This is the state corresponding to the CFG node that has the continue edge
+
+    // Walk backwards from the continue edge to find the last action node for this role
+    const visited = new Set<string>();
+    const queue = [edge.from];
+    let fromStateId: string | undefined;
+
+    while (queue.length > 0 && !fromStateId) {
+      const nodeId = queue.shift()!;
+      if (visited.has(nodeId)) continue;
+      visited.add(nodeId);
+
+      // Check if this node has a corresponding CFSM state
+      const stateId = cfgNodeToState.get(nodeId);
+      if (stateId) {
+        fromStateId = stateId;
+        break;
+      }
+
+      // Otherwise, walk backwards through incoming edges
+      const incomingEdges = cfg.edges.filter(e => e.to === nodeId && e.edgeType !== 'continue');
+      for (const inEdge of incomingEdges) {
+        queue.push(inEdge.from);
+      }
+    }
+
+    // Create back-edge if we found both states
+    if (fromStateId && toStateId) {
+      createTransition(fromStateId, toStateId);
     }
   }
 

@@ -276,12 +276,25 @@ function fixBackEdgeTypes(ctx: BuilderContext): void {
       recNode.id  // Don't follow back edges
     );
 
-    // Mark edges from body nodes back to rec node as 'continue'
+    // Mark edges from body nodes back to THIS SPECIFIC rec node as 'continue'
+    // IMPORTANT: Only mark edges TO THIS recursion node, not to other (nested) recursion nodes
     for (const edge of ctx.edges) {
-      if (edge.to === recNode.id &&
+      if (edge.to === recNode.id &&  // Must point to THIS recursion node specifically
           edge.edgeType === 'sequence' &&
           bodyNodes.has(edge.from)) {
+        console.log(`[DEBUG] Marking ${edge.from} -> ${edge.to} as 'continue' for recursion ${recNode.id}`);
         edge.edgeType = 'continue';
+      }
+    }
+
+    // DEBUG: Check for incorrect 'continue' edges
+    for (const edge of ctx.edges) {
+      if (edge.edgeType === 'continue' && edge.to !== recNode.id) {
+        const toNode = ctx.nodes.find(n => n.id === edge.to);
+        if (toNode && toNode.type === 'recursive') {
+          console.log(`[WARNING] Edge ${edge.from} -> ${edge.to} marked as 'continue' but points to different recursion node!`);
+          console.log(`  Current recursion: ${recNode.id}, Edge target: ${edge.to}`);
+        }
       }
     }
   }
