@@ -26,6 +26,14 @@ import type {
   RecursionParallelViolation,
   ForkJoinStructureResult,
   ForkJoinViolation,
+  MulticastResult,
+  MulticastWarning,
+  SelfCommunicationResult,
+  SelfCommunicationViolation,
+  EmptyChoiceBranchResult,
+  EmptyBranchViolation,
+  MergeReachabilityResult,
+  MergeViolation,
   CompleteVerification,
   VerificationOptions,
 } from './types';
@@ -967,6 +975,212 @@ export function checkForkJoinStructure(cfg: CFG): ForkJoinStructureResult {
 }
 
 // ============================================================================
+// Multicast (P2 - MEDIUM for Correctness)
+// ============================================================================
+
+/**
+ * Check multicast message semantics
+ * Multicast messages should be properly handled in verification
+ */
+export function checkMulticast(cfg: CFG): MulticastResult {
+  const warnings: MulticastWarning[] = [];
+
+  // Find all action nodes with multicast (array of receivers)
+  for (const node of cfg.nodes) {
+    if (isActionNode(node) && isMessageAction(node.action)) {
+      const action = node.action;
+
+      if (Array.isArray(action.to) && action.to.length > 1) {
+        // This is a multicast message
+        warnings.push({
+          actionNodeId: node.id,
+          sender: action.from,
+          receivers: action.to,
+          description: `Multicast message from ${action.from} to [${action.to.join(', ')}] - verify all receivers handle message`,
+        });
+      }
+    }
+  }
+
+  return {
+    isValid: true, // Multicast is valid, just generates warnings for review
+    warnings,
+  };
+}
+
+// ============================================================================
+// Self-Communication (P2 - MEDIUM - Spec Verification)
+// ============================================================================
+
+/**
+ * Check for self-communication (role sending to itself)
+ * This is semantically questionable in session types
+ */
+export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
+  const violations: SelfCommunicationViolation[] = [];
+
+  // Find all action nodes
+  for (const node of cfg.nodes) {
+    if (isActionNode(node) && isMessageAction(node.action)) {
+      const action = node.action;
+
+      // Check if sender is also receiver
+      if (typeof action.to === 'string') {
+        if (action.from === action.to) {
+          violations.push({
+            actionNodeId: node.id,
+            role: action.from,
+            description: `Role ${action.from} sends message to itself - self-communication is semantically questionable`,
+          });
+        }
+      } else {
+        // Array of receivers - check if sender is in the list
+        if (action.to.includes(action.from)) {
+          violations.push({
+            actionNodeId: node.id,
+            role: action.from,
+            description: `Role ${action.from} is in multicast receiver list - includes self-communication`,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    isValid: violations.length === 0,
+    violations,
+  };
+}
+
+// ============================================================================
+// Empty Choice Branch (P2 - MEDIUM - Well-Formedness)
+// ============================================================================
+
+/**
+ * Check for empty choice branches
+ * Empty branches may indicate structural issues
+ */
+export function checkEmptyChoiceBranch(cfg: CFG): EmptyChoiceBranchResult {
+  const violations: EmptyBranchViolation[] = [];
+
+  // Find all branch nodes
+  const branchNodes = cfg.nodes.filter(isBranchNode) as BranchNode[];
+
+  for (const branchNode of branchNodes) {
+    // Get all outgoing branch edges
+    const branchEdges = cfg.edges.filter(e => e.from === branchNode.id && e.edgeType === 'branch');
+
+    // For each branch, check if it's empty (no actions before merge)
+    for (const edge of branchEdges) {
+      const branchLabel = edge.label || edge.to;
+
+      // Find first node in branch
+      const firstNode = cfg.nodes.find(n => n.id === edge.to);
+
+      // If first node is directly a merge node, branch is empty
+      if (firstNode && firstNode.type === 'merge') {
+        violations.push({
+          branchNodeId: branchNode.id,
+          emptyBranchLabel: branchLabel,
+          description: `Choice branch "${branchLabel}" is empty (no actions before merge)`,
+        });
+      }
+    }
+  }
+
+  return {
+    isValid: violations.length === 0,
+    violations,
+  };
+}
+
+// ============================================================================
+// Merge Reachability (P3 - Structural Correctness)
+// ============================================================================
+
+/**
+ * Check if all choice branches reach the same merge node
+ * Structural correctness check for choice constructs
+ */
+export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
+  const violations: MergeViolation[] = [];
+
+  // Find all branch nodes
+  const branchNodes = cfg.nodes.filter(isBranchNode) as BranchNode[];
+
+  for (const branchNode of branchNodes) {
+    // Get all outgoing branch edges
+    const branchEdges = cfg.edges.filter(e => e.from === branchNode.id && e.edgeType === 'branch');
+
+    // For each branch, find the merge node it reaches
+    const branchMerges: { [branchLabel: string]: string } = {};
+
+    for (const edge of branchEdges) {
+      const branchLabel = edge.label || edge.to;
+      const mergeNode = findMergeNode(cfg, edge.to);
+
+      if (mergeNode) {
+        branchMerges[branchLabel] = mergeNode.id;
+      } else {
+        branchMerges[branchLabel] = 'none';
+      }
+    }
+
+    // Check if all branches reach the same merge
+    const mergeIds = Object.values(branchMerges);
+    const uniqueMerges = new Set(mergeIds);
+
+    if (uniqueMerges.size > 1) {
+      violations.push({
+        branchNodeId: branchNode.id,
+        description: `Choice branches do not converge at same merge node`,
+        branches: branchMerges,
+      });
+    }
+  }
+
+  return {
+    isValid: violations.length === 0,
+    violations,
+  };
+}
+
+/**
+ * Find the merge node reachable from a starting node
+ */
+function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
+  const visited = new Set<string>();
+  const queue: string[] = [startNodeId];
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    const node = cfg.nodes.find(n => n.id === nodeId);
+    if (!node) continue;
+
+    // If this is a merge node, return it
+    if (node.type === 'merge') {
+      return node;
+    }
+
+    // If this is a terminal node, no merge found
+    if (isTerminalNode(node)) {
+      return null;
+    }
+
+    // Follow outgoing edges (but not continue edges to avoid loops)
+    const outgoing = cfg.edges.filter(e => e.from === nodeId && e.edgeType !== 'continue');
+    for (const edge of outgoing) {
+      queue.push(edge.to);
+    }
+  }
+
+  return null;
+}
+
+// ============================================================================
 // Complete Verification
 // ============================================================================
 
@@ -1007,6 +1221,18 @@ export function verifyProtocol(
       : { isValid: true, violations: [] },
     forkJoinStructure: opts.checkForkJoinStructure
       ? checkForkJoinStructure(cfg)
+      : { isValid: true, violations: [] },
+    multicast: opts.checkMulticast
+      ? checkMulticast(cfg)
+      : { isValid: true, warnings: [] },
+    selfCommunication: opts.checkSelfCommunication
+      ? checkSelfCommunication(cfg)
+      : { isValid: true, violations: [] },
+    emptyChoiceBranch: opts.checkEmptyChoiceBranch
+      ? checkEmptyChoiceBranch(cfg)
+      : { isValid: true, violations: [] },
+    mergeReachability: opts.checkMergeReachability
+      ? checkMergeReachability(cfg)
       : { isValid: true, violations: [] },
   };
 }

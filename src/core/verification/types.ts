@@ -203,6 +203,67 @@ export interface ForkJoinViolation {
 }
 
 // ============================================================================
+// Multicast Results (P2 - MEDIUM)
+// ============================================================================
+
+export interface MulticastResult {
+  isValid: boolean;
+  warnings: MulticastWarning[];
+}
+
+export interface MulticastWarning {
+  actionNodeId: string;
+  sender: string;
+  receivers: string[];
+  description: string;
+}
+
+// ============================================================================
+// Self-Communication Results (P2 - MEDIUM)
+// ============================================================================
+
+export interface SelfCommunicationResult {
+  isValid: boolean;
+  violations: SelfCommunicationViolation[];
+}
+
+export interface SelfCommunicationViolation {
+  actionNodeId: string;
+  role: string;
+  description: string;
+}
+
+// ============================================================================
+// Empty Choice Branch Results (P2 - MEDIUM)
+// ============================================================================
+
+export interface EmptyChoiceBranchResult {
+  isValid: boolean;
+  violations: EmptyBranchViolation[];
+}
+
+export interface EmptyBranchViolation {
+  branchNodeId: string;
+  emptyBranchLabel: string;
+  description: string;
+}
+
+// ============================================================================
+// Merge Reachability Results (P3 - Structural Correctness)
+// ============================================================================
+
+export interface MergeReachabilityResult {
+  isValid: boolean;
+  violations: MergeViolation[];
+}
+
+export interface MergeViolation {
+  branchNodeId: string;
+  description: string;
+  branches: { [branchLabel: string]: string }; // Branch label -> merge node ID
+}
+
+// ============================================================================
 // Complete Verification
 // ============================================================================
 
@@ -219,6 +280,10 @@ export interface CompleteVerification {
   nestedRecursion: NestedRecursionResult;
   recursionInParallel: RecursionInParallelResult;
   forkJoinStructure: ForkJoinStructureResult;
+  multicast: MulticastResult;
+  selfCommunication: SelfCommunicationResult;
+  emptyChoiceBranch: EmptyChoiceBranchResult;
+  mergeReachability: MergeReachabilityResult;
 }
 
 // ============================================================================
@@ -237,6 +302,10 @@ export interface VerificationOptions {
   checkNestedRecursion?: boolean;    // Default: true
   checkRecursionInParallel?: boolean;// Default: true
   checkForkJoinStructure?: boolean;  // Default: true
+  checkMulticast?: boolean;          // Default: true
+  checkSelfCommunication?: boolean;  // Default: true
+  checkEmptyChoiceBranch?: boolean;  // Default: true
+  checkMergeReachability?: boolean;  // Default: true
   strictMode?: boolean;              // Fail on warnings too
 }
 
@@ -252,5 +321,9 @@ export const DEFAULT_VERIFICATION_OPTIONS: VerificationOptions = {
   checkNestedRecursion: true,
   checkRecursionInParallel: true,
   checkForkJoinStructure: true,
+  checkMulticast: true,
+  checkSelfCommunication: true,
+  checkEmptyChoiceBranch: true,
+  checkMergeReachability: true,
   strictMode: false,
 };
