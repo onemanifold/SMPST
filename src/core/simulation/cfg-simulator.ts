@@ -83,6 +83,52 @@ export class CFGSimulator {
       completed: false,
       totalSteps: 0,
     };
+
+    // Auto-advance to first meaningful state (action/choice/terminal)
+    this.advanceToNextMeaningfulState();
+  }
+
+  /**
+   * Auto-advance from initial to first meaningful state
+   * (action, choice, or terminal)
+   */
+  private advanceToNextMeaningfulState(): void {
+    let limit = 100;
+
+    while (limit-- > 0) {
+      const node = this.getNode(this.currentNode);
+      if (!node) return;
+
+      // Stop at action, branch, or terminal
+      if (node.type === 'action' || node.type === 'branch' || node.type === 'terminal') {
+        // If it's a branch, set up the choice
+        if (node.type === 'branch') {
+          const edges = this.getOutgoingEdges(node.id);
+          this.pendingChoice = edges.map((edge, index) => ({
+            index,
+            label: edge.label,
+            firstNode: edge.to,
+            description: this.getNodeDescription(edge.to),
+          }));
+        }
+
+        // If it's terminal, mark as complete
+        if (node.type === 'terminal') {
+          this.completed = true;
+          this.trace.completed = true;
+          this.trace.endTime = Date.now();
+        }
+
+        return;
+      }
+
+      // Auto-advance from structural nodes (initial, merge, fork, join)
+      const edges = this.getOutgoingEdges(this.currentNode);
+      if (edges.length !== 1) return; // Stop if multiple exits or none
+
+      this.currentNode = edges[0].to;
+      this.visitedNodes.push(this.currentNode);
+    }
   }
 
   /**
@@ -185,18 +231,49 @@ export class CFGSimulator {
    */
   private executeUntilAction(): CFGStepResult {
     let advanceLimit = 100; // Prevent infinite loops
+    let lastEvent: CFGExecutionEvent | undefined = undefined;
 
     while (advanceLimit-- > 0) {
       const result = this.executeNode();
 
-      // If we hit an error or completed, return immediately
-      if (!result.success || this.completed) {
+      // If we hit an error, return immediately
+      if (!result.success) {
         return result;
       }
 
-      // If we got an event (action happened), return it
-      if (result.event) {
+      // If completed, return with any previously captured event
+      if (this.completed) {
+        return {
+          ...result,
+          event: lastEvent || result.event,
+        };
+      }
+
+      // If we're at a choice point, stop and wait for user to choose
+      if (this.pendingChoice !== null) {
         return result;
+      }
+
+      // If we got an event, check if we should continue through structural nodes
+      if (result.event) {
+        lastEvent = result.event;
+
+        // Only continue if next node is structural (merge, terminal, fork, join)
+        // Stop if next node is an action or choice
+        const currentNode = this.getNode(this.currentNode);
+        if (!currentNode) {
+          return result;
+        }
+
+        if (currentNode.type === 'action' || currentNode.type === 'branch' || currentNode.type === 'recursive') {
+          // Next node requires user visibility - return the event
+          return {
+            ...result,
+            event: lastEvent,
+          };
+        }
+
+        // Current node is structural - continue loop to auto-advance
       }
 
       // No event - we auto-advanced through a structural node
@@ -282,8 +359,8 @@ export class CFGSimulator {
    */
   private executeAction(node: ActionNode): CFGStepResult {
     const action = node.action;
-    if (action.type !== 'message') {
-      throw new Error(`Expected message action, got ${action.type}`);
+    if (action.kind !== 'message') {
+      throw new Error(`Expected message action, got ${action.kind}`);
     }
 
     const event: MessageEvent = {
@@ -315,14 +392,6 @@ export class CFGSimulator {
       this.selectedChoice = null;
       this.pendingChoice = null;
 
-      const event: ChoiceEvent = {
-        type: 'choice',
-        timestamp: Date.now(),
-        decidingRole: node.role,
-        choiceIndex,
-        nodeId: node.id,
-      };
-
       // Take the chosen branch
       const edges = this.getOutgoingEdges(node.id);
       if (choiceIndex >= edges.length) {
@@ -332,9 +401,21 @@ export class CFGSimulator {
       const chosenEdge = edges[choiceIndex];
       this.transitionTo(chosenEdge.to);
 
+      // Record choice event if tracing
+      if (this.config.recordTrace) {
+        const event: ChoiceEvent = {
+          type: 'choice',
+          timestamp: Date.now(),
+          decidingRole: node.role,
+          choiceIndex,
+          nodeId: node.id,
+        };
+        this.trace.events.push(event);
+      }
+
+      // Return without event - let executeUntilAction continue to next action
       return {
         success: true,
-        event,
         state: this.getState(),
       };
     }
