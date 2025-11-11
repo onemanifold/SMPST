@@ -63,9 +63,13 @@ export function detectDeadlock(cfg: CFG): DeadlockResult {
     if (isOnlyRecursion(cfg, scc)) continue;
 
     // This is a potential deadlock cycle
+    const nodeList = scc.length <= 5
+      ? scc.join(' → ')
+      : `${scc.slice(0, 3).join(' → ')} ... ${scc.slice(-2).join(' → ')} (${scc.length} nodes total)`;
+
     cycles.push({
       nodes: scc,
-      description: `Potential deadlock cycle involving ${scc.length} nodes`,
+      description: `Potential deadlock cycle detected: ${nodeList}. These nodes form a strongly connected component where execution may become stuck.`,
     });
   }
 
@@ -174,10 +178,15 @@ export function checkLiveness(cfg: CFG): LivenessResult {
       const isInInfiniteLoop = isPartOfInfiniteLoop(cfg, node.id);
 
       if (!isInInfiniteLoop) {
+        // Get node details for better error message
+        const nodeDetails = isActionNode(node) && isMessageAction(node.action)
+          ? `action [${node.action.from} → ${typeof node.action.to === 'string' ? node.action.to : node.action.to.join(', ')}: ${node.action.label}]`
+          : `node ${node.id}`;
+
         violations.push({
           type: 'stuck-state',
           nodeId: node.id,
-          description: `Node ${node.id} cannot reach any terminal and is not in a valid infinite loop`,
+          description: `Protocol execution may become stuck at ${nodeDetails}. This node cannot reach a terminal state and is not part of a valid infinite loop (recursion). Ensure all protocol paths either terminate properly or loop back via 'continue' to a 'rec' label.`,
         });
       }
     }
@@ -273,11 +282,15 @@ export function detectParallelDeadlock(cfg: CFG): ParallelDeadlockResult {
         const commonSenders = [...sendersInBranch1].filter(r => sendersInBranch2.has(r));
 
         if (commonSenders.length > 0) {
+          const roleList = commonSenders.length === 1
+            ? `Role "${commonSenders[0]}"`
+            : `Roles [${commonSenders.join(', ')}]`;
+
           conflicts.push({
             parallelId: fork.parallel_id,
             branch1: branches[i],
             branch2: branches[j],
-            description: `Roles ${commonSenders.join(', ')} send in multiple parallel branches (potential blocking)`,
+            description: `Parallel deadlock detected: ${roleList} send messages in multiple parallel branches, which may cause blocking. A role cannot send in concurrent branches as it would require the role to act simultaneously. Review parallel_id "${fork.parallel_id}" to ensure branch independence.`,
           });
         }
       }
@@ -405,11 +418,19 @@ export function detectRaceConditions(cfg: CFG): RaceConditionResult {
         for (const action1 of actionsInBranch1) {
           for (const action2 of actionsInBranch2) {
             if (hasConflict(action1, action2)) {
+              const conflictingRole = getConflictingResource(action1, action2);
+              const action1Details = isMessageAction(action1.action)
+                ? `${action1.action.from} → ${typeof action1.action.to === 'string' ? action1.action.to : action1.action.to.join(', ')}: ${action1.action.label}`
+                : 'unknown action';
+              const action2Details = isMessageAction(action2.action)
+                ? `${action2.action.from} → ${typeof action2.action.to === 'string' ? action2.action.to : action2.action.to.join(', ')}: ${action2.action.label}`
+                : 'unknown action';
+
               races.push({
                 parallelId: fork.parallel_id,
                 conflictingActions: [action1.id, action2.id],
-                resource: getConflictingResource(action1, action2),
-                description: `Concurrent operations on same role`,
+                resource: conflictingRole,
+                description: `Race condition: Role "${conflictingRole}" involved in concurrent operations across parallel branches. Branch 1: [${action1Details}], Branch 2: [${action2Details}]. This may cause non-deterministic behavior.`,
               });
             }
           }
@@ -508,12 +529,25 @@ export function checkProgress(cfg: CFG): ProgressResult {
     }
   }
 
+  // Build detailed description of blocked nodes
+  let description: string | undefined;
+  if (blockedNodes.length > 0) {
+    const nodeDetails = blockedNodes.slice(0, 3).map(nodeId => {
+      const node = cfg.nodes.find(n => n.id === nodeId);
+      if (node && isActionNode(node) && isMessageAction(node.action)) {
+        return `[${node.action.from} → ${typeof node.action.to === 'string' ? node.action.to : node.action.to.join(', ')}: ${node.action.label}]`;
+      }
+      return nodeId;
+    });
+
+    const suffix = blockedNodes.length > 3 ? ` and ${blockedNodes.length - 3} more` : '';
+    description = `Protocol progress blocked: Non-terminal nodes (${nodeDetails.join(', ')}${suffix}) have no outgoing edges, creating dead-ends. All non-terminal nodes must have at least one continuation path.`;
+  }
+
   return {
     canProgress: blockedNodes.length === 0,
     blockedNodes,
-    description: blockedNodes.length > 0
-      ? `Nodes ${blockedNodes.join(', ')} have no outgoing edges`
-      : undefined,
+    description,
   };
 }
 
@@ -552,11 +586,12 @@ export function checkChoiceDeterminism(cfg: CFG): ChoiceDeterminismResult {
     // Check for duplicate labels
     for (const [label, actionIds] of labelMap.entries()) {
       if (actionIds.length > 1) {
+        const role = branchNode.at;
         violations.push({
           branchNodeId: branchNode.id,
           duplicateLabel: label,
           branches: actionIds,
-          description: `Choice at role ${branchNode.at} has multiple branches with message label "${label}"`,
+          description: `Choice determinism violation: External choice at role "${role}" has ${actionIds.length} branches with the same message label "${label}". Per Scribble specification 4.1.2, each choice branch must have a distinguishable message label so that receivers can determine which branch was selected. Use different message labels for each branch (e.g., "${label}Option1", "${label}Option2").`,
         });
       }
     }
@@ -653,10 +688,14 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
           branchInfo[label] = Array.from(roles);
         }
 
+        const branchDetails = Object.entries(branchInfo)
+          .map(([label, roles]) => `"${label}": {${Array.from(roles).join(', ')}}`)
+          .join(', ');
+
         violations.push({
           branchNodeId: branchNode.id,
           role,
-          description: `Role ${role} appears in branches [${branchesWithRole.join(', ')}] but not in [${branchesWithoutRole.join(', ')}]`,
+          description: `Choice mergeability violation: Role "${role}" participates in choice branches [${branchesWithRole.join(', ')}] but not in [${branchesWithoutRole.join(', ')}]. After a choice, all roles must have a consistent view of the protocol state. Either include "${role}" in all branches with equivalent actions, or remove it from all branches. Branch participation: {${branchDetails}}.`,
           branches: branchInfo,
         });
       }
@@ -746,7 +785,7 @@ export function checkConnectedness(cfg: CFG): ConnectednessResult {
     isConnected: orphanedRoles.length === 0,
     orphanedRoles,
     description: orphanedRoles.length > 0
-      ? `Roles ${orphanedRoles.join(', ')} are declared but never used`
+      ? `Connectedness violation: Role${orphanedRoles.length > 1 ? 's' : ''} [${orphanedRoles.join(', ')}] ${orphanedRoles.length > 1 ? 'are' : 'is'} declared in the protocol signature but never participate in any message exchange. All declared roles must be involved in the protocol.`
       : undefined,
   };
 }
@@ -780,7 +819,7 @@ export function checkNestedRecursion(cfg: CFG): NestedRecursionResult {
     if (!targetNode || !isRecursiveNode(targetNode)) {
       violations.push({
         continueEdgeId: edge.id,
-        description: `Continue edge ${edge.id} targets non-recursive node ${edge.to}`,
+        description: `Nested recursion error: Continue statement (edge ${edge.id}) targets node ${edge.to}, which is not a recursive node. Continue statements must target 'rec' labels only.`,
         type: 'undefined-label',
       });
       continue;
@@ -790,10 +829,15 @@ export function checkNestedRecursion(cfg: CFG): NestedRecursionResult {
 
     // Verify the label exists
     if (!recLabels.has(targetLabel)) {
+      const availableLabels = Array.from(recLabels.keys());
+      const labelHint = availableLabels.length > 0
+        ? ` Available rec labels: [${availableLabels.join(', ')}]`
+        : ' No rec labels found in protocol.';
+
       violations.push({
         continueEdgeId: edge.id,
         targetLabel,
-        description: `Continue targets undefined rec label "${targetLabel}"`,
+        description: `Nested recursion error: Continue statement references undefined rec label "${targetLabel}".${labelHint} Ensure the rec label is defined before it is referenced.`,
         type: 'undefined-label',
       });
     }
@@ -858,7 +902,7 @@ export function checkRecursionInParallel(cfg: CFG): RecursionInParallelResult {
                 continueEdgeId: edge.id,
                 recursiveNodeId: edge.to,
                 parallelId,
-                description: `Continue to "${targetLabel}" in parallel branch where rec is not defined (Scribble spec 4.1.3 violation)`,
+                description: `Recursion in parallel violation: Continue to rec label "${targetLabel}" appears in a parallel branch (parallel_id: "${parallelId}"), but the rec definition is outside this branch. Per Scribble specification 4.1.3, continue statements within parallel branches must only target rec labels defined within the same branch. Either move the rec inside the parallel branch or restructure the protocol.`,
               });
             }
           }
@@ -948,7 +992,7 @@ export function checkForkJoinStructure(cfg: CFG): ForkJoinStructureResult {
     if (!matchingJoin) {
       violations.push({
         forkNodeId: fork.id,
-        description: `Fork node ${fork.id} with parallel_id "${parallelId}" has no matching join`,
+        description: `Structural error: Fork node ${fork.id} with parallel_id "${parallelId}" has no matching join node. Every parallel fork must have a corresponding join where branches synchronize. This indicates a malformed CFG structure.`,
         type: 'orphaned-fork',
       });
     }
@@ -962,7 +1006,7 @@ export function checkForkJoinStructure(cfg: CFG): ForkJoinStructureResult {
     if (!matchingFork) {
       violations.push({
         joinNodeId: join.id,
-        description: `Join node ${join.id} with parallel_id "${parallelId}" has no matching fork`,
+        description: `Structural error: Join node ${join.id} with parallel_id "${parallelId}" has no matching fork node. Every join must correspond to a parallel fork where branches were created. This indicates a malformed CFG structure.`,
         type: 'orphaned-join',
       });
     }
