@@ -138,31 +138,37 @@
 
   .workspace-tabs {
     display: flex;
-    gap: 0.25rem;
-    padding: 0.5rem 0.75rem 0;
-    background: #1f2937;
-    border-bottom: 1px solid #374151;
+    flex-direction: row; /* explicitly horizontal */
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: #111827;
+    border-bottom: 2px solid #374151;
   }
 
   .workspace-tab {
-    padding: 0.5rem 1.5rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
+    padding: 0.625rem 1.5rem;
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 6px 6px 0 0;
     color: #9ca3af;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 0.9rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
+    white-space: nowrap;
   }
 
-  .workspace-tab:hover {
+  .workspace-tab:hover:not(.active) {
     color: #d1d5db;
+    background: #374151;
+    border-color: #4b5563;
   }
 
   .workspace-tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
+    color: #ffffff;
+    background: #667eea;
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
   }
 
   .top-section {

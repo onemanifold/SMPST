@@ -11,6 +11,11 @@
   let typescriptView: EditorView | null = null;
   let currentRole = '';
 
+  // When switching to Global view, reset to Scribble editor
+  $: if ($viewMode === 'global' && $editorView === 'typescript') {
+    editorView.set('scribble');
+  }
+
   $: {
     // When viewMode changes, update the TypeScript editor
     if ($viewMode !== 'global' && typescriptView && $generatedCode[$viewMode]) {
@@ -124,34 +129,39 @@
 
   .editor-tabs {
     display: flex;
-    gap: 0.25rem;
-    padding: 0.5rem 0.75rem 0;
+    flex-direction: row; /* explicitly horizontal */
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
     background: #1f2937;
-    border-bottom: 1px solid #374151;
+    border-bottom: 2px solid #374151;
   }
 
   .tab {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
+    padding: 0.625rem 1.25rem;
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 6px 6px 0 0;
     color: #9ca3af;
     font-size: 0.875rem;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
   }
 
-  .tab:hover {
+  .tab:hover:not(.active) {
     color: #d1d5db;
+    background: #1f2937;
+    border-color: #4b5563;
   }
 
   .tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
+    color: #ffffff;
+    background: #667eea;
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
   }
 
   .role-badge {
