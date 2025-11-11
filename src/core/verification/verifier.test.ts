@@ -612,6 +612,60 @@ describe('Complete Protocol Verification', () => {
     // Only deadlock should be checked
     expect(result.deadlock).toBeDefined();
   });
+
+  it('should verify protocol with all 15 verifications simultaneously', () => {
+    // Integration test: Ensures all verifications run without interfering
+    // Uses known-good Two-Phase Commit protocol
+    const source = `
+      protocol TwoPhaseCommit(role Coordinator, role P1, role P2) {
+        Coordinator -> P1: VoteRequest();
+        Coordinator -> P2: VoteRequest();
+
+        par {
+          P1 -> Coordinator: Vote(Bool);
+        } and {
+          P2 -> Coordinator: Vote(Bool);
+        }
+
+        choice at Coordinator {
+          Coordinator -> P1: Commit();
+          Coordinator -> P2: Commit();
+        } or {
+          Coordinator -> P1: Abort();
+          Coordinator -> P2: Abort();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = verifyProtocol(cfg);
+
+    // Verify all verification results are present and structured correctly
+    expect(Object.keys(result)).toContain('structural');
+    expect(Object.keys(result)).toContain('deadlock');
+    expect(Object.keys(result)).toContain('liveness');
+    expect(Object.keys(result)).toContain('parallelDeadlock');
+    expect(Object.keys(result)).toContain('raceConditions');
+    expect(Object.keys(result)).toContain('progress');
+    expect(Object.keys(result)).toContain('choiceDeterminism');
+    expect(Object.keys(result)).toContain('choiceMergeability');
+    expect(Object.keys(result)).toContain('connectedness');
+    expect(Object.keys(result)).toContain('nestedRecursion');
+    expect(Object.keys(result)).toContain('recursionInParallel');
+    expect(Object.keys(result)).toContain('forkJoinStructure');
+    expect(Object.keys(result)).toContain('multicast');
+    expect(Object.keys(result)).toContain('selfCommunication');
+    expect(Object.keys(result)).toContain('emptyChoiceBranch');
+    expect(Object.keys(result)).toContain('mergeReachability');
+
+    // All 16 checks should be present (1 structural + 5 base + 3 P0 + 3 P1 + 3 P2 + 1 P3 = 16)
+    expect(Object.keys(result).length).toBe(16);
+
+    // Each result should have expected structure
+    expect(result.deadlock).toHaveProperty('hasDeadlock');
+    expect(result.choiceDeterminism).toHaveProperty('isDeterministic');
+    expect(result.nestedRecursion).toHaveProperty('isValid');
+  });
 });
 
 // ============================================================================
