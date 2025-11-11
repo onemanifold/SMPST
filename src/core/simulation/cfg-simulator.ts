@@ -291,51 +291,56 @@ export class CFGSimulator {
         return result;
       }
 
-      // If we got an event, check if we should continue through structural nodes
+      // Capture any event
       if (result.event) {
         lastEvent = result.event;
-
-        // Only continue if next node is structural (merge, terminal, fork, join)
-        // Stop if next node is an action or choice
-        const currentNode = this.getNode(this.currentNode);
-        if (!currentNode) {
-          return result;
-        }
-
-        if (currentNode.type === 'action' || currentNode.type === 'branch') {
-          // Next node requires user visibility - return the event
-          return {
-            ...result,
-            event: lastEvent,
-          };
-        }
-
-        // Recursive nodes are transparent - continue through them
-        // They will be handled by executeRecursive() in the next iteration
-
-        // If in parallel mode and at join, check if this completes all branches
-        if (this.inParallel && currentNode.type === 'join') {
-          // Mark current branch as complete
-          this.parallelBranchesCompleted.add(this.parallelBranchIndex);
-
-          // If all branches are now complete, continue to execute join and auto-complete
-          if (this.parallelBranchesCompleted.size === this.parallelBranches.length) {
-            // Continue loop to execute the join and exit parallel
-            // This allows auto-completion like we do for sequential protocols
-          } else {
-            // Not all branches done - stop and wait for next step
-            return {
-              ...result,
-              event: lastEvent,
-            };
-          }
-        }
-
-        // Current node is structural - continue loop to auto-advance
       }
 
-      // No event - we auto-advanced through a structural node
-      // Continue looping to find the next action
+      // After executing current node, check if we should stop
+      const currentNode = this.getNode(this.currentNode);
+      if (!currentNode) {
+        return {
+          success: false,
+          error: {
+            type: 'invalid-node',
+            message: `Node ${this.currentNode} not found`,
+            nodeId: this.currentNode,
+          },
+          state: this.getState(),
+        };
+      }
+
+      // Stop if we have an event AND we're now at an action node
+      // This prevents executing the same action multiple times in one step
+      // (Branch nodes need to be executed to set up choice state, so don't stop at them)
+      if (lastEvent && currentNode.type === 'action') {
+        return {
+          success: true,
+          event: lastEvent,
+          state: this.getState(),
+        };
+      }
+
+      // If in parallel mode and at join, check if this completes all branches
+      if (this.inParallel && currentNode.type === 'join') {
+        // Mark current branch as complete
+        this.parallelBranchesCompleted.add(this.parallelBranchIndex);
+
+        // If all branches are now complete, continue to execute join and auto-complete
+        if (this.parallelBranchesCompleted.size === this.parallelBranches.length) {
+          // Continue loop to execute the join and exit parallel
+          // This allows auto-completion like we do for sequential protocols
+        } else {
+          // Not all branches done - stop and wait for next step
+          return {
+            success: true,
+            event: lastEvent,
+            state: this.getState(),
+          };
+        }
+      }
+
+      // No event or structural node - continue looping to find the next action
     }
 
     throw new Error('Too many structural nodes traversed (possible cycle)');
@@ -552,16 +557,13 @@ export class CFGSimulator {
       inStack.iterations++;
 
       // Check exit conditions
-      // Exit if: maxSteps reached OR we came from a merge node (implicit exit branch)
-      const cameFromMerge = this.visitedNodes.length > 1 &&
-        this.isNodeType(this.visitedNodes[this.visitedNodes.length - 2], 'merge');
-      const shouldExit = this.stepCount >= this.config.maxSteps || cameFromMerge;
+      // With correct CFG: only exit when maxSteps reached
+      // (Branches without 'continue' will never reach this recursive node)
+      const shouldExit = this.stepCount >= this.config.maxSteps;
 
       if (shouldExit) {
-        // Exit recursion
-        if (this.stepCount >= this.config.maxSteps) {
-          this.reachedMaxSteps = true;
-        }
+        // Exit recursion due to maxSteps limit
+        this.reachedMaxSteps = true;
 
         // Record exit event if tracing
         if (this.config.recordTrace) {
@@ -582,10 +584,9 @@ export class CFGSimulator {
           this.recursionStack.splice(index, 1);
         }
 
-        // Take exit edge if available, otherwise just stay at current node
-        if (exitEdge) {
-          this.transitionTo(exitEdge.to);
-        }
+        // Don't transition when exiting due to maxSteps
+        // The protocol is incomplete, so stay at current node
+        // (If we took the exit edge to terminal, it would incorrectly mark as completed)
 
         return {
           success: true,
@@ -622,14 +623,6 @@ export class CFGSimulator {
   private isTerminalNode(nodeId: string): boolean {
     const node = this.cfg.nodes.find(n => n.id === nodeId);
     return node?.type === 'terminal';
-  }
-
-  /**
-   * Helper to check if a node ID has a specific type
-   */
-  private isNodeType(nodeId: string, type: string): boolean {
-    const node = this.cfg.nodes.find(n => n.id === nodeId);
-    return node?.type === type;
   }
 
 
@@ -767,19 +760,10 @@ export class CFGSimulator {
    * Transition to specific node
    */
   private transitionTo(nodeId: string): void {
-    const fromNode = this.currentNode;
     this.currentNode = nodeId;
     this.visitedNodes.push(nodeId);
-
-    if (this.config.recordTrace) {
-      const event: StateChangeEvent = {
-        type: 'state-change',
-        timestamp: Date.now(),
-        fromNode,
-        toNode: nodeId,
-      };
-      this.trace.events.push(event);
-    }
+    // Note: state-change events are too low-level for the trace
+    // Only protocol-level events (messages, choices, recursion, parallel) are recorded
   }
 
   /**

@@ -527,11 +527,12 @@ function buildRecursion(
     (lastStatement as Continue).label === recursion.label;
 
   // Build recursion body
-  // Pass recNode as exitNodeId so that continue statements connect back to it
+  // Paths with explicit 'continue' will loop back to recNode (via buildContinue)
+  // Paths without 'continue' will exit to exitNodeId (exit the rec block)
   const bodyEntry = buildProtocolBody(
     ctx,
     body,
-    recNode.id  // Body exits to rec node (for continue)
+    exitNodeId  // Paths without continue exit the rec block
   );
 
   // Connect recursive node to body entry
