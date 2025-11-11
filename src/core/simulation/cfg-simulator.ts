@@ -51,6 +51,8 @@ export class CFGSimulator {
   private inParallel: boolean = false;
   private parallelBranches: string[][] = [];
   private parallelBranchIndex: number = 0;
+  private parallelBranchesCompleted: Set<number> = new Set(); // Track which branches reached join
+  private parallelJoinNode: string | null = null; // The join node all branches must reach
 
   // Recursion state
   private recursionStack: RecursionContext[] = [];
@@ -90,7 +92,7 @@ export class CFGSimulator {
 
   /**
    * Auto-advance from initial to first meaningful state
-   * (action, choice, or terminal)
+   * (action, choice, fork, or terminal)
    */
   private advanceToNextMeaningfulState(): void {
     let limit = 100;
@@ -99,8 +101,8 @@ export class CFGSimulator {
       const node = this.getNode(this.currentNode);
       if (!node) return;
 
-      // Stop at action, branch, or terminal
-      if (node.type === 'action' || node.type === 'branch' || node.type === 'terminal') {
+      // Stop at action, branch, fork, or terminal
+      if (node.type === 'action' || node.type === 'branch' || node.type === 'fork' || node.type === 'terminal') {
         // If it's a branch, set up the choice
         if (node.type === 'branch') {
           const edges = this.getOutgoingEdges(node.id);
@@ -110,6 +112,20 @@ export class CFGSimulator {
             firstNode: edge.to,
             description: this.getNodeDescription(edge.to),
           }));
+        }
+
+        // If it's a fork, set up parallel state so getState() shows inParallel = true
+        if (node.type === 'fork') {
+          const forkEdges = this.getOutgoingEdges(node.id).filter(e => e.edgeType === 'fork');
+          const joinNode = this.cfg.nodes.find(n =>
+            n.type === 'join' && (n as any).parallel_id === (node as any).parallel_id
+          );
+          this.inParallel = true;
+          this.parallelBranches = forkEdges.map(edge => [edge.to]);
+          this.parallelBranchIndex = 0;
+          this.parallelBranchesCompleted = new Set();
+          this.parallelJoinNode = joinNode?.id || null;
+          // Don't transition yet - let first step() handle it
         }
 
         // If it's terminal, mark as complete
@@ -122,7 +138,7 @@ export class CFGSimulator {
         return;
       }
 
-      // Auto-advance from structural nodes (initial, merge, fork, join)
+      // Auto-advance from structural nodes (initial, merge, join, recursive)
       const edges = this.getOutgoingEdges(this.currentNode);
       if (edges.length !== 1) return; // Stop if multiple exits or none
 
@@ -271,6 +287,24 @@ export class CFGSimulator {
             ...result,
             event: lastEvent,
           };
+        }
+
+        // If in parallel mode and at join, check if this completes all branches
+        if (this.inParallel && currentNode.type === 'join') {
+          // Mark current branch as complete
+          this.parallelBranchesCompleted.add(this.parallelBranchIndex);
+
+          // If all branches are now complete, continue to execute join and auto-complete
+          if (this.parallelBranchesCompleted.size === this.parallelBranches.length) {
+            // Continue loop to execute the join and exit parallel
+            // This allows auto-completion like we do for sequential protocols
+          } else {
+            // Not all branches done - stop and wait for next step
+            return {
+              ...result,
+              event: lastEvent,
+            };
+          }
         }
 
         // Current node is structural - continue loop to auto-advance
@@ -496,48 +530,110 @@ export class CFGSimulator {
 
   /**
    * Execute fork node (branch point in parallel)
+   * Sets up interleaving execution of parallel branches
    */
   private executeFork(): CFGStepResult {
-    return this.transitionToNext();
+    const forkNode = this.getNode(this.currentNode);
+    if (!forkNode || forkNode.type !== 'fork') {
+      throw new Error(`Expected fork node at ${this.currentNode}`);
+    }
+
+    const forkEdges = this.getOutgoingEdges(this.currentNode).filter(e => e.edgeType === 'fork');
+
+    if (forkEdges.length === 0) {
+      throw new Error(`Fork node ${this.currentNode} has no fork edges`);
+    }
+
+    // Find the matching join node
+    const joinNode = this.cfg.nodes.find(n =>
+      n.type === 'join' && (n as any).parallel_id === (forkNode as any).parallel_id
+    );
+    if (!joinNode) {
+      throw new Error(`No matching join node for fork ${this.currentNode}`);
+    }
+
+    // Set up parallel state with all branches
+    this.inParallel = true;
+    this.parallelBranches = forkEdges.map(edge => [edge.to]); // Each branch starts with one node
+    this.parallelBranchIndex = 0;
+    this.parallelBranchesCompleted = new Set();
+    this.parallelJoinNode = joinNode.id;
+
+    // Record fork event if tracing
+    if (this.config.recordTrace) {
+      const event: ParallelEvent = {
+        type: 'parallel',
+        timestamp: Date.now(),
+        action: 'fork',
+        branches: forkEdges.length,
+        nodeId: this.currentNode,
+      };
+      this.trace.events.push(event);
+    }
+
+    // Transition to first node of first branch
+    this.currentNode = this.parallelBranches[0][0];
+    this.visitedNodes.push(this.currentNode);
+
+    // Return without event - let executeUntilAction continue to action
+    return {
+      success: true,
+      state: this.getState(),
+    };
   }
 
   /**
    * Execute join node (merge parallel branches)
+   * Marks current branch as complete and checks if all branches done
    */
   private executeJoin(): CFGStepResult {
-    // Check if all branches completed
-    this.parallelBranchIndex++;
+    // Mark current branch as complete
+    this.parallelBranchesCompleted.add(this.parallelBranchIndex);
 
-    if (this.parallelBranchIndex < this.parallelBranches.length) {
-      // Move to next branch
-      const nextBranch = this.parallelBranches[this.parallelBranchIndex];
-      this.currentNode = nextBranch[0];
-      this.visitedNodes.push(this.currentNode);
+    // Check if all branches have reached join
+    if (this.parallelBranchesCompleted.size < this.parallelBranches.length) {
+      // Not all branches complete yet - switch to next incomplete branch
+      this.parallelBranchIndex++;
 
-      return {
-        success: true,
-        state: this.getState(),
-      };
+      // Find next incomplete branch
+      while (this.parallelBranchIndex < this.parallelBranches.length &&
+             this.parallelBranchesCompleted.has(this.parallelBranchIndex)) {
+        this.parallelBranchIndex++;
+      }
+
+      if (this.parallelBranchIndex < this.parallelBranches.length) {
+        // Move to next incomplete branch
+        const nextBranch = this.parallelBranches[this.parallelBranchIndex];
+        this.currentNode = nextBranch[0];
+        this.visitedNodes.push(this.currentNode);
+
+        return {
+          success: true,
+          state: this.getState(),
+        };
+      }
     }
 
     // All branches complete - exit parallel
     this.inParallel = false;
     this.parallelBranches = [];
     this.parallelBranchIndex = 0;
+    this.parallelBranchesCompleted = new Set();
+    this.parallelJoinNode = null;
 
-    const event: ParallelEvent = {
-      type: 'parallel',
-      timestamp: Date.now(),
-      action: 'join',
-      nodeId: this.currentNode,
-    };
+    // Record join event if tracing
+    if (this.config.recordTrace) {
+      const event: ParallelEvent = {
+        type: 'parallel',
+        timestamp: Date.now(),
+        action: 'join',
+        nodeId: this.currentNode,
+      };
+      this.trace.events.push(event);
+    }
 
-    const result = this.transitionToNext();
-
-    return {
-      ...result,
-      event,
-    };
+    // Transition to next node without returning join event
+    return this.transitionToNext();
   }
 
   /**
