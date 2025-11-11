@@ -1,12 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as d3 from 'd3';
-  import { parseStatus, projectionData, simulationState, viewMode } from '../stores/editor';
+  import { parseStatus, viewMode } from '../stores/editor';
 
   let svgContainer: HTMLDivElement;
-  let roles: string[] = [];
-
-  $: roles = $projectionData.map(p => p.role);
 
   // Mock CFG data (global protocol view)
   const mockCFGData = {
@@ -48,37 +45,6 @@
       ]
     }
   };
-
-  // Simulation controls
-  function handleStart() {
-    simulationState.update(s => ({ ...s, running: true }));
-    // Integration point: start simulation
-  }
-
-  function handlePause() {
-    simulationState.update(s => ({ ...s, running: false }));
-    // Integration point: pause simulation
-  }
-
-  function handleStep() {
-    simulationState.update(s => ({ ...s, step: s.step + 1 }));
-    // Integration point: step simulation
-  }
-
-  function handleReset() {
-    simulationState.set({
-      running: false,
-      step: 0,
-      maxSteps: 100,
-      currentRoleStates: {},
-      messageQueue: []
-    });
-    // Integration point: reset simulation
-  }
-
-  function selectView(view: string) {
-    viewMode.set(view);
-  }
 
   function renderGraph() {
     if (!svgContainer || $parseStatus !== 'success') return;
@@ -237,70 +203,6 @@
 </script>
 
 <div class="visualizer">
-  <div class="visualizer-header">
-    <div class="view-tabs">
-      <button
-        class="view-tab"
-        class:active={$viewMode === 'global'}
-        on:click={() => selectView('global')}
-      >
-        Global Protocol
-      </button>
-      {#each roles as role}
-        <button
-          class="view-tab"
-          class:active={$viewMode === role}
-          on:click={() => selectView(role)}
-        >
-          {role}
-        </button>
-      {/each}
-    </div>
-  </div>
-
-  <div class="simulation-controls">
-    <div class="control-group">
-      <button
-        class="sim-btn"
-        class:active={$simulationState.running}
-        on:click={handleStart}
-        disabled={$simulationState.running || $parseStatus !== 'success'}
-      >
-        ▶ Start
-      </button>
-      <button
-        class="sim-btn"
-        on:click={handlePause}
-        disabled={!$simulationState.running}
-      >
-        ⏸ Pause
-      </button>
-      <button
-        class="sim-btn"
-        on:click={handleStep}
-        disabled={$simulationState.running || $parseStatus !== 'success'}
-      >
-        ⏭ Step
-      </button>
-      <button
-        class="sim-btn"
-        on:click={handleReset}
-      >
-        ↻ Reset
-      </button>
-    </div>
-
-    <div class="sim-info">
-      <span class="info-label">Step:</span>
-      <span class="info-value">{$simulationState.step} / {$simulationState.maxSteps}</span>
-      <span class="divider">|</span>
-      <span class="info-label">Status:</span>
-      <span class="info-value" class:running={$simulationState.running}>
-        {$simulationState.running ? 'Running' : 'Idle'}
-      </span>
-    </div>
-  </div>
-
   <div class="graph-container" bind:this={svgContainer}>
     {#if $parseStatus !== 'success'}
       <div class="empty-state">
@@ -317,105 +219,6 @@
     flex-direction: column;
     height: 100%;
     background: #111827;
-  }
-
-  .visualizer-header {
-    background: #1f2937;
-    border-bottom: 1px solid #374151;
-  }
-
-  .view-tabs {
-    display: flex;
-    gap: 0.25rem;
-    padding: 0.5rem 0.75rem 0;
-  }
-
-  .view-tab {
-    padding: 0.5rem 1rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: #9ca3af;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .view-tab:hover {
-    color: #d1d5db;
-  }
-
-  .view-tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
-  }
-
-  .simulation-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    background: #1f2937;
-    border-bottom: 1px solid #374151;
-  }
-
-  .control-group {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .sim-btn {
-    padding: 0.5rem 1rem;
-    background: #374151;
-    border: 1px solid #4b5563;
-    border-radius: 4px;
-    color: #d1d5db;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .sim-btn:hover:not(:disabled) {
-    background: #4b5563;
-    border-color: #667eea;
-  }
-
-  .sim-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .sim-btn.active {
-    background: #667eea;
-    border-color: #667eea;
-    color: white;
-  }
-
-  .sim-info {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.875rem;
-  }
-
-  .info-label {
-    color: #9ca3af;
-    font-weight: 500;
-  }
-
-  .info-value {
-    color: #d1d5db;
-    font-weight: 600;
-  }
-
-  .info-value.running {
-    color: #10b981;
-  }
-
-  .divider {
-    color: #4b5563;
   }
 
   .graph-container {
