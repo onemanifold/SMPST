@@ -3,10 +3,12 @@
   import CodeEditor from './CodeEditor.svelte';
   import Visualizer from './Visualizer.svelte';
   import OutputPanel from './OutputPanel.svelte';
-  import { viewMode, projectionData } from '../stores/editor';
+  import { viewMode, projectionData, outputPanelCollapsed } from '../stores/editor';
 
   let editorWidth = 45; // percentage
   let outputHeight = 30; // percentage
+
+  $: effectiveOutputHeight = $outputPanelCollapsed ? 'auto' : `${outputHeight}%`;
   let isDraggingHorizontal = false;
   let isDraggingVertical = false;
 
@@ -105,7 +107,7 @@
         aria-orientation="horizontal"
       ></div>
 
-      <div class="bottom-section" style="height: {outputHeight}%">
+      <div class="bottom-section" style="height: {effectiveOutputHeight}">
         <OutputPanel />
       </div>
     </div>

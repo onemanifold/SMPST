@@ -87,16 +87,16 @@
     >
       Scribble Protocol
     </button>
-    <button
-      class="tab"
-      class:active={$editorView === 'typescript'}
-      on:click={() => selectView('typescript')}
-    >
-      TypeScript
-      {#if $viewMode !== 'global'}
+    {#if $viewMode !== 'global'}
+      <button
+        class="tab"
+        class:active={$editorView === 'typescript'}
+        on:click={() => selectView('typescript')}
+      >
+        TypeScript
         <span class="role-badge">{$viewMode}</span>
-      {/if}
-    </button>
+      </button>
+    {/if}
   </div>
 
   <div class="editor-content">
