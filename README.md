@@ -141,7 +141,7 @@ This project automatically deploys to GitHub Pages on push to `main` branch.
 - ✅ Correct recursion semantics (verified against Scribble spec)
 - ✅ 100% rule coverage
 
-**Layer 3: Verification**
+**Layer 3: Verification** (COMPREHENSIVE - All Gaps Covered)
 - ✅ Deadlock detection (SCC-based)
 - ✅ Liveness checking
 - ✅ Parallel deadlock detection
@@ -153,7 +153,11 @@ This project automatically deploys to GitHub Pages on push to `main` branch.
 - ✅ Nested recursion (P1 - correctness)
 - ✅ Recursion in parallel (P1 - well-formedness)
 - ✅ Fork-join structure (P1 - well-formedness)
-- ✅ 41/41 tests passing
+- ✅ Multicast (P2 - semantic correctness)
+- ✅ Self-communication (P2 - semantic validation)
+- ✅ Empty choice branch (P2 - structural)
+- ✅ Merge reachability (P3 - structural)
+- ✅ 47/47 tests passing (15 algorithms total)
 
 **Layer 4: CFG Simulator**
 - ✅ Orchestration-based execution
