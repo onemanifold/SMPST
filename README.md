@@ -111,12 +111,14 @@ SMPST/
 
 5. **Refactor if needed**
 
-## Design Documents
+## Documentation
 
+- **[Formal Foundations](./docs/foundations.md)** - MPST theory, LTS, Scribble semantics
 - **[Architecture Overview](./docs/architecture-overview.md)** - Complete explanation of CFG-based architecture
+- **[CFG Design](./docs/cfg-design.md)** - CFG structure and verification algorithms
+- **[Implementation Status](./docs/STATUS.md)** - Current status, test coverage, recent changes
 - **[Scribble 2.0 Syntax](./docs/scribble-2.0-syntax.md)** - EBNF grammar and examples
 - **[AST Design](./docs/ast-design.md)** - TypeScript AST type definitions
-- **[CFG Design](./docs/cfg-design.md)** - CFG structure and verification algorithms
 
 ## Deployment
 
@@ -124,33 +126,63 @@ This project automatically deploys to GitHub Pages on push to `main` branch.
 
 **Live URL**: https://onemanifold.github.io/SMPST/
 
-## Key Features (Planned)
+## Implementation Status
 
-### Phase 1: Core Features
-- ✅ Project setup with Vite + Svelte + TypeScript
-- ✅ GitHub Pages deployment
-- ✅ Vitest TDD infrastructure
-- ⏳ Scribble 2.0 parser (Chevrotain)
-- ⏳ CFG builder with parallel composition
-- ⏳ Verification algorithms (deadlock, liveness, etc.)
-- ⏳ CFSM projection
-- ⏳ D3 visualization for CFG/CFSM
+### ✅ Complete & Tested (Layers 1-4)
 
-### Phase 2: Runtime
-- ⏳ State machine execution
-- ⏳ Interactive simulation
-- ⏳ Message trace visualization
+**Layer 1: Parser**
+- ✅ Chevrotain-based Scribble 2.0 parser
+- ✅ Full syntax support (message, choice, parallel, recursion, do)
+- ✅ 100% test coverage
 
-### Phase 3: Code Generation
-- ⏳ TypeScript/JavaScript code generation
-- ⏳ Type guards and assertions
-- ⏳ Runtime library integration
+**Layer 2: CFG Builder**
+- ✅ AST → CFG transformation
+- ✅ All Scribble constructs implemented
+- ✅ Correct recursion semantics (verified against Scribble spec)
+- ✅ 100% rule coverage
 
-### Phase 4: Advanced Features
-- ⏳ Persistence (IndexedDB via Dexie)
-- ⏳ Protocol library
-- ⏳ Export/import protocols
-- ⏳ WebRTC-based P2P testing
+**Layer 3: Verification**
+- ✅ Deadlock detection (SCC-based)
+- ✅ Liveness checking
+- ✅ Parallel deadlock detection
+- ✅ Race condition detection
+- ✅ Progress checking
+- ✅ 24/24 tests passing
+
+**Layer 4: CFG Simulator**
+- ✅ Orchestration-based execution
+- ✅ Sequential protocols
+- ✅ Choice execution (internal/external)
+- ✅ Parallel interleaving
+- ✅ Recursion (simple, conditional, nested)
+- ✅ Trace recording
+- ✅ 23/23 tests passing
+
+**Test Results**: All implemented layers have 100% test pass rate
+
+### 🚧 In Progress
+
+**Layer 5: Projection & CFSM**
+- Design phase
+- CFG → per-role CFSM projection
+
+### ⏸️ Planned
+
+**Layer 6: Code Generation**
+- TypeScript/JavaScript code generation
+- Type guards and assertions
+- Runtime library integration
+
+**UI & Visualization**
+- D3 visualization for CFG/CFSM
+- Interactive simulation UI
+- Message trace visualization
+
+**Advanced Features**
+- Persistence (IndexedDB via Dexie)
+- Protocol library
+- Export/import protocols
+- WebRTC-based P2P testing
 
 ## Contributing
 
