@@ -1,14 +1,20 @@
 <script lang="ts">
   import Header from './Header.svelte';
-  import ProtocolLibrary from './ProtocolLibrary.svelte';
-  import Editor from './Editor.svelte';
+  import CodeEditor from './CodeEditor.svelte';
   import Visualizer from './Visualizer.svelte';
   import OutputPanel from './OutputPanel.svelte';
+  import { viewMode, projectionData } from '../stores/editor';
 
   let editorWidth = 45; // percentage
   let outputHeight = 30; // percentage
   let isDraggingHorizontal = false;
   let isDraggingVertical = false;
+
+  $: roles = $projectionData.map(p => p.role);
+
+  function selectView(view: string) {
+    viewMode.set(view);
+  }
 
   function handleHorizontalDragStart() {
     isDraggingHorizontal = true;
@@ -55,12 +61,29 @@
   <Header />
 
   <div class="main-content">
-    <ProtocolLibrary />
-
     <div class="workspace">
+      <div class="workspace-tabs">
+        <button
+          class="workspace-tab"
+          class:active={$viewMode === 'global'}
+          on:click={() => selectView('global')}
+        >
+          Global Protocol
+        </button>
+        {#each roles as role}
+          <button
+            class="workspace-tab"
+            class:active={$viewMode === role}
+            on:click={() => selectView(role)}
+          >
+            {role}
+          </button>
+        {/each}
+      </div>
+
       <div class="top-section">
         <div class="editor-section" style="width: {editorWidth}%">
-          <Editor />
+          <CodeEditor />
         </div>
 
         <div
@@ -109,6 +132,35 @@
     flex-direction: column;
     flex: 1;
     overflow: hidden;
+  }
+
+  .workspace-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem 0;
+    background: #1f2937;
+    border-bottom: 1px solid #374151;
+  }
+
+  .workspace-tab {
+    padding: 0.5rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #9ca3af;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .workspace-tab:hover {
+    color: #d1d5db;
+  }
+
+  .workspace-tab.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
   }
 
   .top-section {

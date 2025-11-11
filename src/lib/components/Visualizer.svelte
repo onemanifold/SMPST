@@ -1,13 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as d3 from 'd3';
-  import { parseStatus, projectionData } from '../stores/editor';
+  import { parseStatus, viewMode } from '../stores/editor';
 
   let svgContainer: HTMLDivElement;
-  let viewMode: 'cfg' | 'cfsm' = 'cfg';
-  let selectedRole = 'Client';
 
-  // Mock CFG data
+  // Mock CFG data (global protocol view)
   const mockCFGData = {
     nodes: [
       { id: 'start', label: 'Start', type: 'start' },
@@ -22,7 +20,7 @@
     ]
   };
 
-  // Mock CFSM data
+  // Mock CFSM data (local protocol views)
   const mockCFSMData = {
     Client: {
       nodes: [
@@ -64,7 +62,8 @@
       .attr('height', height)
       .attr('viewBox', [0, 0, width, height]);
 
-    const data = viewMode === 'cfg' ? mockCFGData : mockCFSMData[selectedRole];
+    const data = $viewMode === 'global' ? mockCFGData : mockCFSMData[$viewMode];
+    if (!data) return;
 
     // Create force simulation
     const simulation = d3
@@ -198,47 +197,17 @@
     renderGraph();
   }
 
-  $: if (viewMode || selectedRole) {
+  $: if ($viewMode) {
     renderGraph();
   }
 </script>
 
 <div class="visualizer">
-  <div class="visualizer-header">
-    <div class="header-left">
-      <span class="visualizer-title">Visualization</span>
-    </div>
-    <div class="header-right">
-      <div class="view-toggle">
-        <button
-          class="toggle-btn"
-          class:active={viewMode === 'cfg'}
-          on:click={() => viewMode = 'cfg'}
-        >
-          CFG
-        </button>
-        <button
-          class="toggle-btn"
-          class:active={viewMode === 'cfsm'}
-          on:click={() => viewMode = 'cfsm'}
-        >
-          CFSM
-        </button>
-      </div>
-      {#if viewMode === 'cfsm'}
-        <select class="role-select" bind:value={selectedRole}>
-          <option value="Client">Client</option>
-          <option value="Server">Server</option>
-        </select>
-      {/if}
-    </div>
-  </div>
-
   <div class="graph-container" bind:this={svgContainer}>
     {#if $parseStatus !== 'success'}
       <div class="empty-state">
         <div class="empty-icon">📊</div>
-        <p>Parse a protocol to view visualization</p>
+        <p>Parse a protocol to view {$viewMode === 'global' ? 'CFG' : 'CFSM'}</p>
       </div>
     {/if}
   </div>
@@ -250,71 +219,6 @@
     flex-direction: column;
     height: 100%;
     background: #111827;
-  }
-
-  .visualizer-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    background: #1f2937;
-    border-bottom: 1px solid #374151;
-  }
-
-  .header-left {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .visualizer-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #f3f4f6;
-  }
-
-  .header-right {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .view-toggle {
-    display: flex;
-    background: #111827;
-    border: 1px solid #374151;
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  .toggle-btn {
-    padding: 0.375rem 0.75rem;
-    background: transparent;
-    border: none;
-    color: #9ca3af;
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .toggle-btn:hover {
-    color: #d1d5db;
-  }
-
-  .toggle-btn.active {
-    background: #667eea;
-    color: white;
-  }
-
-  .role-select {
-    padding: 0.375rem 0.75rem;
-    background: #111827;
-    border: 1px solid #374151;
-    border-radius: 4px;
-    color: #d1d5db;
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
   }
 
   .graph-container {

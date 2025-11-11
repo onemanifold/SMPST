@@ -1,46 +1,51 @@
 <script lang="ts">
-  import { activeTab, parseStatus, verificationResult, projectionData, parseError, simulationState } from '../stores/editor';
+  import { activeTab, parseStatus, verificationResult, projectionData, parseError } from '../stores/editor';
+
+  let isCollapsed = false;
 
   function selectTab(tab: typeof $activeTab) {
     activeTab.set(tab);
   }
+
+  function toggleCollapse() {
+    isCollapsed = !isCollapsed;
+  }
 </script>
 
-<div class="output-panel">
+<div class="output-panel" class:collapsed={isCollapsed}>
   <div class="tabs-header">
-    <button
-      class="tab"
-      class:active={$activeTab === 'verification'}
-      on:click={() => selectTab('verification')}
-    >
-      ✓ Verification
-    </button>
-    <button
-      class="tab"
-      class:active={$activeTab === 'projection'}
-      on:click={() => selectTab('projection')}
-    >
-      ⚙ Projection
-    </button>
-    <button
-      class="tab"
-      class:active={$activeTab === 'simulation'}
-      on:click={() => selectTab('simulation')}
-    >
-      ▶ Simulation
-    </button>
-    <button
-      class="tab"
-      class:active={$activeTab === 'errors'}
-      on:click={() => selectTab('errors')}
-    >
-      ⚠ Errors
-      {#if $parseError}
-        <span class="error-badge">1</span>
-      {/if}
+    <div class="tabs-group">
+      <button
+        class="tab"
+        class:active={$activeTab === 'verification'}
+        on:click={() => selectTab('verification')}
+      >
+        ✓ Verification
+      </button>
+      <button
+        class="tab"
+        class:active={$activeTab === 'projection'}
+        on:click={() => selectTab('projection')}
+      >
+        ⚙ Projection
+      </button>
+      <button
+        class="tab"
+        class:active={$activeTab === 'errors'}
+        on:click={() => selectTab('errors')}
+      >
+        ⚠ Errors
+        {#if $parseError}
+          <span class="error-badge">1</span>
+        {/if}
+      </button>
+    </div>
+    <button class="collapse-btn" on:click={toggleCollapse} title={isCollapsed ? 'Expand panel' : 'Collapse panel'}>
+      {isCollapsed ? '▲' : '▼'}
     </button>
   </div>
 
+  {#if !isCollapsed}
   <div class="tab-content">
     {#if $activeTab === 'verification'}
       <div class="content-section">
@@ -101,39 +106,6 @@
           <p class="empty-message">Parse a protocol to see projections</p>
         {/if}
       </div>
-    {:else if $activeTab === 'simulation'}
-      <div class="content-section">
-        <h3 class="section-title">Protocol Simulation</h3>
-        {#if $parseStatus === 'success'}
-          <div class="simulation-controls">
-            <button class="sim-btn" disabled={$simulationState.running}>
-              ▶ Start
-            </button>
-            <button class="sim-btn" disabled={!$simulationState.running}>
-              ⏸ Pause
-            </button>
-            <button class="sim-btn" disabled={$simulationState.running}>
-              ⏭ Step
-            </button>
-            <button class="sim-btn">
-              ↻ Reset
-            </button>
-          </div>
-          <div class="simulation-info">
-            <div class="info-row">
-              <span class="info-label">Step:</span>
-              <span class="info-value">{$simulationState.step} / {$simulationState.maxSteps}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Status:</span>
-              <span class="info-value">{$simulationState.running ? 'Running' : 'Idle'}</span>
-            </div>
-          </div>
-          <p class="note">Simulation UI placeholder - Integration point for runtime</p>
-        {:else}
-          <p class="empty-message">Parse a protocol to start simulation</p>
-        {/if}
-      </div>
     {:else if $activeTab === 'errors'}
       <div class="content-section">
         <h3 class="section-title">Parse Errors</h3>
@@ -148,6 +120,7 @@
       </div>
     {/if}
   </div>
+  {/if}
 </div>
 
 <style>
@@ -157,13 +130,42 @@
     height: 100%;
     background: #1f2937;
     border-top: 1px solid #374151;
+    transition: height 0.3s ease;
+  }
+
+  .output-panel.collapsed {
+    height: auto;
+    min-height: 0;
   }
 
   .tabs-header {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     background: #111827;
     border-bottom: 1px solid #374151;
     padding: 0.5rem 1rem 0;
+  }
+
+  .tabs-group {
+    display: flex;
+    gap: 0;
+  }
+
+  .collapse-btn {
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: none;
+    color: #9ca3af;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-radius: 4px;
+  }
+
+  .collapse-btn:hover {
+    color: #d1d5db;
+    background: rgba(102, 126, 234, 0.1);
   }
 
   .tab {
@@ -322,75 +324,6 @@
     color: #667eea;
     font-family: 'Fira Code', monospace;
     font-size: 0.8125rem;
-  }
-
-  .simulation-controls {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-
-  .sim-btn {
-    padding: 0.5rem 1rem;
-    background: #374151;
-    border: 1px solid #4b5563;
-    border-radius: 4px;
-    color: #d1d5db;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .sim-btn:hover:not(:disabled) {
-    background: #4b5563;
-    border-color: #667eea;
-  }
-
-  .sim-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .simulation-info {
-    background: #111827;
-    border: 1px solid #374151;
-    border-radius: 6px;
-    padding: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .info-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #374151;
-  }
-
-  .info-row:last-child {
-    border-bottom: none;
-  }
-
-  .info-label {
-    font-size: 0.875rem;
-    color: #9ca3af;
-    font-weight: 500;
-  }
-
-  .info-value {
-    font-size: 0.875rem;
-    color: #d1d5db;
-    font-weight: 600;
-  }
-
-  .note {
-    font-size: 0.75rem;
-    color: #6b7280;
-    font-style: italic;
-    padding: 0.75rem;
-    background: rgba(102, 126, 234, 0.05);
-    border-radius: 4px;
-    border-left: 3px solid #667eea;
   }
 
   .error-card {

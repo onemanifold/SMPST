@@ -9,9 +9,20 @@ export const editorContent = writable<string>('');
 export const selectedExample = writable<ProtocolExample | null>(null);
 
 // UI state
-export const activeTab = writable<'verification' | 'projection' | 'simulation' | 'errors'>('verification');
+export const activeTab = writable<'verification' | 'projection' | 'errors'>('verification');
 export const libraryOpen = writable<boolean>(true);
 export const visualizerOpen = writable<boolean>(true);
+
+// View mode: 'global' shows CFG, role names show CFSM for that role
+export type ViewMode = 'global' | string; // 'global' or role name
+export const viewMode = writable<ViewMode>('global');
+
+// Editor view mode: Scribble protocol or generated TypeScript
+export type EditorView = 'scribble' | 'typescript';
+export const editorView = writable<EditorView>('scribble');
+
+// Generated TypeScript code per role
+export const generatedCode = writable<Record<string, string>>({});
 
 // Parse state
 export type ParseStatus = 'idle' | 'parsing' | 'success' | 'error';
@@ -142,5 +153,51 @@ export function mockParse(content: string) {
         ]
       }
     ]);
+
+    // Mock generated TypeScript code
+    generatedCode.set({
+      Client: `// Generated TypeScript for Client role
+export class ClientProtocol {
+  private state: 'S0' | 'S1' | 'S2' = 'S0';
+
+  async sendRequest(data: string): Promise<void> {
+    if (this.state !== 'S0') {
+      throw new Error('Invalid state for sendRequest');
+    }
+    // Send request to Server
+    this.state = 'S1';
+  }
+
+  async recvResponse(): Promise<number> {
+    if (this.state !== 'S1') {
+      throw new Error('Invalid state for recvResponse');
+    }
+    // Receive response from Server
+    this.state = 'S2';
+    return 42; // Mock response
+  }
+}`,
+      Server: `// Generated TypeScript for Server role
+export class ServerProtocol {
+  private state: 'S0' | 'S1' | 'S2' = 'S0';
+
+  async recvRequest(): Promise<string> {
+    if (this.state !== 'S0') {
+      throw new Error('Invalid state for recvRequest');
+    }
+    // Receive request from Client
+    this.state = 'S1';
+    return 'request data'; // Mock request
+  }
+
+  async sendResponse(result: number): Promise<void> {
+    if (this.state !== 'S1') {
+      throw new Error('Invalid state for sendResponse');
+    }
+    // Send response to Client
+    this.state = 'S2';
+  }
+}`
+    });
   }, 500);
 }
