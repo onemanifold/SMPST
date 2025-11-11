@@ -8,7 +8,7 @@
  * If protocols execute correctly here, the CFG structure is correct.
  */
 
-import type { CFG, CFGNode, CFGEdge, ActionNode, ChoiceNode, RecNode, ParallelNode } from '../cfg/types';
+import type { CFG, Node as CFGNode, Edge as CFGEdge, ActionNode, BranchNode, RecursiveNode, ForkNode, JoinNode, MergeNode } from '../cfg/types';
 import type {
   CFGSimulatorConfig,
   CFGExecutionState,
@@ -66,9 +66,15 @@ export class CFGSimulator {
       choiceStrategy: config.choiceStrategy ?? 'manual',
     };
 
-    // Initialize at entry node
-    this.currentNode = cfg.entry;
-    this.visitedNodes.push(cfg.entry);
+    // Find initial node
+    const initialNode = cfg.nodes.find(n => n.type === 'initial');
+    if (!initialNode) {
+      throw new Error('CFG has no initial node');
+    }
+
+    // Initialize at initial node
+    this.currentNode = initialNode.id;
+    this.visitedNodes.push(initialNode.id);
 
     // Initialize trace
     this.trace = {
@@ -204,9 +210,9 @@ export class CFGSimulator {
    * Check if node is an action node (requires user visibility)
    */
   private isActionNode(node: CFGNode): boolean {
-    return node.type === 'message' ||
-           node.type === 'choice' ||
-           node.type === 'rec';
+    return node.type === 'action' ||
+           node.type === 'branch' ||
+           node.type === 'recursive';
   }
 
   /**
@@ -220,29 +226,23 @@ export class CFGSimulator {
 
     // Handle different node types
     switch (node.type) {
-      case 'entry':
-        return this.executeEntry();
+      case 'initial':
+        return this.executeInitial();
 
-      case 'exit':
-        return this.executeExit();
+      case 'terminal':
+        return this.executeTerminal();
 
-      case 'message':
-        return this.executeMessage(node as ActionNode);
+      case 'action':
+        return this.executeAction(node as ActionNode);
 
-      case 'choice':
-        return this.executeChoice(node as ChoiceNode);
+      case 'branch':
+        return this.executeBranch(node as BranchNode);
 
       case 'merge':
         return this.executeMerge();
 
-      case 'rec':
-        return this.executeRec(node as RecNode);
-
-      case 'continue':
-        return this.executeContinue();
-
-      case 'parallel':
-        return this.executeParallel(node as ParallelNode);
+      case 'recursive':
+        return this.executeRecursive(node as RecursiveNode);
 
       case 'fork':
         return this.executeFork();
@@ -256,16 +256,16 @@ export class CFGSimulator {
   }
 
   /**
-   * Execute entry node (just transition to next)
+   * Execute initial node (just transition to next)
    */
-  private executeEntry(): CFGStepResult {
+  private executeInitial(): CFGStepResult {
     return this.transitionToNext();
   }
 
   /**
-   * Execute exit node (mark as complete)
+   * Execute terminal node (mark as complete)
    */
-  private executeExit(): CFGStepResult {
+  private executeTerminal(): CFGStepResult {
     this.completed = true;
     this.trace.completed = true;
     this.trace.endTime = Date.now();
@@ -278,9 +278,9 @@ export class CFGSimulator {
   }
 
   /**
-   * Execute message node (emit message event)
+   * Execute action node (emit message event)
    */
-  private executeMessage(node: ActionNode): CFGStepResult {
+  private executeAction(node: ActionNode): CFGStepResult {
     const action = node.action;
     if (action.type !== 'message') {
       throw new Error(`Expected message action, got ${action.type}`);
@@ -306,9 +306,9 @@ export class CFGSimulator {
   }
 
   /**
-   * Execute choice node (setup choice options)
+   * Execute branch node (setup choice options)
    */
-  private executeChoice(node: ChoiceNode): CFGStepResult {
+  private executeBranch(node: BranchNode): CFGStepResult {
     // If already chose, take that branch
     if (this.selectedChoice !== null) {
       const choiceIndex = this.selectedChoice;
@@ -362,99 +362,56 @@ export class CFGSimulator {
   }
 
   /**
-   * Execute rec node (push recursion context)
+   * Execute recursive node (recursion entry point)
    */
-  private executeRec(node: RecNode): CFGStepResult {
-    // Push recursion context
-    this.recursionStack.push({
-      label: node.label,
-      nodeId: node.id,
-      iterations: 0,
-    });
+  private executeRecursive(node: RecursiveNode): CFGStepResult {
+    // Check if we're entering for the first time or continuing
+    const inStack = this.recursionStack.find(c => c.label === node.label);
 
-    const event: RecursionEvent = {
-      type: 'recursion',
-      timestamp: Date.now(),
-      action: 'enter',
-      label: node.label,
-      nodeId: node.id,
-    };
+    if (!inStack) {
+      // First time entering - push context
+      this.recursionStack.push({
+        label: node.label,
+        nodeId: node.id,
+        iterations: 0,
+      });
 
-    const result = this.transitionToNext();
+      const event: RecursionEvent = {
+        type: 'recursion',
+        timestamp: Date.now(),
+        action: 'enter',
+        label: node.label,
+        nodeId: node.id,
+      };
 
-    return {
-      ...result,
-      event,
-    };
-  }
+      const result = this.transitionToNext();
 
-  /**
-   * Execute continue node (jump back to rec)
-   */
-  private executeContinue(): CFGStepResult {
-    const node = this.getNode(this.currentNode);
-    if (!node || node.type !== 'continue') {
-      throw new Error(`Node ${this.currentNode} is not a continue node`);
+      return {
+        ...result,
+        event,
+      };
+    } else {
+      // Continuing (via continue edge)
+      inStack.iterations++;
+
+      const event: RecursionEvent = {
+        type: 'recursion',
+        timestamp: Date.now(),
+        action: 'continue',
+        label: node.label,
+        iteration: inStack.iterations,
+        nodeId: node.id,
+      };
+
+      const result = this.transitionToNext();
+
+      return {
+        ...result,
+        event,
+      };
     }
-
-    const continueNode = node as any;
-    const label = continueNode.label;
-
-    // Find matching recursion context
-    const context = this.recursionStack.find(c => c.label === label);
-    if (!context) {
-      throw new Error(`No recursion context found for label: ${label}`);
-    }
-
-    context.iterations++;
-
-    const event: RecursionEvent = {
-      type: 'recursion',
-      timestamp: Date.now(),
-      action: 'continue',
-      label,
-      iteration: context.iterations,
-      nodeId: this.currentNode,
-    };
-
-    // Jump back to rec node
-    this.transitionTo(context.nodeId);
-
-    return {
-      success: true,
-      event,
-      state: this.getState(),
-    };
   }
 
-  /**
-   * Execute parallel node (setup parallel branches)
-   */
-  private executeParallel(node: ParallelNode): CFGStepResult {
-    // Get branch entry points
-    const edges = this.getOutgoingEdges(node.id);
-    this.parallelBranches = edges.map(edge => [edge.to]);
-    this.parallelBranchIndex = 0;
-    this.inParallel = true;
-
-    const event: ParallelEvent = {
-      type: 'parallel',
-      timestamp: Date.now(),
-      action: 'fork',
-      branches: edges.length,
-      nodeId: node.id,
-    };
-
-    // Enter first branch
-    this.currentNode = this.parallelBranches[0][0];
-    this.visitedNodes.push(this.currentNode);
-
-    return {
-      success: true,
-      event,
-      state: this.getState(),
-    };
-  }
 
   /**
    * Execute fork node (branch point in parallel)
@@ -604,8 +561,13 @@ export class CFGSimulator {
    * Reset to initial state
    */
   reset(): void {
-    this.currentNode = this.cfg.entry;
-    this.visitedNodes = [this.cfg.entry];
+    const initialNode = this.cfg.nodes.find(n => n.type === 'initial');
+    if (!initialNode) {
+      throw new Error('CFG has no initial node');
+    }
+
+    this.currentNode = initialNode.id;
+    this.visitedNodes = [initialNode.id];
     this.stepCount = 0;
     this.completed = false;
     this.reachedMaxSteps = false;

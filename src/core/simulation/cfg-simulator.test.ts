@@ -33,6 +33,9 @@ describe('CFG Simulator - Basic Sequential Protocols', () => {
 
     // Step 1: Client sends Request
     const step1 = simulator.step();
+    if (!step1.success) {
+      console.log('[TEST] step1 failed:', step1.error);
+    }
     expect(step1.success).toBe(true);
     expect(step1.event?.type).toBe('message');
     if (step1.event?.type === 'message') {
