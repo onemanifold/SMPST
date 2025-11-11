@@ -41,6 +41,8 @@
     "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6.38.6",
     "bits-ui": "^0.21.16",
+    "carbon-components-svelte": "^0.91.0",
+    "carbon-icons-svelte": "^13.6.0",
     "chevrotain": "^11.0.0",
     "clsx": "^2.1.1",
     "codemirror": "^6.0.2",

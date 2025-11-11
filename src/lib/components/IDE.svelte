@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Tabs, Tab, TabContent } from 'carbon-components-svelte';
   import Header from './Header.svelte';
   import CodeEditor from './CodeEditor.svelte';
   import Visualizer from './Visualizer.svelte';
@@ -13,9 +14,18 @@
   let isDraggingVertical = false;
 
   $: roles = $projectionData.map(p => p.role);
+  $: selectedIndex = $viewMode === 'global' ? 0 : roles.indexOf($viewMode) + 1;
 
-  function selectView(view: string) {
-    viewMode.set(view);
+  function handleTabChange(event: CustomEvent<{ selectedIndex: number }>) {
+    const index = event.detail.selectedIndex;
+    if (index === 0) {
+      viewMode.set('global');
+    } else {
+      const role = roles[index - 1];
+      if (role) {
+        viewMode.set(role);
+      }
+    }
   }
 
   function handleHorizontalDragStart() {
@@ -64,52 +74,80 @@
 
   <div class="main-content">
     <div class="workspace">
-      <div class="workspace-tabs">
-        <button
-          class="workspace-tab"
-          class:active={$viewMode === 'global'}
-          on:click={() => selectView('global')}
-        >
-          Global Protocol
-        </button>
+      <Tabs selected={selectedIndex} on:change={handleTabChange}>
+        <Tab label="Global Protocol" />
         {#each roles as role}
-          <button
-            class="workspace-tab"
-            class:active={$viewMode === role}
-            on:click={() => selectView(role)}
-          >
-            {role}
-          </button>
+          <Tab label={role} />
         {/each}
-      </div>
 
-      <div class="top-section">
-        <div class="editor-section" style="width: {editorWidth}%">
-          <CodeEditor />
-        </div>
+        <svelte:fragment slot="content">
+          <TabContent>
+            <div class="tab-panel">
+              <div class="top-section">
+                <div class="editor-section" style="width: {editorWidth}%">
+                  <CodeEditor />
+                </div>
 
-        <div
-          class="horizontal-resizer"
-          on:mousedown={handleHorizontalDragStart}
-          role="separator"
-          aria-orientation="vertical"
-        ></div>
+                <div
+                  class="horizontal-resizer"
+                  on:mousedown={handleHorizontalDragStart}
+                  role="separator"
+                  aria-orientation="vertical"
+                ></div>
 
-        <div class="visualizer-section" style="width: {100 - editorWidth}%">
-          <Visualizer />
-        </div>
-      </div>
+                <div class="visualizer-section" style="width: {100 - editorWidth}%">
+                  <Visualizer />
+                </div>
+              </div>
 
-      <div
-        class="vertical-resizer"
-        on:mousedown={handleVerticalDragStart}
-        role="separator"
-        aria-orientation="horizontal"
-      ></div>
+              <div
+                class="vertical-resizer"
+                on:mousedown={handleVerticalDragStart}
+                role="separator"
+                aria-orientation="horizontal"
+              ></div>
 
-      <div class="bottom-section" style="height: {effectiveOutputHeight}">
-        <OutputPanel />
-      </div>
+              <div class="bottom-section" style="height: {effectiveOutputHeight}">
+                <OutputPanel />
+              </div>
+            </div>
+          </TabContent>
+
+          {#each roles as role}
+            <TabContent>
+              <div class="tab-panel">
+                <div class="top-section">
+                  <div class="editor-section" style="width: {editorWidth}%">
+                    <CodeEditor />
+                  </div>
+
+                  <div
+                    class="horizontal-resizer"
+                    on:mousedown={handleHorizontalDragStart}
+                    role="separator"
+                    aria-orientation="vertical"
+                  ></div>
+
+                  <div class="visualizer-section" style="width: {100 - editorWidth}%">
+                    <Visualizer />
+                  </div>
+                </div>
+
+                <div
+                  class="vertical-resizer"
+                  on:mousedown={handleVerticalDragStart}
+                  role="separator"
+                  aria-orientation="horizontal"
+                ></div>
+
+                <div class="bottom-section" style="height: {effectiveOutputHeight}">
+                  <OutputPanel />
+                </div>
+              </div>
+            </TabContent>
+          {/each}
+        </svelte:fragment>
+      </Tabs>
     </div>
   </div>
 </div>
@@ -121,6 +159,7 @@
     height: 100vh;
     width: 100%;
     overflow: hidden;
+    background: var(--cds-ui-background);
   }
 
   .main-content {
@@ -136,39 +175,10 @@
     overflow: hidden;
   }
 
-  .workspace-tabs {
+  .tab-panel {
     display: flex;
-    flex-direction: row;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    background: #111827;
-    border-bottom: 2px solid #374151;
-  }
-
-  .workspace-tab {
-    padding: 0.625rem 1.5rem;
-    background: #1f2937;
-    border: 1px solid #374151;
-    border-radius: 6px 6px 0 0;
-    color: #9ca3af;
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    white-space: nowrap;
-  }
-
-  .workspace-tab:hover:not(.active) {
-    color: #d1d5db;
-    background: #374151;
-    border-color: #4b5563;
-  }
-
-  .workspace-tab.active {
-    color: #ffffff;
-    background: #667eea;
-    border-color: #667eea;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    flex-direction: column;
+    height: calc(100vh - 8rem);
   }
 
   .top-section {
@@ -194,7 +204,7 @@
 
   .horizontal-resizer {
     width: 4px;
-    background: #374151;
+    background: var(--cds-ui-03);
     cursor: col-resize;
     transition: background 0.2s;
     flex-shrink: 0;
@@ -202,13 +212,13 @@
 
   .horizontal-resizer:hover,
   .horizontal-resizer:focus {
-    background: #667eea;
+    background: var(--cds-interactive-01);
     outline: none;
   }
 
   .vertical-resizer {
     height: 4px;
-    background: #374151;
+    background: var(--cds-ui-03);
     cursor: row-resize;
     transition: background 0.2s;
     flex-shrink: 0;
@@ -216,7 +226,15 @@
 
   .vertical-resizer:hover,
   .vertical-resizer:focus {
-    background: #667eea;
+    background: var(--cds-interactive-01);
     outline: none;
+  }
+
+  :global(.bx--tabs) {
+    background: var(--cds-ui-01) !important;
+  }
+
+  :global(.bx--tab-content) {
+    padding: 0 !important;
   }
 </style>
