@@ -1,7 +1,7 @@
 <script lang="ts">
   import Header from './Header.svelte';
   import ProtocolLibrary from './ProtocolLibrary.svelte';
-  import Editor from './Editor.svelte';
+  import CodeEditor from './CodeEditor.svelte';
   import Visualizer from './Visualizer.svelte';
   import OutputPanel from './OutputPanel.svelte';
 
@@ -60,7 +60,7 @@
     <div class="workspace">
       <div class="top-section">
         <div class="editor-section" style="width: {editorWidth}%">
-          <Editor />
+          <CodeEditor />
         </div>
 
         <div

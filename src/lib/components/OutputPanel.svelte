@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { activeTab, parseStatus, verificationResult, projectionData, parseError, simulationState } from '../stores/editor';
+  import { activeTab, parseStatus, verificationResult, projectionData, parseError } from '../stores/editor';
 
   function selectTab(tab: typeof $activeTab) {
     activeTab.set(tab);
@@ -21,13 +21,6 @@
       on:click={() => selectTab('projection')}
     >
       ⚙ Projection
-    </button>
-    <button
-      class="tab"
-      class:active={$activeTab === 'simulation'}
-      on:click={() => selectTab('simulation')}
-    >
-      ▶ Simulation
     </button>
     <button
       class="tab"
@@ -99,39 +92,6 @@
           {/each}
         {:else}
           <p class="empty-message">Parse a protocol to see projections</p>
-        {/if}
-      </div>
-    {:else if $activeTab === 'simulation'}
-      <div class="content-section">
-        <h3 class="section-title">Protocol Simulation</h3>
-        {#if $parseStatus === 'success'}
-          <div class="simulation-controls">
-            <button class="sim-btn" disabled={$simulationState.running}>
-              ▶ Start
-            </button>
-            <button class="sim-btn" disabled={!$simulationState.running}>
-              ⏸ Pause
-            </button>
-            <button class="sim-btn" disabled={$simulationState.running}>
-              ⏭ Step
-            </button>
-            <button class="sim-btn">
-              ↻ Reset
-            </button>
-          </div>
-          <div class="simulation-info">
-            <div class="info-row">
-              <span class="info-label">Step:</span>
-              <span class="info-value">{$simulationState.step} / {$simulationState.maxSteps}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Status:</span>
-              <span class="info-value">{$simulationState.running ? 'Running' : 'Idle'}</span>
-            </div>
-          </div>
-          <p class="note">Simulation UI placeholder - Integration point for runtime</p>
-        {:else}
-          <p class="empty-message">Parse a protocol to start simulation</p>
         {/if}
       </div>
     {:else if $activeTab === 'errors'}
