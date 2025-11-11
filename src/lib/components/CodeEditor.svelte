@@ -1,5 +1,6 @@
 <script lang="ts">
   import Editor from './Editor.svelte';
+  import * as Tabs from "$lib/components/ui/tabs";
   import { editorView, viewMode, generatedCode, projectionData } from '../stores/editor';
   import { onMount } from 'svelte';
   import { EditorView, basicSetup } from 'codemirror';
@@ -10,6 +11,11 @@
   let typescriptEditorContainer: HTMLDivElement;
   let typescriptView: EditorView | null = null;
   let currentRole = '';
+
+  // When switching to Global view, reset to Scribble editor
+  $: if ($viewMode === 'global' && $editorView === 'typescript') {
+    editorView.set('scribble');
+  }
 
   $: {
     // When viewMode changes, update the TypeScript editor
@@ -72,46 +78,38 @@
     typescriptView.destroy();
     typescriptView = null;
   }
-
-  function selectView(view: typeof $editorView) {
-    editorView.set(view);
-  }
 </script>
 
 <div class="code-editor">
-  <div class="editor-tabs">
-    <button
-      class="tab"
-      class:active={$editorView === 'scribble'}
-      on:click={() => selectView('scribble')}
-    >
-      Scribble Protocol
-    </button>
-    <button
-      class="tab"
-      class:active={$editorView === 'typescript'}
-      on:click={() => selectView('typescript')}
-    >
-      TypeScript
+  <Tabs.Root value={$editorView} onValueChange={(v) => editorView.set(v)}>
+    <Tabs.List class="bg-dark-800 border-b-2 border-dark-700 px-4 py-3">
+      <Tabs.Trigger value="scribble">Scribble Protocol</Tabs.Trigger>
       {#if $viewMode !== 'global'}
-        <span class="role-badge">{$viewMode}</span>
+        <Tabs.Trigger value="typescript">
+          TypeScript
+          <span class="role-badge ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
+            {$viewMode}
+          </span>
+        </Tabs.Trigger>
       {/if}
-    </button>
-  </div>
+    </Tabs.List>
 
-  <div class="editor-content">
-    {#if $editorView === 'scribble'}
-      <Editor />
-    {:else}
-      <div class="typescript-editor-wrapper">
-        <div class="editor-header">
-          <span class="editor-title">Generated TypeScript - {currentRole}</span>
-          <span class="editor-hint">Read-only</span>
-        </div>
-        <div class="typescript-container" bind:this={typescriptEditorContainer}></div>
+    <Tabs.Content value={$editorView} class="flex-1">
+      <div class="editor-content">
+        {#if $editorView === 'scribble'}
+          <Editor />
+        {:else}
+          <div class="typescript-editor-wrapper">
+            <div class="editor-header">
+              <span class="editor-title">Generated TypeScript - {currentRole}</span>
+              <span class="editor-hint">Read-only</span>
+            </div>
+            <div class="typescript-container" bind:this={typescriptEditorContainer}></div>
+          </div>
+        {/if}
       </div>
-    {/if}
-  </div>
+    </Tabs.Content>
+  </Tabs.Root>
 </div>
 
 <style>
@@ -120,47 +118,6 @@
     flex-direction: column;
     height: 100%;
     background: #282c34;
-  }
-
-  .editor-tabs {
-    display: flex;
-    gap: 0.25rem;
-    padding: 0.5rem 0.75rem 0;
-    background: #1f2937;
-    border-bottom: 1px solid #374151;
-  }
-
-  .tab {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: #9ca3af;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .tab:hover {
-    color: #d1d5db;
-  }
-
-  .tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
-  }
-
-  .role-badge {
-    font-size: 0.75rem;
-    color: #667eea;
-    background: rgba(102, 126, 234, 0.1);
-    padding: 0.125rem 0.5rem;
-    border-radius: 3px;
-    font-weight: 600;
   }
 
   .editor-content {

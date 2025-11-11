@@ -1,127 +1,121 @@
 <script lang="ts">
-  import { activeTab, parseStatus, verificationResult, projectionData, parseError } from '../stores/editor';
-
-  let isCollapsed = false;
-
-  function selectTab(tab: typeof $activeTab) {
-    activeTab.set(tab);
-  }
-
-  function toggleCollapse() {
-    isCollapsed = !isCollapsed;
-  }
+  import * as Tabs from "$lib/components/ui/tabs";
+  import * as Collapsible from "$lib/components/ui/collapsible";
+  import { activeTab, parseStatus, verificationResult, projectionData, parseError, outputPanelCollapsed } from '../stores/editor';
 </script>
 
-<div class="output-panel" class:collapsed={isCollapsed}>
-  <div class="tabs-header">
-    <div class="tabs-group">
-      <button
-        class="tab"
-        class:active={$activeTab === 'verification'}
-        on:click={() => selectTab('verification')}
-      >
-        ✓ Verification
-      </button>
-      <button
-        class="tab"
-        class:active={$activeTab === 'projection'}
-        on:click={() => selectTab('projection')}
-      >
-        ⚙ Projection
-      </button>
-      <button
-        class="tab"
-        class:active={$activeTab === 'errors'}
-        on:click={() => selectTab('errors')}
-      >
-        ⚠ Errors
-        {#if $parseError}
-          <span class="error-badge">1</span>
-        {/if}
-      </button>
-    </div>
-    <button class="collapse-btn" on:click={toggleCollapse} title={isCollapsed ? 'Expand panel' : 'Collapse panel'}>
-      {isCollapsed ? '▲' : '▼'}
-    </button>
-  </div>
-
-  {#if !isCollapsed}
-  <div class="tab-content">
-    {#if $activeTab === 'verification'}
-      <div class="content-section">
-        <h3 class="section-title">Verification Results</h3>
-        {#if $parseStatus === 'success' && $verificationResult}
-          <div class="result-grid">
-            <div class="result-item" class:success={$verificationResult.deadlockFree}>
-              <span class="result-icon">{$verificationResult.deadlockFree ? '✓' : '✗'}</span>
-              <span class="result-label">Deadlock-Free</span>
-            </div>
-            <div class="result-item" class:success={$verificationResult.livenessSatisfied}>
-              <span class="result-icon">{$verificationResult.livenessSatisfied ? '✓' : '✗'}</span>
-              <span class="result-label">Liveness</span>
-            </div>
-            <div class="result-item" class:success={$verificationResult.safetySatisfied}>
-              <span class="result-icon">{$verificationResult.safetySatisfied ? '✓' : '✗'}</span>
-              <span class="result-label">Safety</span>
-            </div>
-          </div>
-          {#if $verificationResult.warnings.length > 0}
-            <div class="warnings-section">
-              <h4 class="subsection-title">Warnings</h4>
-              {#each $verificationResult.warnings as warning}
-                <div class="warning-item">{warning}</div>
-              {/each}
-            </div>
-          {/if}
-        {:else}
-          <p class="empty-message">Parse a protocol to see verification results</p>
-        {/if}
+<Collapsible.Root open={!$outputPanelCollapsed} onOpenChange={(open) => outputPanelCollapsed.set(!open)}>
+  <div class="output-panel">
+    <Tabs.Root value={$activeTab} onValueChange={(v) => activeTab.set(v)}>
+      <div class="tabs-header">
+        <Tabs.List class="bg-dark-900 border-0 p-0 h-auto gap-0">
+          <Tabs.Trigger value="verification" class="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
+            ✓ Verification
+          </Tabs.Trigger>
+          <Tabs.Trigger value="projection" class="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">
+            ⚙ Projection
+          </Tabs.Trigger>
+          <Tabs.Trigger value="errors" class="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none relative">
+            ⚠ Errors
+            {#if $parseError}
+              <span class="error-badge">1</span>
+            {/if}
+          </Tabs.Trigger>
+        </Tabs.List>
+        <Collapsible.Trigger asChild let:builder>
+          <button use:builder.action {...builder} class="collapse-btn" title={$outputPanelCollapsed ? 'Expand panel' : 'Collapse panel'}>
+            {$outputPanelCollapsed ? '▲' : '▼'}
+          </button>
+        </Collapsible.Trigger>
       </div>
-    {:else if $activeTab === 'projection'}
-      <div class="content-section">
-        <h3 class="section-title">Projected CFSMs</h3>
-        {#if $parseStatus === 'success' && $projectionData.length > 0}
-          {#each $projectionData as projection}
-            <div class="projection-card">
-              <h4 class="projection-role">{projection.role}</h4>
-              <div class="projection-details">
-                <div class="detail-item">
-                  <span class="detail-label">States:</span>
-                  <span class="detail-value">{projection.states.join(', ')}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Transitions:</span>
-                  <div class="transitions-list">
-                    {#each projection.transitions as transition}
-                      <div class="transition-item">
-                        {transition.from} → {transition.to}: <code>{transition.label}</code>
-                      </div>
-                    {/each}
+
+      <Collapsible.Content>
+        <Tabs.Content value="verification">
+          <div class="tab-content">
+            <div class="content-section">
+              <h3 class="section-title">Verification Results</h3>
+              {#if $parseStatus === 'success' && $verificationResult}
+                <div class="result-grid">
+                  <div class="result-item" class:success={$verificationResult.deadlockFree}>
+                    <span class="result-icon">{$verificationResult.deadlockFree ? '✓' : '✗'}</span>
+                    <span class="result-label">Deadlock-Free</span>
+                  </div>
+                  <div class="result-item" class:success={$verificationResult.livenessSatisfied}>
+                    <span class="result-icon">{$verificationResult.livenessSatisfied ? '✓' : '✗'}</span>
+                    <span class="result-label">Liveness</span>
+                  </div>
+                  <div class="result-item" class:success={$verificationResult.safetySatisfied}>
+                    <span class="result-icon">{$verificationResult.safetySatisfied ? '✓' : '✗'}</span>
+                    <span class="result-label">Safety</span>
                   </div>
                 </div>
-              </div>
+                {#if $verificationResult.warnings.length > 0}
+                  <div class="warnings-section">
+                    <h4 class="subsection-title">Warnings</h4>
+                    {#each $verificationResult.warnings as warning}
+                      <div class="warning-item">{warning}</div>
+                    {/each}
+                  </div>
+                {/if}
+              {:else}
+                <p class="empty-message">Parse a protocol to see verification results</p>
+              {/if}
             </div>
-          {/each}
-        {:else}
-          <p class="empty-message">Parse a protocol to see projections</p>
-        {/if}
-      </div>
-    {:else if $activeTab === 'errors'}
-      <div class="content-section">
-        <h3 class="section-title">Parse Errors</h3>
-        {#if $parseError}
-          <div class="error-card">
-            <div class="error-icon">⚠</div>
-            <div class="error-message">{$parseError}</div>
           </div>
-        {:else}
-          <p class="empty-message success">✓ No errors</p>
-        {/if}
-      </div>
-    {/if}
+        </Tabs.Content>
+
+        <Tabs.Content value="projection">
+          <div class="tab-content">
+            <div class="content-section">
+              <h3 class="section-title">Projected CFSMs</h3>
+              {#if $parseStatus === 'success' && $projectionData.length > 0}
+                {#each $projectionData as projection}
+                  <div class="projection-card">
+                    <h4 class="projection-role">{projection.role}</h4>
+                    <div class="projection-details">
+                      <div class="detail-item">
+                        <span class="detail-label">States:</span>
+                        <span class="detail-value">{projection.states.join(', ')}</span>
+                      </div>
+                      <div class="detail-item">
+                        <span class="detail-label">Transitions:</span>
+                        <div class="transitions-list">
+                          {#each projection.transitions as transition}
+                            <div class="transition-item">
+                              {transition.from} → {transition.to}: <code>{transition.label}</code>
+                            </div>
+                          {/each}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              {:else}
+                <p class="empty-message">Parse a protocol to see projections</p>
+              {/if}
+            </div>
+          </div>
+        </Tabs.Content>
+
+        <Tabs.Content value="errors">
+          <div class="tab-content">
+            <div class="content-section">
+              <h3 class="section-title">Parse Errors</h3>
+              {#if $parseError}
+                <div class="error-card">
+                  <div class="error-icon">⚠</div>
+                  <div class="error-message">{$parseError}</div>
+                </div>
+              {:else}
+                <p class="empty-message success">✓ No errors</p>
+              {/if}
+            </div>
+          </div>
+        </Tabs.Content>
+      </Collapsible.Content>
+    </Tabs.Root>
   </div>
-  {/if}
-</div>
+</Collapsible.Root>
 
 <style>
   .output-panel {
@@ -130,12 +124,6 @@
     height: 100%;
     background: #1f2937;
     border-top: 1px solid #374151;
-    transition: height 0.3s ease;
-  }
-
-  .output-panel.collapsed {
-    height: auto;
-    min-height: 0;
   }
 
   .tabs-header {
@@ -145,11 +133,6 @@
     background: #111827;
     border-bottom: 1px solid #374151;
     padding: 0.5rem 1rem 0;
-  }
-
-  .tabs-group {
-    display: flex;
-    gap: 0;
   }
 
   .collapse-btn {
@@ -166,28 +149,6 @@
   .collapse-btn:hover {
     color: #d1d5db;
     background: rgba(102, 126, 234, 0.1);
-  }
-
-  .tab {
-    padding: 0.625rem 1rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: #9ca3af;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-  }
-
-  .tab:hover {
-    color: #d1d5db;
-  }
-
-  .tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
   }
 
   .error-badge {

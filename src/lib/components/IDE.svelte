@@ -3,18 +3,17 @@
   import CodeEditor from './CodeEditor.svelte';
   import Visualizer from './Visualizer.svelte';
   import OutputPanel from './OutputPanel.svelte';
-  import { viewMode, projectionData } from '../stores/editor';
+  import * as Tabs from "$lib/components/ui/tabs";
+  import { viewMode, projectionData, outputPanelCollapsed } from '../stores/editor';
 
   let editorWidth = 45; // percentage
   let outputHeight = 30; // percentage
+
+  $: effectiveOutputHeight = $outputPanelCollapsed ? 'auto' : `${outputHeight}%`;
   let isDraggingHorizontal = false;
   let isDraggingVertical = false;
 
   $: roles = $projectionData.map(p => p.role);
-
-  function selectView(view: string) {
-    viewMode.set(view);
-  }
 
   function handleHorizontalDragStart() {
     isDraggingHorizontal = true;
@@ -62,52 +61,44 @@
 
   <div class="main-content">
     <div class="workspace">
-      <div class="workspace-tabs">
-        <button
-          class="workspace-tab"
-          class:active={$viewMode === 'global'}
-          on:click={() => selectView('global')}
-        >
-          Global Protocol
-        </button>
-        {#each roles as role}
-          <button
-            class="workspace-tab"
-            class:active={$viewMode === role}
-            on:click={() => selectView(role)}
-          >
-            {role}
-          </button>
-        {/each}
-      </div>
+      <Tabs.Root value={$viewMode} onValueChange={(v) => viewMode.set(v)}>
+        <Tabs.List class="bg-dark-900 border-b-2 border-dark-700 px-4 py-3">
+          <Tabs.Trigger value="global">Global Protocol</Tabs.Trigger>
+          {#each roles as role}
+            <Tabs.Trigger value={role}>{role}</Tabs.Trigger>
+          {/each}
+        </Tabs.List>
 
-      <div class="top-section">
-        <div class="editor-section" style="width: {editorWidth}%">
-          <CodeEditor />
-        </div>
+        <Tabs.Content value={$viewMode} class="flex-1 flex flex-col">
+          <div class="top-section">
+            <div class="editor-section" style="width: {editorWidth}%">
+              <CodeEditor />
+            </div>
 
-        <div
-          class="horizontal-resizer"
-          on:mousedown={handleHorizontalDragStart}
-          role="separator"
-          aria-orientation="vertical"
-        ></div>
+            <div
+              class="horizontal-resizer"
+              on:mousedown={handleHorizontalDragStart}
+              role="separator"
+              aria-orientation="vertical"
+            ></div>
 
-        <div class="visualizer-section" style="width: {100 - editorWidth}%">
-          <Visualizer />
-        </div>
-      </div>
+            <div class="visualizer-section" style="width: {100 - editorWidth}%">
+              <Visualizer />
+            </div>
+          </div>
 
-      <div
-        class="vertical-resizer"
-        on:mousedown={handleVerticalDragStart}
-        role="separator"
-        aria-orientation="horizontal"
-      ></div>
+          <div
+            class="vertical-resizer"
+            on:mousedown={handleVerticalDragStart}
+            role="separator"
+            aria-orientation="horizontal"
+          ></div>
 
-      <div class="bottom-section" style="height: {outputHeight}%">
-        <OutputPanel />
-      </div>
+          <div class="bottom-section" style="height: {effectiveOutputHeight}">
+            <OutputPanel />
+          </div>
+        </Tabs.Content>
+      </Tabs.Root>
     </div>
   </div>
 </div>
@@ -132,35 +123,6 @@
     flex-direction: column;
     flex: 1;
     overflow: hidden;
-  }
-
-  .workspace-tabs {
-    display: flex;
-    gap: 0.25rem;
-    padding: 0.5rem 0.75rem 0;
-    background: #1f2937;
-    border-bottom: 1px solid #374151;
-  }
-
-  .workspace-tab {
-    padding: 0.5rem 1.5rem;
-    background: transparent;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: #9ca3af;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .workspace-tab:hover {
-    color: #d1d5db;
-  }
-
-  .workspace-tab.active {
-    color: #667eea;
-    border-bottom-color: #667eea;
   }
 
   .top-section {
