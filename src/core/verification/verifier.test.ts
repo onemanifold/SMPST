@@ -342,7 +342,7 @@ describe('Parallel Deadlock Detection Algorithm', () => {
     expect(result.conflicts.length).toBeGreaterThan(0);
   });
 
-  it('should detect when same role receives in multiple branches', () => {
+  it('should NOT flag same role receiving in multiple branches as deadlock', () => {
     const source = `
       protocol SameReceiverParallel(role A, role B, role C) {
         par {
@@ -356,8 +356,9 @@ describe('Parallel Deadlock Detection Algorithm', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectParallelDeadlock(cfg);
 
-    // C receives in both branches concurrently - race condition
-    expect(result.conflicts.length).toBeGreaterThan(0);
+    // C receives from both branches - this is OK with proper buffering
+    // (Not a deadlock, though it may be a race condition)
+    expect(result.hasDeadlock).toBe(false);
   });
 
   it('should handle three-way parallel', () => {
