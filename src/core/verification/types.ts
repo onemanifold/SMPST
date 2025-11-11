@@ -113,6 +113,48 @@ export interface ProgressResult {
 }
 
 // ============================================================================
+// Choice Determinism Results
+// ============================================================================
+
+export interface ChoiceDeterminismResult {
+  isDeterministic: boolean;
+  violations: DeterminismViolation[];
+}
+
+export interface DeterminismViolation {
+  branchNodeId: string;
+  duplicateLabel: string;
+  branches: string[]; // Node IDs of action nodes with same label
+  description: string;
+}
+
+// ============================================================================
+// Choice Mergeability Results
+// ============================================================================
+
+export interface ChoiceMergeabilityResult {
+  isMergeable: boolean;
+  violations: MergeabilityViolation[];
+}
+
+export interface MergeabilityViolation {
+  branchNodeId: string;
+  role: string; // Role that has inconsistent behavior
+  description: string;
+  branches: { [branchLabel: string]: string[] }; // Branch label -> roles involved
+}
+
+// ============================================================================
+// Connectedness Results
+// ============================================================================
+
+export interface ConnectednessResult {
+  isConnected: boolean;
+  orphanedRoles: string[]; // Roles declared but never used
+  description?: string;
+}
+
+// ============================================================================
 // Complete Verification
 // ============================================================================
 
@@ -123,6 +165,9 @@ export interface CompleteVerification {
   parallelDeadlock: ParallelDeadlockResult;
   raceConditions: RaceConditionResult;
   progress: ProgressResult;
+  choiceDeterminism: ChoiceDeterminismResult;
+  choiceMergeability: ChoiceMergeabilityResult;
+  connectedness: ConnectednessResult;
 }
 
 // ============================================================================
@@ -135,6 +180,9 @@ export interface VerificationOptions {
   checkParallelDeadlock?: boolean;   // Default: true
   checkRaceConditions?: boolean;     // Default: true
   checkProgress?: boolean;           // Default: true
+  checkChoiceDeterminism?: boolean;  // Default: true
+  checkChoiceMergeability?: boolean; // Default: true
+  checkConnectedness?: boolean;      // Default: true
   strictMode?: boolean;              // Fail on warnings too
 }
 
@@ -144,5 +192,8 @@ export const DEFAULT_VERIFICATION_OPTIONS: VerificationOptions = {
   checkParallelDeadlock: true,
   checkRaceConditions: true,
   checkProgress: true,
+  checkChoiceDeterminism: true,
+  checkChoiceMergeability: true,
+  checkConnectedness: true,
   strictMode: false,
 };

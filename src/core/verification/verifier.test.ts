@@ -15,6 +15,9 @@ import {
   detectRaceConditions,
   checkProgress,
   verifyProtocol,
+  checkChoiceDeterminism,
+  checkChoiceMergeability,
+  checkConnectedness,
 } from './verifier';
 
 // ============================================================================
@@ -513,5 +516,195 @@ describe('Verification Edge Cases', () => {
 
     // Should not crash, results depend on implementation
     expect(result).toBeDefined();
+  });
+});
+
+// ============================================================================
+// Choice Determinism (P0 - CRITICAL for Projection)
+// ============================================================================
+
+describe('Choice Determinism', () => {
+  it('should detect same message label with different payloads', () => {
+    // INVALID: Receiver can't distinguish which branch was taken
+    const source = `
+      protocol Ambiguous(role A, role B) {
+        choice at A {
+          A -> B: Msg(Int);
+        } or {
+          A -> B: Msg(String);
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkChoiceDeterminism(cfg);
+
+    expect(result.isDeterministic).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0].duplicateLabel).toBe('Msg');
+  });
+
+  it('should detect same message label to different receivers', () => {
+    // INVALID: Still ambiguous for projection
+    const source = `
+      protocol AmbiguousReceivers(role A, role B, role C) {
+        choice at A {
+          A -> B: Request();
+        } or {
+          A -> C: Request();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkChoiceDeterminism(cfg);
+
+    expect(result.isDeterministic).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+    expect(result.violations[0].duplicateLabel).toBe('Request');
+  });
+
+  it('should accept distinguishable message labels', () => {
+    // VALID: Different labels allow receiver to distinguish
+    const source = `
+      protocol Distinguishable(role A, role B) {
+        choice at A {
+          A -> B: Option1();
+        } or {
+          A -> B: Option2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkChoiceDeterminism(cfg);
+
+    expect(result.isDeterministic).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+});
+
+// ============================================================================
+// Choice Mergeability (P0 - CRITICAL for Projection)
+// ============================================================================
+
+describe('Choice Mergeability', () => {
+  it('should detect unbalanced choice branches', () => {
+    // INVALID: Role C has inconsistent behavior across branches
+    const source = `
+      protocol Unmergeable(role A, role B, role C) {
+        choice at A {
+          A -> B: Option1();
+          B -> C: Forward();
+        } or {
+          A -> B: Option2();
+        }
+        C -> A: Done();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkChoiceMergeability(cfg);
+
+    expect(result.isMergeable).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+  });
+
+  it('should detect role appearing in only some branches', () => {
+    // INVALID: Role D only appears in one branch
+    const source = `
+      protocol PartialRole(role A, role B, role C, role D) {
+        choice at A {
+          A -> B: Opt1();
+          B -> D: Extra();
+        } or {
+          A -> C: Opt2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkChoiceMergeability(cfg);
+
+    expect(result.isMergeable).toBe(false);
+    expect(result.violations.length).toBeGreaterThan(0);
+  });
+
+  it('should accept balanced choice branches', () => {
+    // VALID: All roles have consistent behavior across branches
+    const source = `
+      protocol Balanced(role A, role B) {
+        choice at A {
+          A -> B: Opt1();
+        } or {
+          A -> B: Opt2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkChoiceMergeability(cfg);
+
+    expect(result.isMergeable).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+
+  it('should accept all branches with same continuation', () => {
+    // VALID: Both branches have same structure
+    const source = `
+      protocol SameContinuation(role A, role B, role C) {
+        choice at A {
+          A -> B: Opt1();
+          B -> C: Forward1();
+        } or {
+          A -> B: Opt2();
+          B -> C: Forward2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkChoiceMergeability(cfg);
+
+    expect(result.isMergeable).toBe(true);
+    expect(result.violations.length).toBe(0);
+  });
+});
+
+// ============================================================================
+// Connectedness (P0 - CRITICAL for Projection)
+// ============================================================================
+
+describe('Connectedness', () => {
+  it('should detect orphaned roles', () => {
+    // INVALID: Role C is declared but never used
+    const source = `
+      protocol Orphan(role A, role B, role C) {
+        A -> B: Msg();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkConnectedness(cfg);
+
+    expect(result.isConnected).toBe(false);
+    expect(result.orphanedRoles).toContain('C');
+  });
+
+  it('should accept all roles participating', () => {
+    // VALID: All declared roles are used
+    const source = `
+      protocol Connected(role A, role B, role C) {
+        A -> B: M1();
+        B -> C: M2();
+        C -> A: M3();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = checkConnectedness(cfg);
+
+    expect(result.isConnected).toBe(true);
+    expect(result.orphanedRoles.length).toBe(0);
   });
 });

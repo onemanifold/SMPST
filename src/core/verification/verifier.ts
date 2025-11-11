@@ -3,8 +3,8 @@
  * Implements deadlock detection, liveness, parallel checks, race detection, etc.
  */
 
-import type { CFG, Node, Edge, ForkNode, ActionNode } from '../cfg/types';
-import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode } from '../cfg/types';
+import type { CFG, Node, Edge, ForkNode, ActionNode, BranchNode } from '../cfg/types';
+import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode } from '../cfg/types';
 import type {
   DeadlockResult,
   DeadlockCycle,
@@ -15,6 +15,11 @@ import type {
   RaceConditionResult,
   RaceCondition,
   ProgressResult,
+  ChoiceDeterminismResult,
+  DeterminismViolation,
+  ChoiceMergeabilityResult,
+  MergeabilityViolation,
+  ConnectednessResult,
   CompleteVerification,
   VerificationOptions,
 } from './types';
@@ -499,6 +504,240 @@ export function checkProgress(cfg: CFG): ProgressResult {
 }
 
 // ============================================================================
+// Choice Determinism (P0 - CRITICAL for Projection)
+// ============================================================================
+
+/**
+ * Check if external choices have distinguishable message labels
+ * Per Scribble spec 4.1.2: "The messages that A sends should be different in each block"
+ */
+export function checkChoiceDeterminism(cfg: CFG): ChoiceDeterminismResult {
+  const violations: DeterminismViolation[] = [];
+
+  // Find all branch nodes
+  const branchNodes = cfg.nodes.filter(isBranchNode) as BranchNode[];
+
+  for (const branchNode of branchNodes) {
+    // Get all outgoing branch edges
+    const branchEdges = cfg.edges.filter(e => e.from === branchNode.id && e.edgeType === 'branch');
+
+    // For each branch, find the first message action
+    const labelMap = new Map<string, string[]>(); // label -> [action node IDs]
+
+    for (const edge of branchEdges) {
+      const firstAction = findFirstMessageAction(cfg, edge.to);
+      if (firstAction && isActionNode(firstAction) && isMessageAction(firstAction.action)) {
+        const label = firstAction.action.label;
+        if (!labelMap.has(label)) {
+          labelMap.set(label, []);
+        }
+        labelMap.get(label)!.push(firstAction.id);
+      }
+    }
+
+    // Check for duplicate labels
+    for (const [label, actionIds] of labelMap.entries()) {
+      if (actionIds.length > 1) {
+        violations.push({
+          branchNodeId: branchNode.id,
+          duplicateLabel: label,
+          branches: actionIds,
+          description: `Choice at role ${branchNode.at} has multiple branches with message label "${label}"`,
+        });
+      }
+    }
+  }
+
+  return {
+    isDeterministic: violations.length === 0,
+    violations,
+  };
+}
+
+/**
+ * Find the first message action reachable from a node
+ */
+function findFirstMessageAction(cfg: CFG, startNodeId: string): Node | null {
+  const visited = new Set<string>();
+  const queue: string[] = [startNodeId];
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    const node = cfg.nodes.find(n => n.id === nodeId);
+    if (!node) continue;
+
+    // If this is an action node with message action, return it
+    if (isActionNode(node) && isMessageAction(node.action)) {
+      return node;
+    }
+
+    // Otherwise, follow sequence edges
+    const outgoing = cfg.edges.filter(e => e.from === nodeId && e.edgeType === 'sequence');
+    for (const edge of outgoing) {
+      queue.push(edge.to);
+    }
+  }
+
+  return null;
+}
+
+// ============================================================================
+// Choice Mergeability (P0 - CRITICAL for Projection)
+// ============================================================================
+
+/**
+ * Check if choice branches have consistent continuations for all roles
+ * Per Honda et al. (2008): Projection requires "consistent endpoints" across choice branches
+ */
+export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
+  const violations: MergeabilityViolation[] = [];
+
+  // Find all branch nodes
+  const branchNodes = cfg.nodes.filter(isBranchNode) as BranchNode[];
+
+  for (const branchNode of branchNodes) {
+    // Get all branches for this choice
+    const branchEdges = cfg.edges.filter(e => e.from === branchNode.id && e.edgeType === 'branch');
+
+    // For each branch, collect the set of roles involved
+    const branchRoles = new Map<string, Set<string>>(); // branch label -> set of roles
+
+    for (const edge of branchEdges) {
+      const label = edge.label || edge.to;
+      const roles = getRolesInPath(cfg, edge.to, branchNode.id);
+      branchRoles.set(label, roles);
+    }
+
+    // Check if all branches have the same set of roles
+    const allRoles = new Set<string>();
+    for (const roles of branchRoles.values()) {
+      for (const role of roles) {
+        allRoles.add(role);
+      }
+    }
+
+    // For each role, check if it appears consistently across branches
+    for (const role of allRoles) {
+      const branchesWithRole: string[] = [];
+      const branchesWithoutRole: string[] = [];
+
+      for (const [label, roles] of branchRoles.entries()) {
+        if (roles.has(role)) {
+          branchesWithRole.push(label);
+        } else {
+          branchesWithoutRole.push(label);
+        }
+      }
+
+      // If role appears in some branches but not all, it's a violation
+      if (branchesWithRole.length > 0 && branchesWithoutRole.length > 0) {
+        const branchInfo: { [key: string]: string[] } = {};
+        for (const [label, roles] of branchRoles.entries()) {
+          branchInfo[label] = Array.from(roles);
+        }
+
+        violations.push({
+          branchNodeId: branchNode.id,
+          role,
+          description: `Role ${role} appears in branches [${branchesWithRole.join(', ')}] but not in [${branchesWithoutRole.join(', ')}]`,
+          branches: branchInfo,
+        });
+      }
+    }
+  }
+
+  return {
+    isMergeable: violations.length === 0,
+    violations,
+  };
+}
+
+/**
+ * Get all roles involved in a path (from a branch start until merge or terminal)
+ */
+function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Set<string> {
+  const roles = new Set<string>();
+  const visited = new Set<string>();
+  const queue: string[] = [startNodeId];
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    if (visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    const node = cfg.nodes.find(n => n.id === nodeId);
+    if (!node) continue;
+
+    // Stop at merge nodes (but don't include roles after merge)
+    if (node.type === 'merge') continue;
+
+    // If this is an action node with message action, collect roles
+    if (isActionNode(node) && isMessageAction(node.action)) {
+      const action = node.action;
+      roles.add(action.from);
+      if (typeof action.to === 'string') {
+        roles.add(action.to);
+      } else {
+        action.to.forEach(r => roles.add(r));
+      }
+    }
+
+    // Follow all outgoing edges (except back to branch node)
+    const outgoing = cfg.edges.filter(e => e.from === nodeId && e.to !== branchNodeId);
+    for (const edge of outgoing) {
+      queue.push(edge.to);
+    }
+  }
+
+  return roles;
+}
+
+// ============================================================================
+// Connectedness (P0 - CRITICAL for Projection)
+// ============================================================================
+
+/**
+ * Check if all declared roles participate in the protocol
+ * Per Scribble spec 4.1.1: All declared roles should appear in the protocol
+ */
+export function checkConnectedness(cfg: CFG): ConnectednessResult {
+  const declaredRoles = new Set(cfg.roles);
+  const usedRoles = new Set<string>();
+
+  // Collect all roles used in action nodes
+  for (const node of cfg.nodes) {
+    if (isActionNode(node) && isMessageAction(node.action)) {
+      const action = node.action;
+      usedRoles.add(action.from);
+      if (typeof action.to === 'string') {
+        usedRoles.add(action.to);
+      } else {
+        action.to.forEach(r => usedRoles.add(r));
+      }
+    }
+  }
+
+  // Find orphaned roles (declared but not used)
+  const orphanedRoles: string[] = [];
+  for (const role of declaredRoles) {
+    if (!usedRoles.has(role)) {
+      orphanedRoles.push(role);
+    }
+  }
+
+  return {
+    isConnected: orphanedRoles.length === 0,
+    orphanedRoles,
+    description: orphanedRoles.length > 0
+      ? `Roles ${orphanedRoles.join(', ')} are declared but never used`
+      : undefined,
+  };
+}
+
+// ============================================================================
 // Complete Verification
 // ============================================================================
 
@@ -522,5 +761,14 @@ export function verifyProtocol(
       ? detectRaceConditions(cfg)
       : { hasRaces: false, races: [] },
     progress: opts.checkProgress ? checkProgress(cfg) : { canProgress: true, blockedNodes: [] },
+    choiceDeterminism: opts.checkChoiceDeterminism
+      ? checkChoiceDeterminism(cfg)
+      : { isDeterministic: true, violations: [] },
+    choiceMergeability: opts.checkChoiceMergeability
+      ? checkChoiceMergeability(cfg)
+      : { isMergeable: true, violations: [] },
+    connectedness: opts.checkConnectedness
+      ? checkConnectedness(cfg)
+      : { isConnected: true, orphanedRoles: [] },
   };
 }
