@@ -44,7 +44,6 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Keep custom colors for existing components
         dark: {
           900: '#111827',
           800: '#1f2937',
@@ -56,9 +55,10 @@ export default {
           200: '#e5e7eb',
           100: '#f3f4f6',
         },
-        success: '#10b981',
-        error: '#ef4444',
-        warning: '#f59e0b',
+        primary: {
+          500: '#667eea',
+          600: '#5568d3',
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

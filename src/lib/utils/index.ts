@@ -15,13 +15,6 @@ type FlyAndScaleParams = {
 	duration?: number;
 };
 
-export function styleToString(style: Record<string, number | string | undefined>): string {
-	return Object.keys(style).reduce((str, key) => {
-		if (style[key] === undefined) return str;
-		return `${str}${key}:${style[key]};`;
-	}, "");
-}
-
 export function flyAndScale(
 	node: Element,
 	params: FlyAndScaleParams = { y: -8, x: 0, start: 0.95, duration: 150 }
@@ -43,6 +36,15 @@ export function flyAndScale(
 		return valueB;
 	};
 
+	const styleToString = (
+		style: Record<string, number | string | undefined>
+	): string => {
+		return Object.keys(style).reduce((str, key) => {
+			if (style[key] === undefined) return str;
+			return str + `${key}:${style[key]};`;
+		}, "");
+	};
+
 	return {
 		duration: params.duration ?? 200,
 		delay: 0,
@@ -53,9 +55,9 @@ export function flyAndScale(
 
 			return styleToString({
 				transform: `${transform} translate3d(${x}px, ${y}px, 0) scale(${scale})`,
-				opacity: t,
+				opacity: t
 			});
 		},
-		easing: cubicOut,
+		easing: cubicOut
 	};
 }
