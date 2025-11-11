@@ -1,22 +1,27 @@
-import Root from "./DropdownMenu.svelte";
-import Trigger from "./DropdownMenuTrigger.svelte";
-import Content from "./DropdownMenuContent.svelte";
-import Item from "./DropdownMenuItem.svelte";
-import Label from "./DropdownMenuLabel.svelte";
-import Separator from "./DropdownMenuSeparator.svelte";
+import { DropdownMenu as DropdownMenuPrimitive } from "bits-ui";
+import Item from "./dropdown-menu-item.svelte";
+import Label from "./dropdown-menu-label.svelte";
+import Content from "./dropdown-menu-content.svelte";
+import Separator from "./dropdown-menu-separator.svelte";
+
+const Root = DropdownMenuPrimitive.Root;
+const Trigger = DropdownMenuPrimitive.Trigger;
+const Group = DropdownMenuPrimitive.Group;
 
 export {
-  Root,
-  Trigger,
-  Content,
-  Item,
-  Label,
-  Separator,
-  //
-  Root as DropdownMenu,
-  Trigger as DropdownMenuTrigger,
-  Content as DropdownMenuContent,
-  Item as DropdownMenuItem,
-  Label as DropdownMenuLabel,
-  Separator as DropdownMenuSeparator,
+	Root,
+	Item,
+	Label,
+	Group,
+	Trigger,
+	Content,
+	Separator,
+	//
+	Root as DropdownMenu,
+	Item as DropdownMenuItem,
+	Label as DropdownMenuLabel,
+	Group as DropdownMenuGroup,
+	Content as DropdownMenuContent,
+	Trigger as DropdownMenuTrigger,
+	Separator as DropdownMenuSeparator,
 };
