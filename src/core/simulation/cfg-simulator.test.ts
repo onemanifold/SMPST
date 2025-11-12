@@ -680,3 +680,257 @@ describe('CFG Simulator - Known Complex Protocols', () => {
     expect(simulator.isComplete()).toBe(true);
   });
 });
+
+// ============================================================================
+// Event System Tests
+// ============================================================================
+
+describe('CFG Simulator - Event System', () => {
+  it('should emit step-start and step-end events', () => {
+    const source = `
+      protocol Simple(role A, role B) {
+        A -> B: Msg();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg);
+
+    const events: string[] = [];
+    simulator.on('step-start', () => events.push('step-start'));
+    simulator.on('step-end', () => events.push('step-end'));
+
+    simulator.step();
+
+    expect(events).toEqual(['step-start', 'step-end']);
+  });
+
+  it('should emit node-enter and node-exit events', () => {
+    const source = `
+      protocol Simple(role A, role B) {
+        A -> B: Msg();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg);
+
+    const nodeEvents: Array<{type: string; nodeId: string}> = [];
+    simulator.on('node-enter', (data) => nodeEvents.push({ type: 'enter', nodeId: data.nodeId }));
+    simulator.on('node-exit', (data) => nodeEvents.push({ type: 'exit', nodeId: data.nodeId }));
+
+    simulator.step();
+
+    // Should have multiple node-enter/exit pairs (initial->action->terminal)
+    expect(nodeEvents.length).toBeGreaterThan(0);
+    expect(nodeEvents.some(e => e.type === 'enter')).toBe(true);
+    expect(nodeEvents.some(e => e.type === 'exit')).toBe(true);
+  });
+
+  it('should emit message events', () => {
+    const source = `
+      protocol TwoMessages(role A, role B) {
+        A -> B: M1();
+        B -> A: M2();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg);
+
+    const messages: Array<{from: string; to: string; label: string}> = [];
+    simulator.on('message', (data) => {
+      messages.push({ from: data.from, to: data.to, label: data.label });
+    });
+
+    simulator.run();
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toEqual({ from: 'A', to: 'B', label: 'M1' });
+    expect(messages[1]).toEqual({ from: 'B', to: 'A', label: 'M2' });
+  });
+
+  it('should emit choice-selected event when choice is made', () => {
+    const source = `
+      protocol Choice(role Server, role Client) {
+        choice at Server {
+          Server -> Client: Success();
+        } or {
+          Server -> Client: Failure();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, { choiceStrategy: 'manual' });
+
+    const events: string[] = [];
+    simulator.on('choice-selected', () => events.push('choice-selected'));
+
+    // Choice point is already set during initialization (check via state)
+    expect(simulator.getState().atChoice).toBe(true);
+
+    // Make choice and step to execute it
+    simulator.choose(0);
+    simulator.step(); // This emits choice-selected
+
+    expect(events).toContain('choice-selected');
+  });
+
+  it('should emit fork and join events', () => {
+    const source = `
+      protocol Parallel(role A, role B, role C) {
+        par {
+          A -> B: M1();
+        } and {
+          C -> B: M2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg);
+
+    const events: string[] = [];
+    simulator.on('fork', () => events.push('fork'));
+    simulator.on('join', () => events.push('join'));
+
+    simulator.run();
+
+    expect(events).toContain('fork');
+    expect(events).toContain('join');
+  });
+
+  it('should emit recursion events', () => {
+    const source = `
+      protocol Loop(role A, role B) {
+        rec X {
+          A -> B: Data();
+          continue X;
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, { maxSteps: 10 });
+
+    const events: string[] = [];
+    simulator.on('recursion-enter', () => events.push('recursion-enter'));
+    simulator.on('recursion-continue', () => events.push('recursion-continue'));
+    simulator.on('recursion-exit', () => events.push('recursion-exit'));
+
+    simulator.run();
+
+    expect(events).toContain('recursion-enter');
+    expect(events).toContain('recursion-continue');
+    expect(events).toContain('recursion-exit');
+  });
+
+  it('should emit complete event', () => {
+    const source = `
+      protocol Simple(role A, role B) {
+        A -> B: Msg();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg);
+
+    let completed = false;
+    simulator.on('complete', () => { completed = true; });
+
+    simulator.run();
+
+    expect(completed).toBe(true);
+  });
+
+  it('should emit error event on failures', () => {
+    const source = `
+      protocol Choice(role Server, role Client) {
+        choice at Server {
+          Server -> Client: Success();
+        } or {
+          Server -> Client: Failure();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, { choiceStrategy: 'manual' });
+
+    let errorEmitted = false;
+    simulator.on('error', () => { errorEmitted = true; });
+
+    simulator.step(); // Hit choice point
+    const result = simulator.step(); // Try to step without choosing - should error
+
+    expect(result.success).toBe(false);
+    expect(errorEmitted).toBe(true);
+  });
+
+  it('should support unsubscribe via returned function', () => {
+    const source = `
+      protocol Simple(role A, role B) {
+        A -> B: Msg();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg);
+
+    let count = 0;
+    const unsubscribe = simulator.on('message', () => count++);
+
+    simulator.step(); // count = 1
+    unsubscribe();
+
+    // Reset and try again
+    simulator.reset();
+    simulator.step(); // count should still be 1 (not incremented)
+
+    expect(count).toBe(1);
+  });
+
+  it('should support off() method for unsubscribe', () => {
+    const source = `
+      protocol TwoMessages(role A, role B) {
+        A -> B: M1();
+        B -> A: M2();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg);
+
+    let count = 0;
+    const callback = () => count++;
+
+    simulator.on('message', callback);
+    simulator.step(); // count = 1
+
+    simulator.off('message', callback);
+    simulator.step(); // count should still be 1
+
+    expect(count).toBe(1);
+  });
+
+  it('should handle callback errors gracefully', () => {
+    const source = `
+      protocol Simple(role A, role B) {
+        A -> B: Msg();
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg);
+
+    // Add a callback that throws
+    simulator.on('message', () => {
+      throw new Error('Callback error');
+    });
+
+    // Should not crash the simulator
+    expect(() => simulator.step()).not.toThrow();
+    expect(simulator.isComplete()).toBe(true);
+  });
+});

@@ -97,6 +97,10 @@ import type {
   RecursionEvent,
   ParallelEvent,
   StateChangeEvent,
+  SimulatorEventType,
+  EventCallback,
+  EnhancedChoiceOption,
+  ActionPreview,
 } from './types';
 
 /**
@@ -132,6 +136,9 @@ export class CFGSimulator {
 
   // Trace recording
   private trace: CFGExecutionTrace;
+
+  // Event subscription system
+  private listeners: Map<SimulatorEventType, Set<EventCallback>> = new Map();
 
   constructor(cfg: CFG, config: CFGSimulatorConfig = {}) {
     this.cfg = cfg;
@@ -263,15 +270,20 @@ export class CFGSimulator {
    * Execute one step
    */
   step(): CFGStepResult {
+    // Emit step-start event
+    this.emit('step-start', { stepCount: this.stepCount, currentNode: this.currentNode });
+
     // Check if already completed
     if (this.completed) {
+      const error = {
+        type: 'already-completed' as const,
+        message: 'Protocol execution already completed',
+        nodeId: this.currentNode,
+      };
+      this.emit('error', error);
       return {
         success: false,
-        error: {
-          type: 'already-completed',
-          message: 'Protocol execution already completed',
-          nodeId: this.currentNode,
-        },
+        error,
         state: this.getState(),
       };
     }
@@ -279,13 +291,15 @@ export class CFGSimulator {
     // Check max steps
     if (this.stepCount >= this.config.maxSteps) {
       this.reachedMaxSteps = true;
+      const error = {
+        type: 'max-steps-reached' as const,
+        message: `Maximum steps (${this.config.maxSteps}) reached`,
+        nodeId: this.currentNode,
+      };
+      this.emit('error', error);
       return {
         success: false,
-        error: {
-          type: 'max-steps-reached',
-          message: `Maximum steps (${this.config.maxSteps}) reached`,
-          nodeId: this.currentNode,
-        },
+        error,
         state: this.getState(),
       };
     }
@@ -299,13 +313,15 @@ export class CFGSimulator {
         this.selectedChoice = Math.floor(Math.random() * this.pendingChoice.length);
       } else {
         // Manual - require explicit choose() call
+        const error = {
+          type: 'choice-required' as const,
+          message: 'At choice point - must call choose() before step()',
+          nodeId: this.currentNode,
+        };
+        this.emit('error', error);
         return {
           success: false,
-          error: {
-            type: 'choice-required',
-            message: 'At choice point - must call choose() before step()',
-            nodeId: this.currentNode,
-          },
+          error,
           state: this.getState(),
         };
       }
@@ -321,15 +337,20 @@ export class CFGSimulator {
         this.trace.events.push(result.event);
       }
 
+      // Emit step-end event
+      this.emit('step-end', { stepCount: this.stepCount, result, state: this.getState() });
+
       return result;
     } catch (error) {
+      const execError = {
+        type: 'invalid-node' as const,
+        message: error instanceof Error ? error.message : String(error),
+        nodeId: this.currentNode,
+      };
+      this.emit('error', execError);
       return {
         success: false,
-        error: {
-          type: 'invalid-node',
-          message: error instanceof Error ? error.message : String(error),
-          nodeId: this.currentNode,
-        },
+        error: execError,
         state: this.getState(),
       };
     }
@@ -484,6 +505,12 @@ export class CFGSimulator {
     this.trace.endTime = Date.now();
     this.trace.totalSteps = this.stepCount;
 
+    // Emit complete event
+    this.emit('complete', {
+      totalSteps: this.stepCount,
+      completionTime: Date.now(),
+    });
+
     return {
       success: true,
       state: this.getState(),
@@ -509,6 +536,15 @@ export class CFGSimulator {
       nodeId: node.id,
     };
 
+    // Emit message event for subscribers
+    this.emit('message', {
+      from: action.from,
+      to: action.to,
+      label: action.label,
+      payloadType: action.payloadType,
+      nodeId: node.id,
+    });
+
     // Transition to next node
     const result = this.transitionToNext();
 
@@ -528,6 +564,13 @@ export class CFGSimulator {
       this.selectedChoice = null;
       this.pendingChoice = null;
 
+      // Emit choice-selected event
+      this.emit('choice-selected', {
+        nodeId: node.id,
+        role: node.at,
+        choiceIndex,
+      });
+
       // Take the chosen branch
       const edges = this.getOutgoingEdges(node.id);
       if (choiceIndex >= edges.length) {
@@ -542,7 +585,7 @@ export class CFGSimulator {
         const event: ChoiceEvent = {
           type: 'choice',
           timestamp: Date.now(),
-          decidingRole: node.role,
+          decidingRole: node.at,
           choiceIndex,
           nodeId: node.id,
         };
@@ -564,6 +607,13 @@ export class CFGSimulator {
       firstNode: edge.to,
       description: this.getNodeDescription(edge.to),
     }));
+
+    // Emit choice-point event
+    this.emit('choice-point', {
+      nodeId: node.id,
+      role: node.at,
+      options: this.pendingChoice,
+    });
 
     return {
       success: true,
@@ -606,6 +656,12 @@ export class CFGSimulator {
         iterations: 0,
       });
 
+      // Emit recursion-enter event
+      this.emit('recursion-enter', {
+        label: node.label,
+        nodeId: node.id,
+      });
+
       // Record enter event if tracing
       if (this.config.recordTrace) {
         const event: RecursionEvent = {
@@ -638,6 +694,13 @@ export class CFGSimulator {
         // Exit recursion due to maxSteps limit
         this.reachedMaxSteps = true;
 
+        // Emit recursion-exit event
+        this.emit('recursion-exit', {
+          label: node.label,
+          iteration: inStack.iterations,
+          nodeId: node.id,
+        });
+
         // Record exit event if tracing
         if (this.config.recordTrace) {
           const event: RecursionEvent = {
@@ -667,6 +730,14 @@ export class CFGSimulator {
         };
       } else {
         // Continue looping - take forward edge again
+
+        // Emit recursion-continue event
+        this.emit('recursion-continue', {
+          label: node.label,
+          iteration: inStack.iterations,
+          nodeId: node.id,
+        });
+
         if (this.config.recordTrace) {
           const event: RecursionEvent = {
             type: 'recursion',
@@ -730,6 +801,13 @@ export class CFGSimulator {
     this.parallelBranchesCompleted = new Set();
     this.parallelJoinNode = joinNode.id;
 
+    // Emit fork event
+    this.emit('fork', {
+      nodeId: this.currentNode,
+      branches: forkEdges.length,
+      parallelId: (forkNode as any).parallel_id,
+    });
+
     // Record fork event if tracing
     if (this.config.recordTrace) {
       const event: ParallelEvent = {
@@ -792,6 +870,11 @@ export class CFGSimulator {
     this.parallelBranchesCompleted = new Set();
     this.parallelJoinNode = null;
 
+    // Emit join event
+    this.emit('join', {
+      nodeId: this.currentNode,
+    });
+
     // Record join event if tracing
     if (this.config.recordTrace) {
       const event: ParallelEvent = {
@@ -833,8 +916,16 @@ export class CFGSimulator {
    * Transition to specific node
    */
   private transitionTo(nodeId: string): void {
+    // Emit node-exit for current node
+    this.emit('node-exit', { nodeId: this.currentNode });
+
+    // Transition
     this.currentNode = nodeId;
     this.visitedNodes.push(nodeId);
+
+    // Emit node-enter for new node
+    this.emit('node-enter', { nodeId: this.currentNode });
+
     // Note: state-change events are too low-level for the trace
     // Only protocol-level events (messages, choices, recursion, parallel) are recorded
   }
@@ -897,6 +988,55 @@ export class CFGSimulator {
   }
 
   /**
+   * Subscribe to simulator events
+   * Returns unsubscribe function
+   *
+   * Example:
+   * ```typescript
+   * const unsubscribe = simulator.on('message', ({ from, to, label }) => {
+   *   console.log(`${from} -> ${to}: ${label}`);
+   * });
+   *
+   * // Later: unsubscribe()
+   * ```
+   */
+  on(event: SimulatorEventType, callback: EventCallback): () => void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    this.listeners.get(event)!.add(callback);
+
+    // Return unsubscribe function
+    return () => {
+      this.listeners.get(event)?.delete(callback);
+    };
+  }
+
+  /**
+   * Unsubscribe from simulator events
+   */
+  off(event: SimulatorEventType, callback: EventCallback): void {
+    this.listeners.get(event)?.delete(callback);
+  }
+
+  /**
+   * Emit event to all subscribers
+   */
+  private emit(event: SimulatorEventType, data?: any): void {
+    const callbacks = this.listeners.get(event);
+    if (callbacks) {
+      for (const callback of callbacks) {
+        try {
+          callback(data);
+        } catch (error) {
+          // Swallow callback errors to prevent simulation disruption
+          console.error(`Error in event callback for '${event}':`, error);
+        }
+      }
+    }
+  }
+
+  /**
    * Reset to initial state
    */
   reset(): void {
@@ -923,6 +1063,9 @@ export class CFGSimulator {
       completed: false,
       totalSteps: 0,
     };
+
+    // Auto-advance to first meaningful state
+    this.advanceToNextMeaningfulState();
   }
 
   /**
