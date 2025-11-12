@@ -1430,7 +1430,479 @@ interface ProjectionResult {
 
 ---
 
-## 16. Conclusion
+## 16. Sub-Protocol Support
+
+### 16.1 Overview
+
+**Sub-protocols** (invoked via `do` statements) are a key feature of Scribble that allows protocol composition and reusability. The UI must support viewing, editing, and simulating protocols that use sub-protocol invocation.
+
+**Syntax**:
+```scribble
+do SubProtocol(A as X, B as Y);
+```
+
+**Semantics**:
+- Invokes `SubProtocol` inline with role substitution
+- Role `X` in `SubProtocol` is replaced by role `A` in the calling context
+- Role `Y` in `SubProtocol` is replaced by role `B` in the calling context
+- Must be tail-recursive per role (no actions after `do` for involved roles)
+
+**Current Implementation Status**:
+- ✅ Parser: Supports `do` statement syntax
+- ✅ AST: Has `Do` node type
+- ⚠️ CFG Builder: Creates placeholder action node (not fully expanded)
+- ❌ Projection: No special handling (treats as regular action)
+- ❌ Simulation: Placeholder only (doesn't execute sub-protocol)
+
+### 16.2 UI Requirements for Sub-Protocols
+
+#### 16.2.1 CODE Tab - Global Scribble Editor
+
+**Syntax Highlighting**:
+- Highlight `do` keyword
+- Highlight sub-protocol name (different color from role names)
+- Highlight role arguments with substitution syntax (`A as X`)
+
+**Auto-Completion**:
+- Show available sub-protocols in dropdown when typing `do`
+- Show role substitution help: `Protocol(RoleInCurrent as RoleInSub)`
+
+**Navigation**:
+- Ctrl+Click on sub-protocol name → Jump to sub-protocol definition
+- Breadcrumbs: Show protocol hierarchy (Main → SubProtocol → NestedSubProtocol)
+
+**Validation**:
+- Inline error if sub-protocol doesn't exist
+- Inline error if role substitution is invalid (wrong arity, undefined roles)
+- Inline warning if not tail-recursive (action after `do` for involved role)
+
+**Example**:
+```scribble
+global protocol Main(role A, role B, role C) {
+  Init() from A to B;
+  do Authentication(A as Client, B as Server);  // ← Sub-protocol invocation
+  Data() from A to C;
+}
+
+global protocol Authentication(role Client, role Server) {
+  Request() from Client to Server;
+  Challenge() from Server to Client;
+  Response() from Client to Server;
+}
+```
+
+---
+
+#### 16.2.2 CODE Tab - Local Scribble Projections
+
+**Projection Strategy**:
+
+When projecting a `do` statement, the UI should show one of these approaches:
+
+**Option A: Show as call (simple)**:
+```scribble
+// Client local protocol
+Server!Init;
+do Authentication(A as Client, B as Server);  // Call to sub-protocol
+C!Data;
+```
+
+**Option B: Expand inline (educational)**:
+```scribble
+// Client local protocol
+Server!Init;
+// --- BEGIN Authentication ---
+Server!Request;
+Server?Challenge;
+Server!Response;
+// --- END Authentication ---
+C!Data;
+```
+
+**Option C: Toggle view (flexible)**:
+- Default: Show as call
+- Click to expand inline
+- Annotations show role mappings
+
+**Recommendation**: Option C (toggle) for educational flexibility
+
+---
+
+#### 16.2.3 CODE Tab - Sub-Protocol Library
+
+**New Component**: Sub-Protocol Browser (optional sidebar or modal)
+
+**Features**:
+- List all protocols defined in current workspace
+- Tree view showing invocation hierarchy:
+  ```
+  ▼ Main
+    ├─ Authentication
+    │   └─ TokenValidation
+    └─ DataTransfer
+  ```
+- Click protocol → Show definition in new tab or split pane
+- Search/filter by protocol name
+- Show which protocols invoke which (dependency graph)
+
+**Integration**:
+- Parse all `global protocol` declarations in editor
+- Build protocol registry
+- Update when editor content changes
+- Show errors if protocol is invoked but not defined
+
+---
+
+#### 16.2.4 SIMULATION Tab - CFG Structure Visualization
+
+**Do Nodes**:
+
+Currently, `do` statements create placeholder action nodes in CFG:
+```
+from: '__do__'
+to: '__do__'
+label: 'do Authentication(A as Client, B as Server)'
+```
+
+**Visualization Options**:
+
+**Option A: Show as special node (current)**:
+```
+┌──────────────────┐
+│  [Init A→B]      │
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│ ◆ Do:            │
+│ Authentication   │
+│ (A→Client,       │
+│  B→Server)       │
+└────────┬─────────┘
+         ↓
+┌──────────────────┐
+│  [Data A→C]      │
+└──────────────────┘
+```
+
+**Option B: Expand inline (educational)**:
+```
+┌──────────────────┐
+│  [Init A→B]      │
+└────────┬─────────┘
+         ↓
+┌────────────────────────┐
+│ ┏━━━━━━━━━━━━━━━━━━━┓ │
+│ ┃ Authentication:   ┃ │
+│ ┃ [Request A→B]     ┃ │
+│ ┃      ↓            ┃ │
+│ ┃ [Challenge B→A]   ┃ │
+│ ┃      ↓            ┃ │
+│ ┃ [Response A→B]    ┃ │
+│ ┗━━━━━━━━━━━━━━━━━━━┛ │
+└────────┬───────────────┘
+         ↓
+┌──────────────────┐
+│  [Data A→C]      │
+└──────────────────┘
+```
+
+**Option C: Collapsible (flexible)**:
+- Default: Show as special node (▶ Do: Authentication)
+- Click to expand inline (▼ Do: Authentication with nested nodes)
+- Double border or different color for expanded sub-protocol
+
+**Recommendation**: Option C (collapsible) for clarity without clutter
+
+**Visual Design**:
+- Do nodes: Diamond shape (◆) to distinguish from regular actions
+- Color: Different color (e.g., purple) to stand out
+- Label: Show protocol name + role mappings
+- Tooltip: Show full sub-protocol definition
+
+---
+
+#### 16.2.5 SIMULATION Tab - CFG Sequence Diagram
+
+**During Execution**:
+
+When simulation reaches a `do` statement, show:
+
+**Option A: Single message line**:
+```
+Client    Server
+  │         │
+  ├─Init────>
+  │◆ do Authentication
+  │         │
+  ├─Data────>
+```
+
+**Option B: Expanded sequence**:
+```
+Client    Server
+  │         │
+  ├─Init────>
+  ├─┬─────────────────┐
+  │ │ Authentication  │
+  │ ├─Request────────>│
+  │ │<─Challenge──────┤
+  │ ├─Response───────>│
+  │ └─────────────────┘
+  ├─Data────>
+```
+
+**Option C: Indented sub-section**:
+```
+Client    Server
+  │         │
+  ├─Init────>
+  │┌──────┐ │
+  ││ Auth.││ │
+  │├─Req──>│ │
+  ││<─Chal─┤ │
+  │├─Resp─>│ │
+  │└──────┘ │
+  ├─Data────>
+```
+
+**Recommendation**: Option B (expanded with border) for clarity
+
+**Visual Design**:
+- Border around sub-protocol messages (boxed)
+- Label at top: Sub-protocol name
+- Indentation or color coding
+- Optional: Collapse button to hide/show sub-protocol details
+
+---
+
+#### 16.2.6 SIMULATION Tab - CFSM Network
+
+**Sub-Protocol States**:
+
+When CFSM includes projected sub-protocol, show:
+
+**Option A: Flatten (simple)**:
+- All states from sub-protocol merged into main CFSM
+- No visual distinction
+
+**Option B: Grouped states (educational)**:
+```
+┌──────────────────────┐
+│  Client CFSM         │
+│  [S0]                │
+│   │!Init             │
+│   ↓                  │
+│  ┏━━━━━━━━━━━━━━━┓  │
+│  ┃ Authentication  ┃  │
+│  ┃  [S_Auth0]      ┃  │
+│  ┃   │!Request     ┃  │
+│  ┃   ↓             ┃  │
+│  ┃  [S_Auth1]      ┃  │
+│  ┃   │?Challenge   ┃  │
+│  ┃   ↓             ┃  │
+│  ┃  [S_Auth2]      ┃  │
+│  ┃   │!Response    ┃  │
+│  ┃   ↓             ┃  │
+│  ┗━━━━━━━━━━━━━━━┛  │
+│  [S3]                │
+│   │!Data             │
+│   ↓                  │
+│  [S4]■               │
+└──────────────────────┘
+```
+
+**Option C: Call/Return (advanced)**:
+- Show state with `call Authentication`
+- Jump to separate CFSM visualization for Authentication
+- Return to main CFSM after completion
+
+**Recommendation**: Option B (grouped) for educational clarity
+
+**Visual Design**:
+- Nested box around sub-protocol states
+- Different background color
+- Label at top
+- Clear entry and exit points
+
+---
+
+### 16.3 Implementation Considerations
+
+#### 16.3.1 Current Limitations
+
+**CFG Builder**:
+- Does NOT expand sub-protocols inline
+- Creates placeholder action node with `from: '__do__'`
+- No role substitution applied in CFG
+
+**Projection**:
+- Treats `do` nodes as regular actions
+- Does NOT expand sub-protocol for role
+
+**Simulation**:
+- Cannot execute sub-protocols (just skips placeholder)
+- No sub-protocol state tracking
+
+#### 16.3.2 Required Backend Changes
+
+To fully support sub-protocols in UI, backend needs:
+
+1. **Protocol Registry**:
+   - Parse all `global protocol` declarations
+   - Build map: protocol name → AST
+   - Detect mutual recursion
+
+2. **CFG Builder Enhancement**:
+   - Option to expand `do` statements inline (with role substitution)
+   - Or keep as placeholder with metadata (expandable on demand)
+
+3. **Projection Enhancement**:
+   - Expand sub-protocol when projecting
+   - Apply role substitution
+   - Merge states into main CFSM
+
+4. **Simulation Enhancement**:
+   - Execute sub-protocol steps
+   - Track call stack (for nested sub-protocols)
+   - Handle recursive invocations
+
+#### 16.3.3 UI-Only Approach (Interim Solution)
+
+**Until backend fully supports sub-protocol expansion**:
+
+1. **Parse all protocols** in editor
+2. **Build protocol registry** in UI state
+3. **Syntax highlighting and navigation** works
+4. **Visualizations show placeholder** (special Do nodes)
+5. **Warn user** that simulation doesn't expand sub-protocols yet
+
+**User Experience**:
+- "⚠️ This protocol uses sub-protocol invocation. Simulation will show placeholder only. Full sub-protocol expansion coming in future release."
+- Show Do node in CFG Structure as diamond with protocol name
+- In sequence diagram, show single line: `◆ do SubProtocol(...)`
+- In CFSM Network, show special state: `[CallSubProtocol]`
+
+---
+
+### 16.4 User Workflows with Sub-Protocols
+
+#### Workflow 1: Write Protocol with Sub-Protocol
+
+```
+1. User writes main protocol in global editor
+2. User types: `do Auth`
+3. Auto-complete shows available protocols: [Authentication, Authorization, ...]
+4. User selects Authentication
+5. User types: `(Client as `
+6. Auto-complete shows roles from main protocol: [A, B, C]
+7. User completes: `(Client as A, Server as B)`
+8. IDE validates role substitution (arity, role existence)
+9. Syntax highlighting shows Do statement in special color
+```
+
+#### Workflow 2: Navigate to Sub-Protocol
+
+```
+1. User has `do Authentication(A as Client, B as Server)` in editor
+2. User Ctrl+Clicks "Authentication"
+3. IDE shows sub-protocol definition:
+   - Option A: Open in new editor tab
+   - Option B: Split pane (main protocol left, sub-protocol right)
+   - Option C: Modal overlay with definition
+4. User sees Authentication protocol definition
+5. User can edit sub-protocol (changes reflected in main)
+```
+
+#### Workflow 3: Visualize Protocol with Sub-Protocol
+
+```
+1. User parses protocol with `do` statement
+2. User switches to SIMULATION tab
+3. User selects "CFG Structure" view
+4. IDE shows Do node as diamond (◆)
+5. User clicks Do node
+6. IDE expands inline to show sub-protocol CFG
+7. User sees how sub-protocol fits into main flow
+```
+
+#### Workflow 4: Simulate with Sub-Protocol (Future)
+
+```
+1. User runs simulation (when backend supports expansion)
+2. Simulation reaches Do node
+3. Sequence diagram shows sub-protocol messages in bordered box
+4. CFSM Network shows states entering sub-protocol section
+5. Event log shows: "Entering sub-protocol: Authentication"
+6. Simulation executes sub-protocol steps
+7. Event log shows: "Exiting sub-protocol: Authentication"
+8. Simulation continues main protocol
+```
+
+---
+
+### 16.5 Visual Design Guidelines for Sub-Protocols
+
+**Color Coding**:
+- Do nodes: Purple (#9333ea) to stand out
+- Sub-protocol borders: Purple border
+- Sub-protocol background: Light purple (#f3e8ff)
+
+**Icons**:
+- Do nodes: Diamond shape (◆) or call icon (📞)
+- Expand/collapse: ▶/▼ triangles
+
+**Annotations**:
+- Show role mappings in tooltip or label
+- Show protocol name prominently
+- Indicate tail-recursive constraint (if violated: show warning)
+
+**Interaction**:
+- Click Do node → Toggle expand/collapse
+- Ctrl+Click protocol name → Navigate to definition
+- Hover → Show full sub-protocol signature
+
+---
+
+### 16.6 Testing Sub-Protocol Support
+
+**Test Cases**:
+
+1. **Simple sub-protocol**:
+   ```scribble
+   do Auth(A as Client, B as Server);
+   ```
+
+2. **Nested sub-protocols**:
+   ```scribble
+   do Auth(A as User, B as Service);  // Auth calls TokenCheck
+   ```
+
+3. **Mutual recursion**:
+   ```scribble
+   do ProtoA(...);  // ProtoA calls ProtoB, ProtoB calls ProtoA
+   ```
+
+4. **Role mismatch error**:
+   ```scribble
+   do Auth(A as Client);  // Error: Auth expects 2 roles, got 1
+   ```
+
+5. **Tail recursion violation**:
+   ```scribble
+   do Auth(A as Client, B as Server);
+   msg() from A to C;  // Warning: Action after do for involved role A
+   ```
+
+**UI Testing**:
+- Syntax highlighting works for all cases
+- Navigation jumps to correct protocol
+- Errors shown inline
+- Visualizations render correctly
+- Simulation handles sub-protocols (when backend ready)
+
+---
+
+## 17. Conclusion
 
 This specification defines a comprehensive UI for the Scribble MPST IDE v2.0 that:
 
