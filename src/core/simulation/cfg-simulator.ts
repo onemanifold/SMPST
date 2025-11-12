@@ -575,6 +575,8 @@ export class CFGSimulator {
   /**
    * Preview a branch by traversing from start node to merge/limit
    * Returns action previews, participating roles, and estimated steps
+   *
+   * IMPORTANT: Limited to 5 steps to avoid unrolling loops/recursion
    */
   private previewBranch(startNodeId: string, branchId: string): {
     preview: ActionPreview[];
@@ -591,7 +593,10 @@ export class CFGSimulator {
     // Find the merge node we're looking for
     const mergeNode = this.findMergeNode(branchId);
 
-    while (preview.length < limit && steps < 100) { // Safety limit
+    // Hard limit: stop after 5 steps to avoid unrolling loops
+    const MAX_STEPS = 5;
+
+    while (preview.length < limit && steps < MAX_STEPS) {
       // Stop if we reached the merge node
       if (currentId === mergeNode?.id) {
         break;
