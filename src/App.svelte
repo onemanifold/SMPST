@@ -23,7 +23,12 @@
 
   <div class="status">
     <p>✅ Vite + Svelte + TypeScript configured</p>
-    <p>⏳ Parser, CFG, and verification layers coming soon...</p>
+    <p>✅ Parser (Layer 1) - Scribble 2.0 with Chevrotain</p>
+    <p>✅ CFG Builder (Layer 2) - AST → Control Flow Graph</p>
+    <p>✅ Verification (Layer 3) - Deadlock, liveness, fork-join</p>
+    <p>✅ Projection (Layer 4) - CFG → CFSM per role</p>
+    <p>✅ Runtime (Layer 5) - Executor and Simulator</p>
+    <p>⏳ UI Components (Layer 6) - Coming next!</p>
   </div>
 </main>
 
