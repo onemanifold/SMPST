@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Tabs, Tab, TabContent } from 'carbon-components-svelte';
   import Editor from './Editor.svelte';
   import { editorView, viewMode, generatedCode, projectionData } from '../stores/editor';
   import { onMount } from 'svelte';
@@ -14,6 +15,12 @@
   // When switching to Global view, reset to Scribble editor
   $: if ($viewMode === 'global' && $editorView === 'typescript') {
     editorView.set('scribble');
+  }
+
+  $: selectedIndex = $editorView === 'scribble' ? 0 : 1;
+
+  function handleTabChange(event: CustomEvent<{ selectedIndex: number }>) {
+    editorView.set(event.detail.selectedIndex === 0 ? 'scribble' : 'typescript');
   }
 
   $: {
@@ -50,7 +57,7 @@
         basicSetup,
         javascript({ typescript: true }),
         oneDark,
-        EditorState.readOnly.of(true), // Read-only for generated code
+        EditorState.readOnly.of(true),
         EditorView.theme({
           '&': {
             height: '100%',
@@ -77,46 +84,29 @@
     typescriptView.destroy();
     typescriptView = null;
   }
-
-  function selectView(view: typeof $editorView) {
-    editorView.set(view);
-  }
 </script>
 
 <div class="code-editor">
-  <div class="editor-tabs">
-    <button
-      class="tab"
-      class:active={$editorView === 'scribble'}
-      on:click={() => selectView('scribble')}
-    >
-      Scribble Protocol
-    </button>
+  <Tabs selected={selectedIndex} on:change={handleTabChange}>
+    <Tab label="Scribble Protocol" />
     {#if $viewMode !== 'global'}
-      <button
-        class="tab"
-        class:active={$editorView === 'typescript'}
-        on:click={() => selectView('typescript')}
-      >
-        TypeScript
-        <span class="role-badge">{$viewMode}</span>
-      </button>
+      <Tab label="TypeScript ({$viewMode})" />
     {/if}
-  </div>
 
-  <div class="editor-content">
-    {#if $editorView === 'scribble'}
-      <Editor />
-    {:else}
-      <div class="typescript-editor-wrapper">
-        <div class="editor-header">
-          <span class="editor-title">Generated TypeScript - {currentRole}</span>
-          <span class="editor-hint">Read-only</span>
-        </div>
-        <div class="typescript-container" bind:this={typescriptEditorContainer}></div>
-      </div>
-    {/if}
-  </div>
+    <svelte:fragment slot="content">
+      <TabContent>
+        <Editor />
+      </TabContent>
+
+      {#if $viewMode !== 'global'}
+        <TabContent>
+          <div class="typescript-editor-wrapper">
+            <div class="typescript-container" bind:this={typescriptEditorContainer}></div>
+          </div>
+        </TabContent>
+      {/if}
+    </svelte:fragment>
+  </Tabs>
 </div>
 
 <style>
@@ -124,90 +114,23 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #282c34;
-  }
-
-  .editor-tabs {
-    display: flex;
-    flex-direction: row; /* explicitly horizontal */
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    background: #1f2937;
-    border-bottom: 2px solid #374151;
-  }
-
-  .tab {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.625rem 1.25rem;
-    background: #111827;
-    border: 1px solid #374151;
-    border-radius: 6px 6px 0 0;
-    color: #9ca3af;
-    font-size: 0.875rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .tab:hover:not(.active) {
-    color: #d1d5db;
-    background: #1f2937;
-    border-color: #4b5563;
-  }
-
-  .tab.active {
-    color: #ffffff;
-    background: #667eea;
-    border-color: #667eea;
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-  }
-
-  .role-badge {
-    font-size: 0.75rem;
-    color: #667eea;
-    background: rgba(102, 126, 234, 0.1);
-    padding: 0.125rem 0.5rem;
-    border-radius: 3px;
-    font-weight: 600;
-  }
-
-  .editor-content {
-    flex: 1;
-    overflow: hidden;
+    background: var(--cds-ui-01);
   }
 
   .typescript-editor-wrapper {
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #282c34;
-  }
-
-  .editor-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    background: #1f2937;
-    border-bottom: 1px solid #374151;
-  }
-
-  .editor-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #f3f4f6;
-  }
-
-  .editor-hint {
-    font-size: 0.75rem;
-    color: #6b7280;
   }
 
   .typescript-container {
     flex: 1;
     overflow: auto;
+  }
+
+  :global(.code-editor .bx--tab-content) {
+    padding: 0 !important;
+    height: calc(100% - 48px);
   }
 
   :global(.typescript-container .cm-editor) {
