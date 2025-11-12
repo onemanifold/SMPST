@@ -1,0 +1,21 @@
+/**
+ * Stream Data Protocol
+ *
+ * Demonstrates:
+ * - Recursion (rec/continue)
+ * - Choice within recursion
+ * - Loop until done pattern
+ * - Multiple continue points
+ */
+
+protocol StreamData(role Client, role Server) {
+  rec Loop {
+    choice at Client {
+      Client -> Server: More();
+      Server -> Client: Data(String);
+      continue Loop;
+    } or {
+      Client -> Server: Done();
+    }
+  }
+}

@@ -1,0 +1,32 @@
+/**
+ * Travel Agency Protocol (from Scribble Specification Paper)
+ *
+ * Classic example from "The Scribble Protocol Language" by Yoshida et al.
+ *
+ * Demonstrates:
+ * - Complex nested choice
+ * - Recursion with multiple paths
+ * - Three-role coordination
+ * - Acceptance/rejection pattern
+ */
+
+protocol BookJourney(role Customer, role Agency, role Service) {
+  rec Loop {
+    choice at Customer {
+      Customer -> Agency: query();
+      Agency -> Customer: price();
+      Agency -> Service: info();
+      continue Loop;
+    } or {
+      choice at Customer {
+        Customer -> Agency: ACCEPT();
+        Agency -> Service: ACCEPT();
+        Customer -> Service: Address();
+        Service -> Customer: Date();
+      } or {
+        Customer -> Agency: REJECT();
+        Agency -> Service: REJECT();
+      }
+    }
+  }
+}

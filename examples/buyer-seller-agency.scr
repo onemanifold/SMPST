@@ -1,0 +1,20 @@
+/**
+ * Buyer-Seller-CreditAgency Protocol
+ *
+ * Demonstrates:
+ * - Three-role protocol
+ * - Tau-elimination (messages not involving a role are removed)
+ * - Mediator pattern (Seller communicates with both)
+ *
+ * Projections:
+ * - Buyer: sees Order and Invoice only
+ * - Seller: sees all messages (mediator)
+ * - CreditAgency: sees CheckCredit and Approved only
+ */
+
+protocol Purchase(role Buyer, role Seller, role CreditAgency) {
+  Buyer -> Seller: Order(String);
+  Seller -> CreditAgency: CheckCredit(Int);
+  CreditAgency -> Seller: Approved();
+  Seller -> Buyer: Invoice(Int);
+}
