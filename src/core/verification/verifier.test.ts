@@ -516,6 +516,103 @@ describe('Parallel Deadlock Detection Algorithm', () => {
     // A appears in all three branches
     expect(result.conflicts.length).toBeGreaterThan(0);
   });
+
+  it('should detect circular dependency between two branches', () => {
+    const source = `
+      protocol CircularParallel(role A, role B) {
+        par {
+          A -> B: M1();
+          B -> A: Ack1();
+        } and {
+          B -> A: M2();
+          A -> B: Ack2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // Branch 1: A sends M1, then waits for Ack1 from B
+    // Branch 2: B sends M2, then waits for Ack2 from A
+    // But A can't send M1 and receive M2 simultaneously!
+    // Circular dependency: both branches blocked
+    expect(result.hasDeadlock).toBe(true);
+    expect(result.conflicts.length).toBeGreaterThan(0);
+
+    const conflict = result.conflicts.find(c =>
+      c.description.includes('Circular dependency')
+    );
+    expect(conflict).toBeDefined();
+  });
+
+  it('should detect circular dependency with multiple messages', () => {
+    const source = `
+      protocol ComplexCircular(role Client, role Server) {
+        par {
+          Client -> Server: Request();
+          Server -> Client: Response();
+        } and {
+          Server -> Client: Notification();
+          Client -> Server: Ack();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // Both branches have bidirectional communication
+    // Branch 1: Client waits for Server's Response
+    // Branch 2: Server waits for Client's Ack
+    // Deadlock!
+    expect(result.hasDeadlock).toBe(true);
+  });
+
+  it('should NOT detect circular dependency when independent', () => {
+    const source = `
+      protocol IndependentBidirectional(role A, role B, role C, role D) {
+        par {
+          A -> B: M1();
+          B -> A: Ack1();
+        } and {
+          C -> D: M2();
+          D -> C: Ack2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // Branch 1: A ↔ B
+    // Branch 2: C ↔ D
+    // No cross-branch dependencies - OK!
+    expect(result.hasDeadlock).toBe(false);
+  });
+
+  it('should detect three-way circular dependency', () => {
+    const source = `
+      protocol ThreeWayCircular(role A, role B, role C) {
+        par {
+          A -> B: M1();
+          C -> A: M3();
+        } and {
+          B -> C: M2();
+          A -> B: M4();
+        } and {
+          C -> A: M5();
+          B -> C: M6();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const result = detectParallelDeadlock(cfg);
+
+    // Complex circular dependencies across three branches
+    expect(result.hasDeadlock).toBe(true);
+  });
 });
 
 describe('Race Condition Detection Algorithm', () => {
