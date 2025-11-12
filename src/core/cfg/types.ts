@@ -50,7 +50,13 @@ export interface ParallelAction {
   branchLabel: string;
 }
 
-export type Action = MessageAction | ParallelAction;
+export interface SubProtocolAction {
+  kind: 'subprotocol';
+  protocol: string;
+  roleArguments: string[];
+}
+
+export type Action = MessageAction | ParallelAction | SubProtocolAction;
 
 // ============================================================================
 // Nodes

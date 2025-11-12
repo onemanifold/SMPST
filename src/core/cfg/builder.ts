@@ -27,6 +27,7 @@ import type {
   JoinNode,
   RecursiveNode,
   MessageAction,
+  SubProtocolAction,
 } from './types';
 
 // ============================================================================
@@ -608,18 +609,17 @@ function buildContinue(
 
 /**
  * Do statement (sub-protocol invocation)
- * For now, create a placeholder action node
+ * Creates a sub-protocol action node with protocol name and role arguments
  */
 function buildDo(
   ctx: BuilderContext,
   doStmt: Do,
   exitNodeId: string
 ): string {
-  const action: MessageAction = {
-    kind: 'message',
-    from: '__do__',
-    to: '__do__',
-    label: `do ${doStmt.protocol}(${doStmt.roleArguments.join(', ')})`,
+  const action: SubProtocolAction = {
+    kind: 'subprotocol',
+    protocol: doStmt.protocol,
+    roleArguments: doStmt.roleArguments,
   };
 
   const actionNode = addNode(ctx, createActionNode(action));
