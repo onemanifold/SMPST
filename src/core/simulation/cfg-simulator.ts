@@ -1,11 +1,84 @@
 /**
  * CFG Simulator (Orchestration-based)
  *
- * Centralized execution from global CFG.
- * Validates CFG structure correctness through executable semantics.
+ * Centralized execution from global CFG - represents the "choreographer's view"
+ * where a global coordinator orchestrates all protocol actions.
  *
- * Key principle: The simulator IS the operational semantics of the CFG.
- * If protocols execute correctly here, the CFG structure is correct.
+ * ============================================================================
+ * ASSUMPTIONS (What the Verifier Guarantees)
+ * ============================================================================
+ *
+ * This simulator ASSUMES the CFG has been VERIFIED and is CORRECT.
+ * The verifier (Layer 3) guarantees:
+ *
+ * 1. **Structural Correctness**:
+ *    - All nodes reachable from initial node
+ *    - All paths lead to terminal or recursion
+ *    - Fork-join pairs properly matched
+ *    - No orphaned nodes or edges
+ *
+ * 2. **Deadlock Freedom**:
+ *    - No cycles (except recursion via continue edges)
+ *    - No parallel deadlocks (role sending in multiple branches)
+ *    - No circular dependencies between parallel branches
+ *
+ * 3. **Choice Correctness**:
+ *    - All choice branches are deterministic (distinguishable by first message)
+ *    - All choice branches are mergeable (consistent role participation)
+ *    - All branches converge at merge node
+ *
+ * 4. **Role Connectivity**:
+ *    - All declared roles participate in protocol
+ *    - No orphaned roles
+ *
+ * 5. **Recursion Well-Formedness**:
+ *    - All continue statements target valid rec labels
+ *    - Nested recursion properly scoped
+ *    - No recursion spanning parallel boundaries
+ *
+ * If any of these properties are violated, the verifier will REJECT the CFG
+ * before it reaches the simulator.
+ *
+ * ============================================================================
+ * GUARANTEES (What the Simulator Promises)
+ * ============================================================================
+ *
+ * Given a verified CFG, this simulator guarantees:
+ *
+ * 1. **Faithful Execution**:
+ *    - Executes CFG exactly as specified by Scribble semantics
+ *    - One step() = one protocol-level action (message/choice/fork/join)
+ *    - Total order of events (global choreography view)
+ *
+ * 2. **Complete State Tracking**:
+ *    - currentNode always valid and in CFG
+ *    - visitedNodes monotonically increasing (except reset)
+ *    - Recursion stack properly maintained
+ *
+ * 3. **Termination**:
+ *    - Either completes successfully (reaches terminal)
+ *    - Or hits maxSteps limit (for bounded recursion testing)
+ *    - Never infinite loops without recursion
+ *
+ * 4. **Event Emission**:
+ *    - Every protocol action emits corresponding event
+ *    - Events in causal order
+ *    - No missed or duplicate events
+ *
+ * 5. **Execution Model**:
+ *    - Synchronous orchestration (centralized coordinator)
+ *    - Parallel branches execute in interleaved order
+ *    - No message buffers (atomic delivery)
+ *
+ * ============================================================================
+ * Key Principle
+ * ============================================================================
+ *
+ * The simulator IS the operational semantics of the global CFG.
+ * If a protocol executes here without errors, the global choreography is valid.
+ *
+ * Note: This does NOT test distributed execution semantics (async, buffers, etc.)
+ * That is the job of the CFSM-based distributed simulator (Layer 5).
  */
 
 import type { CFG, Node as CFGNode, Edge as CFGEdge, ActionNode, BranchNode, RecursiveNode, ForkNode, JoinNode, MergeNode } from '../cfg/types';

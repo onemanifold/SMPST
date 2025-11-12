@@ -272,7 +272,7 @@ export function detectParallelDeadlock(cfg: CFG): ParallelDeadlockResult {
     // Get all branches for this fork
     const branches = getParallelBranches(cfg, fork);
 
-    // Check each pair of branches for actual conflicts
+    // Check 1: Role sending in multiple branches (immediate conflict)
     for (let i = 0; i < branches.length; i++) {
       for (let j = i + 1; j < branches.length; j++) {
         const sendersInBranch1 = getSendersInBranch(cfg, branches[i]);
@@ -295,6 +295,10 @@ export function detectParallelDeadlock(cfg: CFG): ParallelDeadlockResult {
         }
       }
     }
+
+    // Check 2: Circular dependencies between branches
+    const circularConflicts = detectCircularDependencies(cfg, fork, branches);
+    conflicts.push(...circularConflicts);
   }
 
   return {
@@ -390,6 +394,114 @@ function getSendersInBranch(cfg: CFG, branchNodes: string[]): Set<string> {
   }
 
   return senders;
+}
+
+/**
+ * Check for circular dependencies between parallel branches
+ * Returns conflicts where role A in branch i waits for role B in branch j,
+ * and role B in branch j waits for role A in branch i.
+ */
+function detectCircularDependencies(cfg: CFG, fork: ForkNode, branches: string[][]): ParallelConflict[] {
+  const conflicts: ParallelConflict[] = [];
+
+  // Build dependency map: (role, branchIndex) -> set of (role, branchIndex) it depends on
+  interface Dependency {
+    role: string;
+    branch: number;
+  }
+
+  const dependencies = new Map<string, Dependency[]>(); // key: "role:branch", value: dependencies
+
+  // For each branch, analyze what roles it depends on
+  for (let branchIdx = 0; branchIdx < branches.length; branchIdx++) {
+    const branchNodes = branches[branchIdx];
+
+    // Get messages in this branch
+    for (const nodeId of branchNodes) {
+      const node = cfg.nodes.find(n => n.id === nodeId);
+      if (node && isActionNode(node)) {
+        const action = (node as ActionNode).action;
+        if (isMessageAction(action)) {
+          // Receiver depends on sender
+          const receivers = typeof action.to === 'string' ? [action.to] : action.to;
+
+          for (const receiver of receivers) {
+            const key = `${receiver}:${branchIdx}`;
+            if (!dependencies.has(key)) {
+              dependencies.set(key, []);
+            }
+
+            // Find which branch the sender is in
+            for (let senderBranchIdx = 0; senderBranchIdx < branches.length; senderBranchIdx++) {
+              if (senderBranchIdx === branchIdx) continue; // Skip same branch
+
+              const hasSenderInBranch = branches[senderBranchIdx].some(nId => {
+                const n = cfg.nodes.find(node => node.id === nId);
+                if (!n || !isActionNode(n)) return false;
+                const a = (n as ActionNode).action;
+                return isMessageAction(a) && a.from === action.from;
+              });
+
+              if (hasSenderInBranch) {
+                dependencies.get(key)!.push({
+                  role: action.from,
+                  branch: senderBranchIdx
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Check for circular dependencies between branch pairs
+  for (let i = 0; i < branches.length; i++) {
+    for (let j = i + 1; j < branches.length; j++) {
+      // Check if role in branch i depends on role in branch j
+      // AND role in branch j depends on role in branch i
+      let iDependsOnJ = false;
+      let jDependsOnI = false;
+      let roleInI = '';
+      let roleInJ = '';
+
+      // Check all roles in branch i
+      const rolesInI = getRolesInBranch(cfg, branches[i]);
+      for (const role of rolesInI) {
+        const key = `${role}:${i}`;
+        const deps = dependencies.get(key);
+        if (deps && deps.some(d => d.branch === j)) {
+          iDependsOnJ = true;
+          roleInI = role;
+          break;
+        }
+      }
+
+      // Check all roles in branch j
+      const rolesInJ = getRolesInBranch(cfg, branches[j]);
+      for (const role of rolesInJ) {
+        const key = `${role}:${j}`;
+        const deps = dependencies.get(key);
+        if (deps && deps.some(d => d.branch === i)) {
+          jDependsOnI = true;
+          roleInJ = role;
+          break;
+        }
+      }
+
+      // Circular dependency found!
+      if (iDependsOnJ && jDependsOnI) {
+        conflicts.push({
+          parallelId: fork.parallel_id,
+          branch1: branches[i],
+          branch2: branches[j],
+          description: `Circular dependency detected in parallel branches: Branch ${i} (role ${roleInI}) waits for message from Branch ${j}, while Branch ${j} (role ${roleInJ}) waits for message from Branch ${i}. This creates a deadlock where both branches are blocked waiting for each other. Parallel_id: "${fork.parallel_id}".`
+        });
+      }
+    }
+  }
+
+  return conflicts;
 }
 
 // ============================================================================
