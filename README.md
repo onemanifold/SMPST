@@ -61,6 +61,53 @@ npm run build
 npm run preview
 ```
 
+## Command Line Tools
+
+The SMPST IDE includes powerful CLI tools for working with Scribble protocols.
+
+### Parse Protocols
+
+Validate and inspect protocol syntax:
+
+```bash
+npm run parse examples/request-response.scr
+```
+
+### Project to Local Protocols
+
+Convert global protocols to local protocols following formal MPST rules:
+
+```bash
+# Project all roles
+npm run project examples/request-response.scr
+
+# Project specific role
+npm run project examples/buyer-seller-agency.scr -- --role Buyer
+
+# Save to files
+npm run project examples/login-or-register.scr -- --output-dir ./local
+
+# Show help
+npm run project:help
+```
+
+**Quick Example:**
+```bash
+echo "protocol Test(role A, role B) { A -> B: Hello(); }" | npm run project -- --stdin
+```
+
+**Documentation:**
+- 📖 [CLI Quick Start](./docs/CLI_QUICKSTART.md) - Get started in 5 minutes
+- 📚 [Full CLI Documentation](./docs/CLI.md) - Complete reference and examples
+- 🔬 [Projection Theory](./docs/LOCAL_PROTOCOL_PROJECTION.md) - Formal specification
+
+**Example Protocols:**
+- `examples/request-response.scr` - Simple message passing
+- `examples/login-or-register.scr` - Choice constructs
+- `examples/stream-data.scr` - Recursion loops
+- `examples/buyer-seller-agency.scr` - Three roles with tau-elimination
+- `examples/travel-agency.scr` - Complex nested protocol (from spec)
+
 ## Project Structure
 
 ```
@@ -113,12 +160,18 @@ SMPST/
 
 ## Documentation
 
+### Core Documentation
 - **[Formal Foundations](./docs/foundations.md)** - MPST theory, LTS, Scribble semantics
 - **[Architecture Overview](./docs/architecture-overview.md)** - Complete explanation of CFG-based architecture
 - **[CFG Design](./docs/cfg-design.md)** - CFG structure and verification algorithms
 - **[Implementation Status](./docs/STATUS.md)** - Current status, test coverage, recent changes
 - **[Scribble 2.0 Syntax](./docs/scribble-2.0-syntax.md)** - EBNF grammar and examples
 - **[AST Design](./docs/ast-design.md)** - TypeScript AST type definitions
+
+### CLI & Projection
+- **[CLI Quick Start](./docs/CLI_QUICKSTART.md)** - Get started with CLI tools in 5 minutes
+- **[CLI Documentation](./docs/CLI.md)** - Complete CLI reference with examples
+- **[Local Protocol Projection](./docs/LOCAL_PROTOCOL_PROJECTION.md)** - Formal projection specification
 
 ## Deployment
 

@@ -1,0 +1,19 @@
+/**
+ * Login or Register Protocol
+ *
+ * Demonstrates:
+ * - Choice construct (internal vs external)
+ * - Client makes choice (internal/select)
+ * - Server receives choice (external/offer)
+ * - Branching with continuation
+ */
+
+protocol LoginOrRegister(role Client, role Server) {
+  choice at Client {
+    Client -> Server: Login(String);
+    Server -> Client: Welcome();
+  } or {
+    Client -> Server: Register(String);
+    Server -> Client: Confirm();
+  }
+}

@@ -1309,7 +1309,395 @@ export const ideState = new IDEState();
 
 ---
 
-## 16. Conclusion
+## 16. Amendment: Sub-Protocol Support
+
+**Amendment Date:** 2025-11-12
+**Version:** 1.1
+**Status:** Design Specification
+
+### 16.1 Overview
+
+This amendment specifies UI considerations for sub-protocol (protocol composition) support through the `do` statement. Sub-protocols allow modular protocol definition where one protocol can invoke another.
+
+**Example:**
+```scribble
+protocol Main(role Alice, role Bob) {
+  Alice -> Bob: Start();
+  do AuthProtocol(Alice, Bob);    // ← Sub-protocol invocation
+  Alice -> Bob: Data();
+}
+
+protocol AuthProtocol(role Client, role Server) {
+  Client -> Server: Login();
+  Server -> Client: Token();
+}
+```
+
+### 16.2 Protocol Call Stack Visualization
+
+#### 16.2.1 Call Stack Panel
+
+**Location:** New collapsible panel in Output area (below Errors tab)
+
+**Purpose:** Display active protocol execution stack during simulation
+
+**Visual Design:**
+
+```
+┌──────────────────────────────────────────────────┐
+│ Protocol Call Stack                   [Collapse] │
+├──────────────────────────────────────────────────┤
+│                                                  │
+│ ┌──────────────────────────────────────────────┐│
+│ │ 1. Main Protocol                             ││
+│ │    Step 5/12                                 ││
+│ │    Last: Alice → Bob: Start()                ││
+│ └──────────────────────────────────────────────┘│
+│                       ↓                          │
+│ ┌──────────────────────────────────────────────┐│
+│ │ 2. 📞 AuthProtocol(Alice→Client, Bob→Server) ││ ← Active
+│ │    Step 2/4                                  ││
+│ │    Current: Client → Server: Login()         ││
+│ │    [View CFG] [Step Into/Over]               ││
+│ └──────────────────────────────────────────────┘│
+│                                                  │
+│ Legend: 📞 Sub-protocol  🔁 Recursion           │
+└──────────────────────────────────────────────────┘
+```
+
+**Frame Components:**
+- **Frame number**: Sequential depth indicator
+- **Protocol name**: With icon (📞 for sub-protocol, 🔁 for recursion)
+- **Role mapping**: Shows parameter substitution
+- **Progress**: Current step / total steps
+- **Current action**: Last or current protocol action
+- **Active indicator**: Highlight current frame (green border)
+- **Actions**:
+  - "View CFG" - Show this frame's CFG in visualizer
+  - "Step Into/Over" - Debugging controls
+
+**Interaction:**
+- **Click frame** → Show that protocol's CFG in visualizer
+- **Hover** → Show full protocol definition tooltip
+- **Collapse/Expand** → Hide/show stack when not debugging
+
+#### 16.2.2 Alternative: Breadcrumb Style
+
+For space-constrained layouts:
+
+```
+┌──────────────────────────────────────────────────┐
+│ Call Stack:                                      │
+│ Main > AuthProtocol(Alice, Bob) > rec Loop [2]  │
+│        ────────────────────────────              │
+│               Current Frame                      │
+└──────────────────────────────────────────────────┘
+```
+
+**Recommendation:** Use panel for desktop, breadcrumb for mobile
+
+### 16.3 CFG Visualization with Sub-Protocols
+
+#### 16.3.1 Global Protocol CFG View
+
+**Design: Collapsible Sub-Protocol Nodes**
+
+```
+┌────────────────────────────────────┐
+│ CFG: Main Protocol                 │
+├────────────────────────────────────┤
+│                                    │
+│  [Initial]                         │
+│      ↓                             │
+│  Start() message                   │
+│      ↓                             │
+│  ┌──────────────────────────────┐ │
+│  │ 📦 do AuthProtocol          │ │ ← Collapsed state
+│  │    (Alice → Client,          │ │
+│  │     Bob → Server)            │ │
+│  │    Verified ✓                │ │
+│  │    [Expand ➕]               │ │
+│  └──────────────────────────────┘ │
+│      ↓                             │
+│  Data() message                    │
+│      ↓                             │
+│  [Terminal]                        │
+│                                    │
+└────────────────────────────────────┘
+
+When expanded (click ➕):
+┌────────────────────────────────────┐
+│  ┌──────────────────────────────┐ │
+│  │ 📦 AuthProtocol [Collapse ➖]│ │ ← Expanded header
+│  │ ┌──────────────────────────┐ │ │
+│  │ │ [Sub-Initial]            │ │ │
+│  │ │    ↓                     │ │ │
+│  │ │ Login() message          │ │ │
+│  │ │    ↓                     │ │ │
+│  │ │ Token() message          │ │ │
+│  │ │    ↓                     │ │ │
+│  │ │ [Sub-Terminal]           │ │ │
+│  │ └──────────────────────────┘ │ │
+│  │ Role Mapping:                │ │
+│  │  Client ← Alice              │ │
+│  │  Server ← Bob                │ │
+│  └──────────────────────────────┘ │
+│      ↓                             │
+│  Data() message (continues main)   │
+└────────────────────────────────────┘
+```
+
+**Visual Properties:**
+- **Collapsed**: Shows as single node with sub-protocol icon 📦
+- **Expanded**: Shows nested CFG with different background color
+- **Nesting limit**: Maximum 3 levels deep, then show reference only
+- **Verification badge**: ✓ if sub-protocol verified separately
+- **Click behavior**: Toggle expand/collapse
+- **Hover**: Show sub-protocol summary tooltip
+
+#### 16.3.2 CFSM (Local Protocol) View
+
+**Design: Reference Nodes with Drill-Down**
+
+Each role's CFSM shows sub-protocol calls as reference nodes:
+
+```
+┌────────────────────────────────────┐
+│ CFSM: Alice (Main)                 │
+├────────────────────────────────────┤
+│                                    │
+│  s0 (initial)                      │
+│      ↓ Send: Start()               │
+│  s1                                │
+│      ↓                             │
+│  ┌──────────────────────────────┐ │
+│  │ 📞 AuthProtocol              │ │
+│  │    as Client                  │ │
+│  │    3 states, 2 transitions    │ │
+│  │    [View Inline] [New Tab]    │ │
+│  └──────────────────────────────┘ │
+│      ↓                             │
+│  s2                                │
+│      ↓ Send: Data()                │
+│  s3 (terminal)                     │
+│                                    │
+└────────────────────────────────────┘
+
+Options when clicking "View Inline":
+┌────────────────────────────────────┐
+│  ┌──────────────────────────────┐ │
+│  │ 📞 AuthProtocol (Alice as    │ │
+│  │    Client) [Hide]             │ │
+│  │ ┌──────────────────────────┐ │ │
+│  │ │ s0' (sub-initial)        │ │ │
+│  │ │    ↓ Send: Login()       │ │ │
+│  │ │ s1'                      │ │ │
+│  │ │    ↓ Recv: Token()       │ │ │
+│  │ │ s2' (sub-terminal)       │ │ │
+│  │ └──────────────────────────┘ │ │
+│  └──────────────────────────────┘ │
+└────────────────────────────────────┘
+```
+
+**Key Features:**
+- **Reference node**: Compact representation with stats
+- **Role indication**: "as Client" shows role mapping
+- **Actions**:
+  - "View Inline" - Expand sub-CFSM in same view
+  - "New Tab" - Open sub-protocol in new workspace tab
+- **State numbering**: Sub-protocol states use prime notation (s0', s1')
+- **Visual nesting**: Different background color/border for sub-protocols
+
+### 16.4 Simulation Behavior
+
+#### 16.4.1 Execution Modes
+
+**Mode 1: Step Into** (Default)
+- Steps through sub-protocol like main protocol
+- Full visibility into nested execution
+- Call stack shows all frames
+
+**Mode 2: Step Over**
+- Executes sub-protocol to completion atomically
+- Call stack briefly shows frame, then removes it
+- Useful for verified sub-protocols
+
+**Configuration:**
+```typescript
+interface SimulationControls {
+  subProtocolMode: 'step-into' | 'step-over' | 'ask';
+  // 'ask' prompts user at each sub-protocol boundary
+}
+```
+
+**UI Toggle:**
+```
+Simulation Controls:
+[▶ Play] [⏸ Pause] [⏭ Step] [🔄 Reset]
+
+Sub-protocols: [●Step Into] [ Step Over]
+                  ^checked
+```
+
+#### 16.4.2 Stack Frame Events
+
+**Event Types:**
+- `subprotocol-enter`: Pushing new frame
+- `subprotocol-exit`: Popping frame
+- `subprotocol-step`: Action within sub-protocol
+- `stack-change`: Any stack modification
+
+**Event Payload:**
+```typescript
+interface SubProtocolEvent {
+  type: 'subprotocol-enter' | 'subprotocol-exit' | 'subprotocol-step';
+  timestamp: number;
+  protocolName: string;
+  depth: number;
+  roleMapping: Map<string, string>;
+  currentFrame?: ProtocolCallFrame;
+  stack: ProtocolCallFrame[];
+}
+```
+
+**UI Response:**
+- Animate frame addition/removal in call stack panel
+- Highlight active frame
+- Update visualizer to show current frame's CFG
+- Emit notification: "Entering AuthProtocol..."
+
+### 16.5 Protocol Registry
+
+**Backend Requirement:**
+- Simulator needs access to all defined protocols
+- Protocol resolution by name
+- Dependency validation (no circular references)
+
+**UI Indication:**
+```
+┌──────────────────────────────────────┐
+│ Loaded Protocols: (3)                │
+├──────────────────────────────────────┤
+│ ✓ Main (entry point)                 │
+│ ✓ AuthProtocol (referenced by Main)  │
+│ ✓ DataTransfer (unused)              │
+│ ⚠ PaymentProtocol (not found)        │ ← Error
+└──────────────────────────────────────┘
+```
+
+### 16.6 Visual Scalability
+
+**Problem:** Deep nesting can overwhelm visualization
+
+**Solutions:**
+
+1. **Depth Limiting**
+   - Max 3 levels of expansion
+   - Beyond that, show "reference only" nodes
+
+2. **Focus Mode**
+   - "Focus on Current Frame" button
+   - Grays out parent/sibling frames
+   - Only shows active execution path
+
+3. **Minimap**
+   - Small overview of entire call stack
+   - Current position highlighted
+   - Click to jump to frame
+
+4. **Collapsible Sections**
+   - Auto-collapse completed sub-protocols
+   - Keep only active + recent frames visible
+
+### 16.7 Error Handling
+
+**Sub-Protocol Not Found:**
+```
+┌──────────────────────────────────────┐
+│ ❌ Simulation Error                   │
+├──────────────────────────────────────┤
+│ Sub-protocol 'AuthProtocol' not      │
+│ found in current module.             │
+│                                      │
+│ Line 5: do AuthProtocol(Alice, Bob); │
+│         ^^^ undefined                │
+│                                      │
+│ Fix: Define AuthProtocol or import   │
+│      it from another module.         │
+└──────────────────────────────────────┘
+```
+
+**Role Mismatch:**
+```
+┌──────────────────────────────────────┐
+│ ❌ Projection Error                   │
+├──────────────────────────────────────┤
+│ Role count mismatch in sub-protocol  │
+│ invocation.                          │
+│                                      │
+│ AuthProtocol expects 2 roles:        │
+│   (Client, Server)                   │
+│ But invoked with 3:                  │
+│   do AuthProtocol(Alice, Bob, Carol) │
+│                                      │
+│ Fix: Match role count or add role to │
+│      AuthProtocol definition.        │
+└──────────────────────────────────────┘
+```
+
+### 16.8 Implementation Phases
+
+**Phase 1: Backend (Core)**
+- Protocol registry and resolution
+- Enhanced call stack structure
+- Sub-protocol execution in simulator
+- Event emission for UI
+
+**Phase 2: Basic Visualization**
+- Call stack panel (panel view)
+- Reference nodes in CFG/CFSM
+- Step Into mode only
+
+**Phase 3: Advanced Features**
+- Expand/collapse sub-protocols
+- Step Over mode
+- Focus mode and depth limiting
+
+**Phase 4: Polish**
+- Animations for stack push/pop
+- Minimap for deep nesting
+- Advanced error messages
+
+### 16.9 Design Rationale
+
+**Collapsible Nodes:**
+- **Decision**: Show sub-protocols as collapsible nodes, not inline expansion
+- **Rationale**: Maintains visual clarity. Users can explore complexity as needed. Mirrors function call semantics familiar from debugging.
+
+**Unified Call Stack:**
+- **Decision**: Single call stack for both recursion and sub-protocols
+- **Rationale**: Conceptually similar (nested execution). Reduces cognitive load. Simpler UI with one stack view.
+
+**Step Into vs Step Over:**
+- **Decision**: Provide both modes, default to Step Into
+- **Rationale**: Step Into aids learning and debugging. Step Over speeds up simulation of verified sub-protocols. Users choose based on need.
+
+**Reference Nodes in CFSM:**
+- **Decision**: Show sub-protocol calls as reference nodes, not inline CFSMs
+- **Rationale**: Preserves protocol modularity. Prevents state space explosion in visualization. Allows lazy loading of sub-protocols.
+
+### 16.10 Future Enhancements
+
+**Not in Initial Implementation:**
+- Sub-protocol memoization/caching
+- Parallel sub-protocol execution visualization
+- Sub-protocol debugging (breakpoints at boundaries)
+- Sub-protocol composition diagrams
+- Automatic sub-protocol extraction refactoring
+
+---
+
+## 17. Conclusion
 
 This specification defines a comprehensive UI for the Scribble MPST IDE that supports the full workflow from protocol authoring through verification and simulation to code generation.
 
