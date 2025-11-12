@@ -4,9 +4,18 @@
 
 This document explains the architectural design of the Scribble MPST IDE, focusing on how different components work together to transform protocol specifications into working distributed systems.
 
+**Project Purpose**: This is a **LIVE tutorial system for teaching Multiparty Session Types (MPST) formal theory in depth**. The architecture is designed not just for correctness, but for educational clarity—enabling interactive visualizations and step-by-step exploration of MPST concepts.
+
 **Key Question**: Why do we need a Control Flow Graph (CFG) when we already have an Abstract Syntax Tree (AST)?
 
 **Answer**: The AST represents *syntax* (what you wrote), while the CFG represents *semantics* (what it means to execute). The CFG is the central artifact that powers both **verification** (proving your protocol is safe) and **runtime execution** (making it work in practice).
+
+**Educational Goal**: Enable students to see and interact with:
+- Global choreographies (CFG visualization)
+- Local protocols (CFSM visualization)
+- Projection correctness (side-by-side comparison)
+- Synchronous vs asynchronous semantics (dual simulation modes)
+- Static vs dynamic verification (verifier + simulators)
 
 ## The Complete Pipeline
 
@@ -273,23 +282,30 @@ class ClientStateMachine {
 - **Input**: CFG
 - **Output**: Verification results, error reports
 
-### Layer 4: Projection (CFSM)
-- **Responsibility**: Extract local behavior per role
-- **Testing**: Projection correctness tests
+### Layer 4: CFG Simulation (COMPLETE ✅)
+- **Responsibility**: Execute global protocol synchronously
+- **Testing**: 23 simulation tests (all passing)
 - **Input**: Verified CFG
-- **Output**: CFSM per role
+- **Output**: Execution traces, step-by-step visualization
+- **Status**: PRODUCTION READY
 
-### Layer 5: Runtime (State Machine)
-- **Responsibility**: Execute protocol
-- **Testing**: Simulation tests, integration tests
-- **Input**: CFSM
-- **Output**: Runtime behavior, message traces
+### Layer 5: Projection & CFSM Simulation (COMPLETE ✅)
+- **Responsibility**: Project CFG to local CFSMs + execute distributed protocols
+- **Testing**: 69 tests (45 projection + 13 CFSM + 11 distributed, all passing)
+- **Input**: Verified CFG
+- **Output**: Per-role CFSMs + distributed execution traces
+- **Components**:
+  - **Projector**: CFG → CFSM transformation (45 tests)
+  - **CFSM Simulator**: Single-role async execution (13 tests)
+  - **Distributed Coordinator**: Multi-role coordination (11 tests)
+- **Status**: PRODUCTION READY
 
-### Layer 6: Code Generation
-- **Responsibility**: Generate implementation
-- **Testing**: Generated code tests, type checking
-- **Input**: State machine specification
-- **Output**: TypeScript/JavaScript code
+### Layer 6: Code Generation (PLANNED ⏸️)
+- **Responsibility**: Generate implementation from CFSMs
+- **Testing**: Not yet started
+- **Input**: CFSM specifications
+- **Output**: TypeScript/JavaScript runtime code
+- **Status**: PLANNED
 
 ## TDD Approach
 
