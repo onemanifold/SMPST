@@ -464,6 +464,113 @@ Parse → Verify → Project → Ready to Simulate
 - User selects which branch to take
 - Hidden when no choice pending
 
+**Call Stack Display** (Sub-Protocol Support):
+- Shows current protocol invocation hierarchy during simulation
+- Appears when simulating protocols with `do` statements
+- Updates in real-time as simulation enters/exits sub-protocols
+
+**Visual Design**:
+```
+┌─────────────────────────────────────────────────┐
+│ Call Stack:  Main → Authentication → TokenCheck │
+│              ^^^^^                               │
+│              Currently executing                 │
+└─────────────────────────────────────────────────┘
+```
+
+**Compact View** (Limited Space):
+```
+┌──────────────────────────────┐
+│ 🏷️ Main > Authentication > TokenCheck (depth: 3) │
+└──────────────────────────────┘
+```
+
+**Detailed View** (Expanded):
+```
+┌──────────────────────────────────────────────────┐
+│ Call Stack (depth: 3/10 max)                     │
+├──────────────────────────────────────────────────┤
+│ 3. ► TokenCheck(Client, Server)   [S2]  ← Active│
+│ 2.   Authentication(A→Client, B→Server)  [S1]    │
+│ 1.   Main(A, B, C)                      [S0]     │
+└──────────────────────────────────────────────────┘
+```
+
+**Features**:
+- **Hierarchy Display**: Shows breadcrumb trail of nested sub-protocols
+- **Current Protocol**: Highlighted/bold to show which protocol is executing
+- **Role Mappings**: Shows role substitution for each sub-protocol call
+  - Example: `Authentication(A→Client, B→Server)` shows role `A` from parent mapped to `Client` in sub-protocol
+- **Current State**: Shows current state per protocol level (e.g., `[S2]`)
+- **Depth Counter**: Shows current depth / max depth (helps prevent infinite recursion)
+- **Click to Navigate**: Click any level to jump to that protocol's definition in CODE tab
+- **Color Coding**:
+  - Active (current): Green background
+  - Parent: Gray/dimmed
+  - Root: Blue accent
+
+**Interaction**:
+- **Hover**: Show full protocol signature and role mappings in tooltip
+- **Click**: Jump to that protocol level in CODE tab editor
+- **Right-click**: Context menu with options:
+  - "View Protocol Definition"
+  - "View at This Level" (collapse deeper calls)
+  - "Copy Call Stack"
+
+**Behavior During Simulation**:
+
+1. **Entering Sub-Protocol**:
+   ```
+   Before:  Main [S5]
+   After:   Main > Authentication [S0]
+   ```
+   - Push new level onto call stack
+   - Highlight new active protocol
+   - Show entry transition in sequence diagram
+
+2. **Exiting Sub-Protocol**:
+   ```
+   Before:  Main > Authentication [S_End]
+   After:   Main [S6]
+   ```
+   - Pop level from call stack
+   - Return to parent protocol
+   - Highlight parent as active
+   - Show exit transition in sequence diagram
+
+3. **Nested Sub-Protocols** (3+ levels):
+   ```
+   Main > Auth > TokenValidation > SignatureCheck
+   ```
+   - Show full hierarchy
+   - Truncate with ellipsis if too deep: `Main > ... > SignatureCheck (depth: 5)`
+   - Provide scrollable dropdown to see full stack
+
+4. **Recursive Sub-Protocols**:
+   ```
+   Main > ProcessList > ProcessList > ProcessList (depth: 3)
+   ```
+   - Show recursion depth explicitly
+   - Warn if approaching max depth: ⚠️ `(depth: 8/10)`
+   - Error and halt if max depth exceeded
+
+**State Management**:
+- **Store**: `callStack: Array<{protocol: string, roleMap: Record<string, string>, state: string}>`
+- **Update on**: `do` statement execution (push), sub-protocol completion (pop)
+- **Reset on**: Simulation reset
+
+**Educational Value**:
+- **Visualizes Composition**: Shows how protocols build on each other
+- **Role Mapping Clarity**: Explicitly shows which roles map to which
+- **Execution Context**: Always know "where am I" in complex nested protocols
+- **Debugging Aid**: Track call flow, identify infinite recursion
+- **Tail Recursion**: Verify tail-recursive constraint (no actions after `do` for involved roles)
+
+**Warning/Error Display**:
+- **Max Depth Warning**: `⚠️ Call stack approaching max depth (8/10). Consider increasing max depth or checking for infinite recursion.`
+- **Tail Recursion Violation**: `⚠️ Action after 'do' for involved role detected. Protocol may not be tail-recursive.`
+- **Max Depth Exceeded**: `❌ Call stack max depth (10) exceeded. Simulation halted. Check for infinite recursion.`
+
 ---
 
 #### 4.2.2 View Selection
@@ -1619,6 +1726,27 @@ label: 'do Authentication(A as Client, B as Server)'
 - Label: Show protocol name + role mappings
 - Tooltip: Show full sub-protocol definition
 
+**Breadcrumbs Navigation**:
+- Display protocol hierarchy at top of CFG Structure view
+- Example: `Main → Authentication → TokenValidation`
+- Click any breadcrumb → Jump to that protocol level
+- Current protocol highlighted in breadcrumb trail
+- Updates automatically when expanding/collapsing Do nodes
+
+```
+┌─────────────────────────────────────────────────┐
+│ Breadcrumbs: Main > Authentication              │
+├─────────────────────────────────────────────────┤
+│ CFG Structure Visualization                     │
+│ (showing expanded Authentication sub-protocol)  │
+└─────────────────────────────────────────────────┘
+```
+
+**Benefits**:
+- Always know current context (which protocol being viewed)
+- Easy navigation back to parent protocols
+- Visual hierarchy of protocol composition
+
 ---
 
 #### 16.2.5 SIMULATION Tab - CFG Sequence Diagram
@@ -1723,6 +1851,97 @@ When CFSM includes projected sub-protocol, show:
 - Different background color
 - Label at top
 - Clear entry and exit points
+
+**Collapsible Sub-Protocol Sections**:
+
+To manage complexity and reduce visual clutter when protocols have nested sub-protocols, the CFSM Network view supports collapsing/expanding sub-protocol sections:
+
+**Collapsed View** (Default):
+```
+┌──────────────────────┐
+│  Client CFSM         │
+│  [S0]                │
+│   │!Init             │
+│   ↓                  │
+│  ┏━━━━━━━━━━━━━━━┓  │
+│  ┃ ▶ Authentication┃  │  ← Click to expand
+│  ┃ (3 states)      ┃  │
+│  ┗━━━━━━━━━━━━━━━┛  │
+│  [S3]                │
+│   │!Data             │
+│   ↓                  │
+│  [S4]■               │
+└──────────────────────┘
+```
+
+**Expanded View**:
+```
+┌──────────────────────┐
+│  Client CFSM         │
+│  [S0]                │
+│   │!Init             │
+│   ↓                  │
+│  ┏━━━━━━━━━━━━━━━┓  │
+│  ┃ ▼ Authentication┃  │  ← Click to collapse
+│  ┃  [S_Auth0]      ┃  │
+│  ┃   │!Request     ┃  │
+│  ┃   ↓             ┃  │
+│  ┃  [S_Auth1]      ┃  │
+│  ┃   │?Challenge   ┃  │
+│  ┃   ↓             ┃  │
+│  ┃  [S_Auth2]      ┃  │
+│  ┃   │!Response    ┃  │
+│  ┃   ↓             ┃  │
+│  ┗━━━━━━━━━━━━━━━┛  │
+│  [S3]                │
+│   │!Data             │
+│   ↓                  │
+│  [S4]■               │
+└──────────────────────┘
+```
+
+**Nested Sub-Protocols** (Multiple Levels):
+```
+┌──────────────────────┐
+│  Client CFSM         │
+│  [S0]                │
+│   │!Init             │
+│   ↓                  │
+│  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│  ┃ ▼ Authentication         ┃
+│  ┃  [S_Auth0]               ┃
+│  ┃   │!Request              ┃
+│  ┃   ↓                      ┃
+│  ┃  ┌─────────────────────┐ ┃
+│  ┃  │ ▶ TokenValidation   │ ┃  ← Nested sub-protocol
+│  ┃  │ (2 states)          │ ┃
+│  ┃  └─────────────────────┘ ┃
+│  ┃  [S_Auth2]               ┃
+│  ┃   │!Response             ┃
+│  ┃   ↓                      ┃
+│  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+│  [S3]                │
+└──────────────────────┘
+```
+
+**Interaction**:
+- **Click header**: Toggle expand/collapse
+- **Default state**: Collapsed (show summary)
+- **Hover**: Show tooltip with sub-protocol signature
+- **Visual indicator**: ▶ (collapsed) / ▼ (expanded)
+- **State count**: Show number of states when collapsed
+- **Synchronization**: Collapse state persists when switching between roles
+
+**Benefits**:
+- **Reduces clutter**: Focus on main protocol flow
+- **Hierarchical exploration**: Expand only what you need to see
+- **Performance**: Renders fewer nodes for complex protocols
+- **Educational**: Emphasizes protocol composition boundaries
+
+**Keyboard Shortcuts**:
+- `Ctrl+Click` on sub-protocol header: Expand all nested sub-protocols
+- `Alt+Click`: Collapse all sub-protocols
+- `Space`: Toggle selected sub-protocol
 
 ---
 

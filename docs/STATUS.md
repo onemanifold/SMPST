@@ -344,6 +344,145 @@ Overall Coverage: Layers 1-5 complete (83% of planned architecture)
 
 ---
 
+### 2025-11-12: UI Specification v2.0 with Comprehensive Sub-Protocol Support (COMPLETE)
+
+**Documentation Files**:
+- `docs/UI_SPECIFICATION.md` - Complete UI specification v2.0 (2040+ lines)
+- `docs/SUB_PROTOCOL_UI_IMPLEMENTATION.md` - Sub-protocol implementation guide (540+ lines)
+
+**UI Architecture**:
+
+#### Two-Tab Layout Design
+1. **CODE Tab** (Entry Point, Authoring)
+   - Left pane: Global Scribble (Monaco Editor, read/write)
+   - Right pane: Local Scribble projections per role (read-only, tabbed)
+   - Sub-tabs: [Scribble] [TypeScript] per role
+   - Verification feedback: Inline squiggles, header status, bottom panel
+
+2. **SIMULATION Tab** (Execution & Visualization)
+   - Configurable 1-3 visualization panes:
+     - **CFSM Network** (left, primary): Distributed state machines with message buffers
+     - **CFG Sequence** (right, log): Dynamic sequence diagram (grows during execution)
+     - **CFG Structure** (optional): Static control flow graph (shows all paths)
+   - Simulation controls: Play, pause, step, reset, speed, execution mode (CFG/CFSM)
+   - Choice selector, max steps, scheduling strategy
+
+#### Sub-Protocol Support (Section 16)
+**Comprehensive coverage for `do` statement integration across all UI components:**
+
+1. **Editor Support** (CODE Tab):
+   - Syntax highlighting for `do SubProtocol(A as X, B as Y)`
+   - Auto-completion: Protocol names + role substitution
+   - Navigation: Ctrl+Click to jump to sub-protocol definition
+   - Validation: Inline errors for missing protocols, role arity mismatch, tail-recursion violations
+   - Sub-protocol library/browser component
+
+2. **Local Scribble Projections**:
+   - Toggle view for sub-protocols: Show as call vs. expand inline
+   - Role mapping annotations: `do Auth(A→Client, B→Server)`
+
+3. **CFG Structure Visualization**:
+   - **Breadcrumbs Navigation** (NEW):
+     - Protocol hierarchy at top: `Main > Authentication > TokenValidation`
+     - Click to jump between protocol levels
+     - Updates when expanding/collapsing Do nodes
+   - **Collapsible Do Nodes**:
+     - Diamond shape (◆) with protocol name
+     - Click to expand/collapse inline sub-protocol CFG
+     - Nested border for expanded sub-protocols
+     - Keyboard shortcuts: Ctrl+Click (expand all), Alt+Click (collapse all)
+
+4. **CFG Sequence Diagram**:
+   - Expanded sub-protocol sequences in bordered box
+   - Label shows sub-protocol name
+   - Indentation/color coding for nested calls
+
+5. **CFSM Network Visualization**:
+   - **Collapsible Sub-Protocol Sections** (NEW):
+     - Grouped states with nested box around sub-protocol
+     - Collapsed view: `▶ Authentication (3 states)` (default)
+     - Expanded view: Shows all sub-protocol states
+     - Nested sub-protocols: Multiple levels with clear visual hierarchy
+     - Persists collapse state when switching roles
+
+6. **Simulation Controls**:
+   - **Call Stack Display** (NEW):
+     - Real-time protocol invocation hierarchy
+     - Compact: `Main → Authentication → TokenCheck`
+     - Detailed: Shows role mappings per level, current state, depth counter
+     - Click to navigate to protocol definition
+     - Color coding: Active (green), parent (gray), root (blue)
+     - Push/pop on enter/exit sub-protocol
+     - Warnings: Max depth approaching, tail-recursion violations
+     - Errors: Max depth exceeded (halt simulation)
+
+**Visual Design Guidelines**:
+- Color coding: Purple (#9333ea) for Do nodes, green for active call stack, blue for root
+- Icons: ◆ (Do nodes), ▶/▼ (expand/collapse), ► (current protocol)
+- Interaction: Click (toggle), Ctrl+Click (navigate), Hover (tooltip)
+
+**Backend Integration Notes**:
+- ✅ Parser: Supports `do` syntax
+- ✅ AST: Has `Do` node type
+- ⚠️ CFG Builder: Creates placeholder (not expanded inline yet)
+- ❌ Projection: No sub-protocol expansion yet
+- ❌ Simulation: Placeholder only (doesn't execute sub-protocols yet)
+
+**Interim UI Approach**:
+- Parse all protocols in workspace, build registry in UI state
+- Syntax highlighting and navigation works immediately
+- Visualizations show placeholders (special Do nodes)
+- Warn user that simulation doesn't expand sub-protocols yet
+- Full expansion requires backend enhancement (Phase 7)
+
+**Implementation Roadmap**:
+- Phase 1: CODE tab foundation (Monaco, layout, parser integration)
+- Phase 2: Local Scribble projection display
+- Phase 3: CFSM Network visualization (D3.js)
+- Phase 4: CFG Sequence diagram
+- Phase 5: CFG Structure with breadcrumbs and collapsible Do nodes
+- Phase 6: Simulation integration with call stack display
+- Phase 7: Backend enhancement for sub-protocol expansion
+
+**Testing Infrastructure**:
+- ✅ Vitest + jsdom for headless UI testing
+- ✅ @testing-library/svelte for component testing
+- ✅ 288 backend tests passing (parser, CFG, projection, simulation)
+- ⚠️ 24 executor/simulator tests failing (newer components in development)
+- ⏸️ 0 UI component tests (UI implementation pending)
+
+**Educational Impact**:
+- **Perspective Transformation**: Global Scribble → Local Scribble (textual projection visible)
+- **Protocol Composition**: Sub-protocols show how complex protocols build from simpler ones
+- **Role Mapping**: Explicit visualization of role substitution (`A→Client, B→Server`)
+- **Execution Context**: Call stack always shows "where am I" in nested protocols
+- **Formal Semantics**: Two execution modes (CFG sync, CFSM async) side-by-side
+
+**Design Rationale**:
+1. **Two-Tab Separation**: CODE (authoring) vs SIMULATION (execution) aligns with user mental model
+2. **Local Scribble Display**: Shows perspective transformation in same language (not CFSM structure)
+3. **Three Visualization Modes**: Users can configure 1-3 views based on learning goals
+4. **Collapsible UI**: Manages complexity for nested protocols (reduce clutter)
+5. **Call Stack**: Essential for understanding protocol composition and debugging
+
+**Key User Workflows**:
+1. Write protocol with sub-protocol (auto-complete, validate)
+2. Navigate to sub-protocol definition (Ctrl+Click)
+3. Visualize protocol structure (expand/collapse Do nodes)
+4. Simulate with call stack tracking (when backend ready)
+
+**Documentation Quality**:
+- 2040+ lines in UI_SPECIFICATION.md (comprehensive)
+- 540+ lines in SUB_PROTOCOL_UI_IMPLEMENTATION.md (implementation guide)
+- Complete component specifications, state management, user workflows
+- Visual design guidelines with ASCII diagrams
+- Test cases and UI testing checklist
+- References to backend code and design documents
+
+**Status**: Specification complete, ready for Phase 1 implementation
+
+---
+
 ### 2025-01-11: Implement P2-P3 verification checks (COMPLETE coverage)
 
 **Commit**: `9a6cd51`
