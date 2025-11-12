@@ -266,20 +266,23 @@ function fixBackEdgeTypes(ctx: BuilderContext): void {
 
     if (bodyEntryEdges.length === 0) continue;
 
-    // The first edge from rec node is to the body entry
+    // The first edge from rec node is to the body entry (rec nodes have 2 sequence edges:
+    // one to body, one to exit. The body edge is added first during construction)
     const bodyEntry = bodyEntryEdges[0].to;
 
-    // Find all nodes reachable from body entry (excluding the exit edge)
-    const bodyNodes = findReachableNodesExcludingEdge(
+    // Find all nodes reachable from body entry, respecting nested recursion boundaries
+    const bodyNodes = findReachableNodesInScope(
       ctx,
       bodyEntry,
-      recNode.id  // Don't follow back edges
+      recNode.id,  // Stop at edges back to this recursion
+      recursiveNodes  // Don't traverse into nested recursion bodies
     );
 
-    // Mark edges from body nodes back to rec node as 'continue'
+    // Mark edges from body nodes back to THIS SPECIFIC rec node as 'continue'
+    // Note: These edges can be either 'sequence' (direct continue) or 'branch' (continue inside choice)
     for (const edge of ctx.edges) {
       if (edge.to === recNode.id &&
-          edge.edgeType === 'sequence' &&
+          (edge.edgeType === 'sequence' || edge.edgeType === 'branch') &&
           bodyNodes.has(edge.from)) {
         edge.edgeType = 'continue';
       }
@@ -288,26 +291,58 @@ function fixBackEdgeTypes(ctx: BuilderContext): void {
 }
 
 /**
- * Find reachable nodes but stop at edges pointing to a specific node
+ * Find reachable nodes within a recursion scope, respecting nested recursion boundaries
+ *
+ * Key insight: When finding body nodes for a recursion, we should:
+ * 1. Stop at edges back to the target recursion (back-edges)
+ * 2. NOT traverse into nested recursion bodies (they have their own scope)
+ * 3. Include the nested recursion nodes themselves (they're part of outer scope)
+ *
+ * @param ctx - Builder context
+ * @param startId - Where to start traversal (body entry)
+ * @param targetRecId - The recursion node we're analyzing (stop at edges to this)
+ * @param allRecNodes - All recursion nodes (to detect nested recursions)
  */
-function findReachableNodesExcludingEdge(
+function findReachableNodesInScope(
   ctx: BuilderContext,
   startId: string,
-  excludeTo: string
+  targetRecId: string,
+  allRecNodes: RecursiveNode[]
 ): Set<string> {
   const reachable = new Set<string>();
   const queue: string[] = [startId];
+  const recNodeIds = new Set(allRecNodes.map(n => n.id));
 
   while (queue.length > 0) {
     const current = queue.shift()!;
     if (reachable.has(current)) continue;
     reachable.add(current);
 
-    // Explore outgoing edges, but not to the excluded node
-    const outgoing = ctx.edges.filter(
-      e => e.from === current && e.to !== excludeTo
-    );
-    for (const edge of outgoing) {
+    // Get outgoing edges
+    for (const edge of ctx.edges.filter(e => e.from === current)) {
+      // Skip edges back to target recursion (these are the back-edges we're trying to find)
+      if (edge.to === targetRecId) continue;
+
+      // Skip edges into nested recursion bodies
+      // A recursion node has 2 sequence edges: (1) to body entry, (2) to exit
+      // We want to include the rec node itself but not traverse into its body
+      if (recNodeIds.has(current) && current !== targetRecId) {
+        // Current node is a nested recursion node
+        // Only follow the EXIT edge (the second sequence edge), not the body entry edge
+        const sequenceEdges = ctx.edges.filter(
+          e => e.from === current && e.edgeType === 'sequence'
+        );
+        // First edge is to body (skip), second edge is to exit (follow)
+        if (sequenceEdges.length >= 2 && edge.id === sequenceEdges[1].id) {
+          if (!reachable.has(edge.to)) {
+            queue.push(edge.to);
+          }
+        }
+        // Skip the body entry edge
+        continue;
+      }
+
+      // Regular traversal for non-recursion nodes
       if (!reachable.has(edge.to)) {
         queue.push(edge.to);
       }
@@ -527,11 +562,12 @@ function buildRecursion(
     (lastStatement as Continue).label === recursion.label;
 
   // Build recursion body
-  // Pass recNode as exitNodeId so that continue statements connect back to it
+  // Paths with explicit 'continue' will loop back to recNode (via buildContinue)
+  // Paths without 'continue' will exit to exitNodeId (exit the rec block)
   const bodyEntry = buildProtocolBody(
     ctx,
     body,
-    recNode.id  // Body exits to rec node (for continue)
+    exitNodeId  // Paths without continue exit the rec block
   );
 
   // Connect recursive node to body entry
