@@ -934,3 +934,598 @@ describe('CFG Simulator - Event System', () => {
     expect(simulator.isComplete()).toBe(true);
   });
 });
+
+// ============================================================================
+// Enhanced Choice Previewing
+// ============================================================================
+
+describe('CFG Simulator - Enhanced Choice Previewing', () => {
+  it('should provide preview of actions in each choice branch', () => {
+    const source = `
+      protocol ChoiceWithPreview(role Client, role Server) {
+        choice at Client {
+          Client -> Server: Option1();
+          Server -> Client: Ack1();
+        } or {
+          Client -> Server: Option2();
+          Server -> Client: Ack2();
+          Client -> Server: Confirm();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, { choiceStrategy: 'manual' });
+
+    // Should be at choice point with enhanced options
+    const state = simulator.getState();
+    expect(state.atChoice).toBe(true);
+    expect(state.availableChoices).toBeDefined();
+    expect(state.availableChoices).toHaveLength(2);
+
+    // Check first branch preview
+    const option1 = state.availableChoices![0];
+    expect(option1.preview).toBeDefined();
+    expect(option1.preview.length).toBeGreaterThan(0);
+    expect(option1.preview[0]).toMatchObject({
+      type: 'message',
+      from: 'Client',
+      to: 'Server',
+      label: 'Option1',
+    });
+    expect(option1.preview[1]).toMatchObject({
+      type: 'message',
+      from: 'Server',
+      to: 'Client',
+      label: 'Ack1',
+    });
+    expect(option1.participatingRoles).toContain('Client');
+    expect(option1.participatingRoles).toContain('Server');
+    expect(option1.estimatedSteps).toBeGreaterThan(0);
+
+    // Check second branch preview
+    const option2 = state.availableChoices![1];
+    expect(option2.preview).toBeDefined();
+    expect(option2.preview.length).toBeGreaterThan(0);
+    expect(option2.preview[0].label).toBe('Option2');
+    expect(option2.preview[1].label).toBe('Ack2');
+    expect(option2.preview[2].label).toBe('Confirm');
+  });
+
+  it('should respect previewLimit configuration', () => {
+    const source = `
+      protocol LongSequence(role A, role B) {
+        choice at A {
+          A -> B: M1();
+          B -> A: M2();
+          A -> B: M3();
+          B -> A: M4();
+          A -> B: M5();
+          B -> A: M6();
+          A -> B: M7();
+        } or {
+          A -> B: Alt();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, {
+      choiceStrategy: 'manual',
+      previewLimit: 3, // Limit to 3 actions
+    });
+
+    const state = simulator.getState();
+    const option1 = state.availableChoices![0];
+
+    // Should only preview 3 actions (up to limit)
+    expect(option1.preview.length).toBeLessThanOrEqual(3);
+  });
+
+  it('should stop preview at nested choice', () => {
+    const source = `
+      protocol NestedChoice(role A, role B) {
+        choice at A {
+          A -> B: Option1();
+          choice at B {
+            B -> A: SubOption1();
+          } or {
+            B -> A: SubOption2();
+          }
+        } or {
+          A -> B: Option2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, { choiceStrategy: 'manual' });
+
+    const state = simulator.getState();
+    const option1 = state.availableChoices![0];
+
+    // Preview should include message then stop at nested choice
+    expect(option1.preview[0]).toMatchObject({
+      type: 'message',
+      label: 'Option1',
+    });
+    expect(option1.preview[1]).toMatchObject({
+      type: 'choice',
+    });
+    expect(option1.preview.length).toBe(2); // M1 + choice indicator
+  });
+
+  it('should stop preview at parallel composition', () => {
+    const source = `
+      protocol ChoiceWithParallel(role A, role B, role C) {
+        choice at A {
+          A -> B: Option1();
+          par {
+            B -> A: M1();
+          } and {
+            C -> A: M2();
+          }
+        } or {
+          A -> B: Option2();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, { choiceStrategy: 'manual' });
+
+    const state = simulator.getState();
+    const option1 = state.availableChoices![0];
+
+    // Preview should include message then stop at parallel
+    expect(option1.preview[0]).toMatchObject({
+      type: 'message',
+      label: 'Option1',
+    });
+    expect(option1.preview[1]).toMatchObject({
+      type: 'parallel',
+    });
+  });
+
+  it('should stop preview at recursion', () => {
+    const source = `
+      protocol ChoiceWithRecursion(role A, role B) {
+        choice at A {
+          A -> B: StartLoop();
+          rec Loop {
+            A -> B: LoopMsg();
+            continue Loop;
+          }
+        } or {
+          A -> B: NoLoop();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, { choiceStrategy: 'manual' });
+
+    const state = simulator.getState();
+    const option1 = state.availableChoices![0];
+
+    // Preview should include message then stop at recursion
+    expect(option1.preview[0]).toMatchObject({
+      type: 'message',
+      label: 'StartLoop',
+    });
+    expect(option1.preview[1]).toMatchObject({
+      type: 'recursion',
+    });
+  });
+
+  it('should extract participating roles from preview', () => {
+    const source = `
+      protocol ThreePartyChoice(role A, role B, role C) {
+        choice at A {
+          A -> B: ToB();
+          B -> C: ForwardToC();
+          C -> A: BackToA();
+        } or {
+          A -> C: DirectToC();
+        }
+      }
+    `;
+    const ast = parse(source);
+    const cfg = buildCFG(ast.declarations[0]);
+    const simulator = new CFGSimulator(cfg, { choiceStrategy: 'manual' });
+
+    const state = simulator.getState();
+    const option1 = state.availableChoices![0];
+    const option2 = state.availableChoices![1];
+
+    // First branch involves all three roles
+    expect(option1.participatingRoles).toContain('A');
+    expect(option1.participatingRoles).toContain('B');
+    expect(option1.participatingRoles).toContain('C');
+    expect(option1.participatingRoles.length).toBe(3);
+
+    // Second branch involves only A and C
+    expect(option2.participatingRoles).toContain('A');
+    expect(option2.participatingRoles).toContain('C');
+    expect(option2.participatingRoles.length).toBe(2);
+  });
+});
+
+// ============================================================================
+// Formal Guarantees (Documented Contract Tests)
+// ============================================================================
+
+describe('CFG Simulator - Formal Guarantees', () => {
+  describe('Guarantee 1: Faithful Execution', () => {
+    it('should execute exactly one protocol action per step', () => {
+      const source = `
+        protocol ThreeActions(role A, role B) {
+          A -> B: M1();
+          B -> A: M2();
+          A -> B: M3();
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg, { recordTrace: true });
+
+      // Each step should produce exactly one action
+      const result1 = simulator.step();
+      expect(result1.success).toBe(true);
+      expect(result1.event?.type).toBe('message');
+
+      const result2 = simulator.step();
+      expect(result2.success).toBe(true);
+      expect(result2.event?.type).toBe('message');
+
+      const result3 = simulator.step();
+      expect(result3.success).toBe(true);
+      expect(result3.event?.type).toBe('message');
+
+      expect(simulator.isComplete()).toBe(true);
+
+      // Trace should have exactly 3 message events
+      const trace = simulator.getTrace();
+      expect(trace.events.filter(e => e.type === 'message')).toHaveLength(3);
+    });
+
+    it('should maintain total order of events (causal order)', () => {
+      const source = `
+        protocol CausalOrder(role A, role B, role C) {
+          A -> B: M1();
+          B -> C: M2();
+          C -> A: M3();
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg, { recordTrace: true });
+
+      const events: Array<{type: string; label?: string; timestamp: number}> = [];
+      simulator.on('message', (data) => {
+        events.push({ type: 'message', label: data.label, timestamp: Date.now() });
+      });
+
+      simulator.run();
+
+      // Events should be in causal order
+      expect(events[0].label).toBe('M1');
+      expect(events[1].label).toBe('M2');
+      expect(events[2].label).toBe('M3');
+
+      // Timestamps should be monotonically increasing (or equal if very fast)
+      expect(events[1].timestamp).toBeGreaterThanOrEqual(events[0].timestamp);
+      expect(events[2].timestamp).toBeGreaterThanOrEqual(events[1].timestamp);
+    });
+  });
+
+  describe('Guarantee 2: Complete State Tracking', () => {
+    it('should maintain valid currentNode at all times', () => {
+      const source = `
+        protocol StateTracking(role A, role B) {
+          A -> B: M1();
+          choice at A {
+            A -> B: Option1();
+          } or {
+            A -> B: Option2();
+          }
+          B -> A: Final();
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg, { choiceStrategy: 'first' });
+
+      const nodeIds = cfg.nodes.map(n => n.id);
+
+      // Check currentNode is valid after each step
+      while (!simulator.isComplete()) {
+        const state = simulator.getState();
+        const currentNodes = Array.isArray(state.currentNode)
+          ? state.currentNode
+          : [state.currentNode];
+
+        // All current nodes must exist in CFG
+        for (const nodeId of currentNodes) {
+          expect(nodeIds).toContain(nodeId);
+        }
+
+        simulator.step();
+      }
+    });
+
+    it('should maintain monotonically increasing visitedNodes', () => {
+      const source = `
+        protocol VisitedTracking(role A, role B) {
+          A -> B: M1();
+          B -> A: M2();
+          A -> B: M3();
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg);
+
+      let previousVisitedCount = 0;
+
+      while (!simulator.isComplete()) {
+        const state = simulator.getState();
+        const currentVisitedCount = state.visitedNodes.length;
+
+        // visitedNodes should only grow (monotonic)
+        expect(currentVisitedCount).toBeGreaterThanOrEqual(previousVisitedCount);
+
+        previousVisitedCount = currentVisitedCount;
+        simulator.step();
+      }
+
+      // After completion, visited count should be even larger
+      const finalState = simulator.getState();
+      expect(finalState.visitedNodes.length).toBeGreaterThanOrEqual(previousVisitedCount);
+    });
+
+    it('should properly maintain recursion stack', () => {
+      const source = `
+        protocol RecursionStack(role A, role B) {
+          rec Loop {
+            A -> B: Msg();
+            continue Loop;
+          }
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg, { maxSteps: 5 });
+
+      // Auto-advance enters recursion during construction, so stack already has entry
+      let state = simulator.getState();
+      expect(state.recursionStack.length).toBeGreaterThan(0);
+      expect(state.recursionStack[0].label).toBe('Loop');
+
+      // Execute a step
+      simulator.step();
+      state = simulator.getState();
+      expect(state.recursionStack.length).toBeGreaterThan(0);
+
+      // Run to completion (will hit maxSteps)
+      simulator.run();
+      state = simulator.getState();
+
+      // Recursion stack should still be valid (non-empty since we hit maxSteps)
+      expect(Array.isArray(state.recursionStack)).toBe(true);
+      expect(state.recursionStack.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Guarantee 3: Termination', () => {
+    it('should complete successfully when reaching terminal', () => {
+      const source = `
+        protocol SimpleCompletion(role A, role B) {
+          A -> B: M1();
+          B -> A: M2();
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg);
+
+      const result = simulator.run();
+
+      expect(result.success).toBe(true);
+      expect(simulator.isComplete()).toBe(true);
+      expect(simulator.getState().completed).toBe(true);
+      expect(simulator.getState().reachedMaxSteps).toBe(false);
+    });
+
+    it('should stop at maxSteps limit for infinite loops', () => {
+      const source = `
+        protocol InfiniteLoop(role A, role B) {
+          rec Loop {
+            A -> B: Msg();
+            continue Loop;
+          }
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg, { maxSteps: 10 });
+
+      const result = simulator.run();
+
+      // Should NOT complete successfully (hit maxSteps)
+      expect(result.success).toBe(false);
+      expect(simulator.isComplete()).toBe(false);
+      expect(simulator.getState().reachedMaxSteps).toBe(true);
+      expect(result.steps).toBe(10);
+    });
+
+    it('should never infinite loop without recursion', () => {
+      const source = `
+        protocol NoRecursion(role A, role B) {
+          A -> B: M1();
+          choice at A {
+            A -> B: Option1();
+            B -> A: Ack1();
+          } or {
+            A -> B: Option2();
+            B -> A: Ack2();
+          }
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg, { choiceStrategy: 'first', maxSteps: 1000 });
+
+      const result = simulator.run();
+
+      // Should complete well before maxSteps
+      expect(result.success).toBe(true);
+      expect(result.steps).toBeLessThan(100);
+      expect(simulator.isComplete()).toBe(true);
+    });
+  });
+
+  describe('Guarantee 4: Event Emission', () => {
+    it('should emit event for every protocol action', () => {
+      const source = `
+        protocol AllActions(role A, role B) {
+          A -> B: M1();
+          B -> A: M2();
+          A -> B: M3();
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg);
+
+      const messageEvents: any[] = [];
+      simulator.on('message', (data) => messageEvents.push(data));
+
+      simulator.run();
+
+      // Should have emitted 3 message events
+      expect(messageEvents).toHaveLength(3);
+      expect(messageEvents[0].label).toBe('M1');
+      expect(messageEvents[1].label).toBe('M2');
+      expect(messageEvents[2].label).toBe('M3');
+    });
+
+    it('should emit events in causal order with no duplicates', () => {
+      const source = `
+        protocol CausalEvents(role A, role B, role C) {
+          A -> B: First();
+          B -> C: Second();
+          C -> A: Third();
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg);
+
+      const events: string[] = [];
+      simulator.on('message', (data) => events.push(data.label));
+
+      simulator.run();
+
+      // Events should be in order with no duplicates
+      expect(events).toEqual(['First', 'Second', 'Third']);
+      expect(new Set(events).size).toBe(3); // No duplicates
+    });
+
+    it('should emit all event types for complex protocols', () => {
+      const source = `
+        protocol ComplexEvents(role A, role B) {
+          A -> B: Start();
+          choice at A {
+            A -> B: ChoiceA();
+          } or {
+            A -> B: ChoiceB();
+          }
+          par {
+            A -> B: ParallelA();
+          } and {
+            B -> A: ParallelB();
+          }
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg, { choiceStrategy: 'first' });
+
+      const eventTypes = new Set<string>();
+      simulator.on('message', () => eventTypes.add('message'));
+      simulator.on('choice-selected', () => eventTypes.add('choice'));
+      simulator.on('fork', () => eventTypes.add('fork'));
+      simulator.on('join', () => eventTypes.add('join'));
+      simulator.on('complete', () => eventTypes.add('complete'));
+
+      simulator.run();
+
+      // Should have emitted all expected event types
+      expect(eventTypes.has('message')).toBe(true);
+      expect(eventTypes.has('choice')).toBe(true);
+      expect(eventTypes.has('fork')).toBe(true);
+      expect(eventTypes.has('join')).toBe(true);
+      expect(eventTypes.has('complete')).toBe(true);
+    });
+  });
+
+  describe('Guarantee 5: Execution Model', () => {
+    it('should provide total order for parallel branches (orchestration)', () => {
+      const source = `
+        protocol TotalOrder(role A, role B, role C) {
+          par {
+            A -> B: M1();
+          } and {
+            C -> B: M2();
+          }
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg);
+
+      const events: string[] = [];
+      simulator.on('message', (data) => events.push(data.label));
+
+      simulator.run();
+
+      // Should execute branches in SOME total order (orchestrated)
+      // Either [M1, M2] or [M2, M1] depending on interleaving, but always total order
+      expect(events).toHaveLength(2);
+      expect(events).toContain('M1');
+      expect(events).toContain('M2');
+    });
+
+    it('should execute synchronously with no message buffers', () => {
+      const source = `
+        protocol Synchronous(role A, role B) {
+          A -> B: M1();
+          B -> A: M2();
+        }
+      `;
+      const ast = parse(source);
+      const cfg = buildCFG(ast.declarations[0]);
+      const simulator = new CFGSimulator(cfg);
+
+      // Messages should be delivered atomically (no buffering)
+      // In orchestrated model, step() should complete the entire action
+      let m1Seen = false;
+      let m2Seen = false;
+
+      simulator.on('message', (data) => {
+        if (data.label === 'M1') m1Seen = true;
+        if (data.label === 'M2') {
+          // When M2 executes, M1 should already be complete
+          expect(m1Seen).toBe(true);
+          m2Seen = true;
+        }
+      });
+
+      simulator.run();
+
+      expect(m1Seen).toBe(true);
+      expect(m2Seen).toBe(true);
+    });
+  });
+});

@@ -25,6 +25,12 @@ export interface CFGSimulatorConfig {
    * Choice strategy: 'manual' (user picks), 'random', or 'first'
    */
   choiceStrategy?: 'manual' | 'random' | 'first';
+
+  /**
+   * Maximum number of actions to preview in each choice branch
+   * Default: 5
+   */
+  previewLimit?: number;
 }
 
 /**
@@ -60,7 +66,7 @@ export interface CFGExecutionState {
   /**
    * Available choices at current choice point
    */
-  availableChoices?: ChoiceOption[];
+  availableChoices?: EnhancedChoiceOption[];
 
   /**
    * Whether currently in parallel composition

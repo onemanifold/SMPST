@@ -121,7 +121,7 @@ export class CFGSimulator {
   private reachedMaxSteps: boolean = false;
 
   // Choice state
-  private pendingChoice: ChoiceOption[] | null = null;
+  private pendingChoice: EnhancedChoiceOption[] | null = null;
   private selectedChoice: number | null = null;
 
   // Parallel state
@@ -146,6 +146,7 @@ export class CFGSimulator {
       maxSteps: config.maxSteps ?? 1000,
       recordTrace: config.recordTrace ?? false,
       choiceStrategy: config.choiceStrategy ?? 'manual',
+      previewLimit: config.previewLimit ?? 5,
     };
 
     // Find initial node
@@ -183,15 +184,23 @@ export class CFGSimulator {
 
       // Stop at action, branch, fork, or terminal
       if (node.type === 'action' || node.type === 'branch' || node.type === 'fork' || node.type === 'terminal') {
-        // If it's a branch, set up the choice
+        // If it's a branch, set up the enhanced choice
         if (node.type === 'branch') {
+          const branchNode = node as BranchNode;
           const edges = this.getOutgoingEdges(node.id);
-          this.pendingChoice = edges.map((edge, index) => ({
-            index,
-            label: edge.label,
-            firstNode: edge.to,
-            description: this.getNodeDescription(edge.to),
-          }));
+          this.pendingChoice = edges.map((edge, index) => {
+            const branchPreview = this.previewBranch(edge.to, branchNode.branch_id);
+
+            return {
+              index,
+              label: edge.label,
+              firstNode: edge.to,
+              description: this.getNodeDescription(edge.to),
+              preview: branchPreview.preview,
+              participatingRoles: branchPreview.participatingRoles,
+              estimatedSteps: branchPreview.estimatedSteps,
+            };
+          });
         }
 
         // If it's a fork, set up parallel state so getState() shows inParallel = true
@@ -555,6 +564,129 @@ export class CFGSimulator {
   }
 
   /**
+   * Find merge node for a given branch_id
+   */
+  private findMergeNode(branchId: string): MergeNode | undefined {
+    return this.cfg.nodes.find(
+      n => n.type === 'merge' && (n as MergeNode).branch_id === branchId
+    ) as MergeNode | undefined;
+  }
+
+  /**
+   * Preview a branch by traversing from start node to merge/limit
+   * Returns action previews, participating roles, and estimated steps
+   */
+  private previewBranch(startNodeId: string, branchId: string): {
+    preview: ActionPreview[];
+    participatingRoles: string[];
+    estimatedSteps: number;
+  } {
+    const preview: ActionPreview[] = [];
+    const roles = new Set<string>();
+    let currentId = startNodeId;
+    let steps = 0;
+    const visited = new Set<string>();
+    const limit = this.config.previewLimit;
+
+    // Find the merge node we're looking for
+    const mergeNode = this.findMergeNode(branchId);
+
+    while (preview.length < limit && steps < 100) { // Safety limit
+      // Stop if we reached the merge node
+      if (currentId === mergeNode?.id) {
+        break;
+      }
+
+      // Stop if we've visited this node (cycle detection)
+      if (visited.has(currentId)) {
+        break;
+      }
+      visited.add(currentId);
+
+      const node = this.getNode(currentId);
+      if (!node) break;
+
+      steps++;
+
+      // Process different node types
+      switch (node.type) {
+        case 'action': {
+          const action = (node as ActionNode).action;
+          if (action.kind === 'message') {
+            preview.push({
+              type: 'message',
+              from: action.from,
+              to: action.to,
+              label: action.label,
+              description: `${action.from} → ${action.to}: ${action.label}`,
+            });
+            roles.add(action.from);
+            if (typeof action.to === 'string') {
+              roles.add(action.to);
+            } else {
+              action.to.forEach(r => roles.add(r));
+            }
+          }
+          break;
+        }
+
+        case 'branch': {
+          // Nested choice - stop previewing here
+          const branchNode = node as BranchNode;
+          preview.push({
+            type: 'choice',
+            label: `choice at ${branchNode.at}`,
+            description: `Choice point (role ${branchNode.at} decides)`,
+          });
+          roles.add(branchNode.at);
+          return { preview, participatingRoles: Array.from(roles), estimatedSteps: steps };
+        }
+
+        case 'fork': {
+          // Nested parallel - stop previewing here
+          preview.push({
+            type: 'parallel',
+            label: 'parallel',
+            description: 'Parallel composition begins',
+          });
+          return { preview, participatingRoles: Array.from(roles), estimatedSteps: steps };
+        }
+
+        case 'recursive': {
+          // Recursion - stop previewing here
+          const recNode = node as RecursiveNode;
+          preview.push({
+            type: 'recursion',
+            label: `rec ${recNode.label}`,
+            description: `Recursion point (label: ${recNode.label})`,
+          });
+          return { preview, participatingRoles: Array.from(roles), estimatedSteps: steps };
+        }
+
+        case 'terminal': {
+          // Reached end
+          return { preview, participatingRoles: Array.from(roles), estimatedSteps: steps };
+        }
+
+        default:
+          // For other nodes (initial, merge, join), just continue
+          break;
+      }
+
+      // Move to next node
+      const edges = this.getOutgoingEdges(currentId);
+      if (edges.length === 0) {
+        break; // Dead end
+      }
+
+      // Follow the first edge (for branch, this is handled above)
+      currentId = edges[0].to;
+    }
+
+    return { preview, participatingRoles: Array.from(roles), estimatedSteps: steps };
+  }
+
+  /**
    * Execute branch node (setup choice options)
    */
   private executeBranch(node: BranchNode): CFGStepResult {
@@ -599,20 +731,29 @@ export class CFGSimulator {
       };
     }
 
-    // Setup choice options
+    // Setup enhanced choice options with previews
     const edges = this.getOutgoingEdges(node.id);
-    this.pendingChoice = edges.map((edge, index) => ({
-      index,
-      label: edge.label,
-      firstNode: edge.to,
-      description: this.getNodeDescription(edge.to),
-    }));
+    const enhancedOptions: EnhancedChoiceOption[] = edges.map((edge, index) => {
+      const branchPreview = this.previewBranch(edge.to, node.branch_id);
 
-    // Emit choice-point event
+      return {
+        index,
+        label: edge.label,
+        firstNode: edge.to,
+        description: this.getNodeDescription(edge.to),
+        preview: branchPreview.preview,
+        participatingRoles: branchPreview.participatingRoles,
+        estimatedSteps: branchPreview.estimatedSteps,
+      };
+    });
+
+    this.pendingChoice = enhancedOptions;
+
+    // Emit choice-point event with enhanced options
     this.emit('choice-point', {
       nodeId: node.id,
       role: node.at,
-      options: this.pendingChoice,
+      options: enhancedOptions,
     });
 
     return {
