@@ -200,13 +200,20 @@ describe('Stepping Verification - Message Queue Semantics', () => {
     console.log('\n=== Per-Pair Queue Verification ===');
 
     // Step execution
-    console.log('\nBefore step:');
+    console.log('\nBefore stepping:');
     console.log('A state:', simulator.getState().roles.get('A')?.currentState);
     console.log('B state:', simulator.getState().roles.get('B')?.currentState);
     console.log('C state:', simulator.getState().roles.get('C')?.currentState);
 
-    await simulator.step();  // A and B send
-    console.log('\nAfter step:');
+    // Per FORMAL MPST semantics: one step = one role executes one action
+    // Step A and B individually, do NOT step C yet
+    // This allows us to verify messages are in per-pair queues before consumption
+    console.log('\nStepping A...');
+    await simulator.step('A');  // A sends M1 to queue(A->C)
+    console.log('Stepping B...');
+    await simulator.step('B');  // B sends M2 to queue(B->C)
+
+    console.log('\nAfter A and B send (C has NOT stepped yet):');
     const state = simulator.getState();
     console.log('A state:', state.roles.get('A')?.currentState, 'completed:', state.roles.get('A')?.completed);
     console.log('B state:', state.roles.get('B')?.currentState, 'completed:', state.roles.get('B')?.completed);
@@ -215,7 +222,7 @@ describe('Stepping Verification - Message Queue Semantics', () => {
     console.log('C pending messages:', state.roles.get('C')?.pendingMessages);
 
     // VERIFICATION: C should have 2 messages (one from A, one from B)
-    // With per-pair queues: queue(A->C) and queue(B->C) both have 1 message
+    // This proves per-pair FIFO queues work: queue(A->C) has 1, queue(B->C) has 1
     const cMessages = state.roles.get('C')?.pendingMessages || [];
     expect(cMessages.length).toBe(2);
 

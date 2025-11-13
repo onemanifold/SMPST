@@ -72,11 +72,6 @@ export class Executor {
    * Execute one step (one transition)
    */
   async step(): Promise<ExecutionResult> {
-    // Debug logging for two-senders scenario
-    if (this.role === 'A' || this.role === 'B') {
-      console.log(`\n[${this.role}] step() called, currentState: ${this.currentState}`);
-    }
-
     // Check if already completed
     if (this.completed) {
       const error: ExecutionError = {
@@ -121,15 +116,6 @@ export class Executor {
       // Get outgoing transitions
       const transitions = this.cfsm.transitions.filter(t => t.from === this.currentState);
 
-      // Debug logging
-      if (this.role === 'A' || this.role === 'B') {
-        console.log(`[${this.role}] Found ${transitions.length} transitions from ${this.currentState}:`);
-        transitions.forEach((t, i) => {
-          const actionStr = t.action ? `${t.action.type} ${(t.action as any).to || (t.action as any).from} ${t.action.label}` : 'epsilon';
-          console.log(`  [${i}] ${t.from} -> ${t.to} [${actionStr}]`);
-        });
-      }
-
       if (transitions.length === 0) {
         const error: ExecutionError = {
           type: 'no-transition',
@@ -143,12 +129,6 @@ export class Executor {
       // Note: For non-deterministic states (choice), we need to handle multiple transitions
       const firstTransition = transitions[0];
       const action = firstTransition.action;
-
-      // Debug logging
-      if (this.role === 'A' || this.role === 'B') {
-        const actionStr = action ? `${action.type}` : 'epsilon';
-        console.log(`[${this.role}] Taking first transition [${actionStr}]: ${firstTransition.from} -> ${firstTransition.to}`);
-      }
 
       // No action = epsilon/tau transition - auto-advance
       if (!action) {
@@ -210,11 +190,6 @@ export class Executor {
   private async executeSend(transition: CFSMTransition): Promise<ExecutionResult> {
     const action = transition.action;
 
-    // Debug logging
-    if (this.role === 'A' || this.role === 'B') {
-      console.log(`[${this.role}] executeSend called, action:`, action);
-    }
-
     if (!action || action.type !== 'send') {
       const error: ExecutionError = {
         type: 'no-transition',
@@ -236,18 +211,8 @@ export class Executor {
       timestamp: Date.now(),
     };
 
-    // Debug logging
-    if (this.role === 'A' || this.role === 'B') {
-      console.log(`[${this.role}] Sending message:`, message);
-    }
-
     // Send through transport
     await this.transport.send(message);
-
-    // Debug logging
-    if (this.role === 'A' || this.role === 'B') {
-      console.log(`[${this.role}] Message sent successfully`);
-    }
 
     // Notify observers
     this.notifyMessageSent(message);
