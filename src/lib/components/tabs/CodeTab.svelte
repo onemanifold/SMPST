@@ -54,12 +54,12 @@
   }
 
   .pane-header {
-    padding: 8px 16px;
+    padding: 4px 12px;
     background: rgba(45, 45, 45, 0.5);
     border-bottom: 1px solid #1e1e1e;
     font-weight: 500;
     color: #ccc;
-    font-size: 13px;
+    font-size: 11px;
     width: 100%;
     box-sizing: border-box;
   }

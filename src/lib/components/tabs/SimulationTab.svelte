@@ -2,33 +2,22 @@
   import CFSMNetwork from '../visualizations/CFSMNetwork.svelte';
   import CFGSequence from '../visualizations/CFGSequence.svelte';
 
-  let activeView: 'cfsm' | 'sequence' = 'cfsm';
+  let splitPos = 50; // percentage
 </script>
 
 <div class="simulation-tab">
-  <div class="view-selector">
-    <button
-      class="view-btn"
-      class:active={activeView === 'cfsm'}
-      on:click={() => activeView = 'cfsm'}
-    >
-      CFSM Network
-    </button>
-    <button
-      class="view-btn"
-      class:active={activeView === 'sequence'}
-      on:click={() => activeView = 'sequence'}
-    >
-      CFG Sequence
-    </button>
-  </div>
-
-  <div class="visualization-container">
-    {#if activeView === 'cfsm'}
+  <div class="split-container" style="--split-pos: {splitPos}%">
+    <div class="left-pane">
+      <div class="pane-header">CFSM Network</div>
       <CFSMNetwork />
-    {:else}
+    </div>
+
+    <div class="resize-handle" />
+
+    <div class="right-pane">
+      <div class="pane-header">CFG Sequence</div>
       <CFGSequence />
-    {/if}
+    </div>
   </div>
 </div>
 
@@ -40,54 +29,44 @@
     background: #1e1e1e;
   }
 
-  .view-selector {
+  .split-container {
     display: flex;
-    background: #2d2d2d;
-    border-bottom: 1px solid #1e1e1e;
-    padding: 8px;
-    gap: 8px;
-  }
-
-  .view-btn {
-    padding: 8px 16px;
-    background: transparent;
-    color: #ccc;
-    border: 1px solid #444;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    transition: all 0.2s;
-  }
-
-  .view-btn:hover {
-    background: #3d3d3d;
-    border-color: #666;
-  }
-
-  .view-btn.active {
-    background: #007acc;
-    color: #fff;
-    border-color: #007acc;
-  }
-
-  .visualization-container {
     flex: 1;
     overflow: hidden;
   }
 
-  .placeholder {
+  .left-pane {
+    width: var(--split-pos);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: #666;
-    text-align: center;
+    border-right: 1px solid #333;
   }
 
-  .placeholder h3 {
-    color: #fff;
-    margin-bottom: 16px;
+  .right-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pane-header {
+    padding: 4px 12px;
+    background: rgba(45, 45, 45, 0.5);
+    border-bottom: 1px solid #1e1e1e;
+    font-weight: 500;
+    color: #ccc;
+    font-size: 11px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .resize-handle {
+    width: 4px;
+    background: #1e1e1e;
+    cursor: col-resize;
+    transition: background 0.2s;
+  }
+
+  .resize-handle:hover {
+    background: #007acc;
   }
 </style>
