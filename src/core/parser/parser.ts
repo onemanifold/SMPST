@@ -36,7 +36,7 @@ class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.importDeclaration) },
       { ALT: () => this.SUBRULE(this.typeDeclaration) },
       { ALT: () => this.SUBRULE(this.globalProtocolDeclaration) },
-      { ALT: () => this.SUBRULE(this.protocolExtension) },       // Future: Subtyping
+      // REMOVED: protocolExtension - causes ambiguity, add in Phase 4
       { ALT: () => this.SUBRULE(this.localProtocolDeclaration) },
     ]);
   });
@@ -133,36 +133,24 @@ class ScribbleParser extends CstParser {
   // ==========================================================================
   // Protocol Extension (Subtyping - Future Feature)
   // Based on docs/theory/asynchronous-subtyping.md
+  // COMMENTED OUT: Causes grammar ambiguity, will be added in Phase 4
   // ==========================================================================
 
-  /**
-   * Protocol extension for subtyping
-   * Syntax: protocol Enhanced(role A, role B) extends Basic(A, B) { ... }
-   */
+  /*
   private protocolExtension = this.RULE('protocolExtension', () => {
     this.CONSUME(tokens.Protocol);
     this.CONSUME(tokens.Identifier, { LABEL: 'name' });
-
-    // Type parameters (optional)
     this.OPTION(() => {
       this.SUBRULE(this.typeParameters);
     });
-
-    // Role parameters
     this.CONSUME(tokens.LParen);
     this.SUBRULE(this.roleDeclarationList);
     this.CONSUME(tokens.RParen);
-
-    // Extends clause
     this.CONSUME(tokens.Extends);
     this.CONSUME2(tokens.Identifier, { LABEL: 'baseProtocol' });
-
-    // Type arguments for base protocol (optional)
     this.OPTION2(() => {
       this.SUBRULE(this.typeArguments);
     });
-
-    // Role arguments for base protocol
     this.CONSUME2(tokens.LParen);
     this.AT_LEAST_ONE_SEP({
       SEP: tokens.Comma,
@@ -171,12 +159,11 @@ class ScribbleParser extends CstParser {
       },
     });
     this.CONSUME2(tokens.RParen);
-
-    // Refinement body
     this.CONSUME(tokens.LCurly);
     this.SUBRULE(this.globalProtocolBody, { LABEL: 'refinements' });
     this.CONSUME(tokens.RCurly);
   });
+  */
 
   // ==========================================================================
   // Local Protocol Declaration
@@ -214,15 +201,14 @@ class ScribbleParser extends CstParser {
   private globalInteraction = this.RULE('globalInteraction', () => {
     this.OR([
       { ALT: () => this.SUBRULE(this.messageTransfer) },
-      { ALT: () => this.SUBRULE(this.timedMessage) },       // Future: Timed types
+      // REMOVED: timedMessage - causes ambiguity, add in Phase 6
       { ALT: () => this.SUBRULE(this.choice) },
       { ALT: () => this.SUBRULE(this.parallel) },
       { ALT: () => this.SUBRULE(this.recursion) },
       { ALT: () => this.SUBRULE(this.continueStatement) },
       { ALT: () => this.SUBRULE(this.doStatement) },
-      { ALT: () => this.SUBRULE(this.tryStatement) },       // Future: Exceptions
-      { ALT: () => this.SUBRULE(this.throwStatement) },     // Future: Exceptions
-      { ALT: () => this.SUBRULE(this.timeoutStatement) },   // Future: Timed types
+      // REMOVED: tryStatement, throwStatement - causes issues, add in Phase 5
+      // REMOVED: timeoutStatement - causes issues, add in Phase 6
     ]);
   });
 
@@ -315,21 +301,17 @@ class ScribbleParser extends CstParser {
   });
 
   // ==========================================================================
-  // Exception Handling (Future Feature)
+  // Exception Handling (Future Feature - DISABLED)
   // Based on docs/theory/exception-handling.md
+  // COMMENTED OUT: Will be added in Phase 5
   // ==========================================================================
 
-  /**
-   * Try-catch block
-   * Syntax: try { ... } catch Label { ... }
-   */
+  /*
   private tryStatement = this.RULE('tryStatement', () => {
     this.CONSUME(tokens.Try);
     this.CONSUME(tokens.LCurly);
     this.SUBRULE(this.globalProtocolBody, { LABEL: 'body' });
     this.CONSUME(tokens.RCurly);
-
-    // One or more catch handlers
     this.AT_LEAST_ONE(() => {
       this.CONSUME(tokens.Catch);
       this.CONSUME(tokens.Identifier, { LABEL: 'exceptionLabel' });
@@ -339,25 +321,20 @@ class ScribbleParser extends CstParser {
     });
   });
 
-  /**
-   * Throw statement
-   * Syntax: throw Label;
-   */
   private throwStatement = this.RULE('throwStatement', () => {
     this.CONSUME(tokens.Throw);
     this.CONSUME(tokens.Identifier, { LABEL: 'exceptionLabel' });
     this.CONSUME(tokens.Semicolon);
   });
+  */
 
   // ==========================================================================
-  // Timed Session Types (Future Feature)
+  // Timed Session Types (Future Feature - DISABLED)
   // Based on docs/theory/timed-session-types.md
+  // COMMENTED OUT: Causes ambiguity, will be added in Phase 6
   // ==========================================================================
 
-  /**
-   * Timed message with deadline
-   * Syntax: A -> B: Msg() within 5s;
-   */
+  /*
   private timedMessage = this.RULE('timedMessage', () => {
     this.CONSUME(tokens.Identifier, { LABEL: 'from' });
     this.CONSUME(tokens.Arrow);
@@ -369,19 +346,11 @@ class ScribbleParser extends CstParser {
     this.CONSUME(tokens.Semicolon);
   });
 
-  /**
-   * Time constraint: value + unit
-   * Syntax: 5s, 100ms, 2min
-   */
   private timeConstraint = this.RULE('timeConstraint', () => {
     this.CONSUME(tokens.NumberLiteral, { LABEL: 'value' });
-    this.CONSUME(tokens.Identifier, { LABEL: 'unit' }); // 's', 'ms', 'min'
+    this.CONSUME(tokens.Identifier, { LABEL: 'unit' });
   });
 
-  /**
-   * Timeout handler
-   * Syntax: timeout(5s) { ... }
-   */
   private timeoutStatement = this.RULE('timeoutStatement', () => {
     this.CONSUME(tokens.Timeout);
     this.CONSUME(tokens.LParen);
@@ -391,6 +360,7 @@ class ScribbleParser extends CstParser {
     this.SUBRULE(this.globalProtocolBody);
     this.CONSUME(tokens.RCurly);
   });
+  */
 
   // ==========================================================================
   // Local Interactions
@@ -409,9 +379,7 @@ class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.recursion) },
       { ALT: () => this.SUBRULE(this.continueStatement) },
       { ALT: () => this.SUBRULE(this.doStatement) },
-      { ALT: () => this.SUBRULE(this.tryStatement) },       // Future: Exceptions
-      { ALT: () => this.SUBRULE(this.throwStatement) },     // Future: Exceptions
-      { ALT: () => this.SUBRULE(this.timeoutStatement) },   // Future: Timed types
+      // REMOVED: Future features to avoid grammar issues
     ]);
   });
 
