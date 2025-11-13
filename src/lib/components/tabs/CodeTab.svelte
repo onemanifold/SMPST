@@ -22,11 +22,9 @@
     </div>
   </div>
 
-  {#if !$outputPanelCollapsed}
-    <div class="bottom-panel">
-      <VerificationPanel />
-    </div>
-  {/if}
+  <div class="bottom-panel" class:collapsed={$outputPanelCollapsed}>
+    <VerificationPanel />
+  </div>
 </div>
 
 <style>
@@ -47,21 +45,29 @@
     display: flex;
     flex-direction: column;
     border-right: 1px solid #333;
+    position: relative;
   }
 
   .right-pane {
     flex: 1;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
 
   .pane-header {
-    padding: 8px 16px;
-    background: #2d2d2d;
-    border-bottom: 1px solid #1e1e1e;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 12px;
+    background: rgba(45, 45, 45, 0.5);
+    border-bottom: 1px solid rgba(30, 30, 30, 0.8);
     font-weight: 500;
     color: #ccc;
-    font-size: 13px;
+    font-size: 11px;
+    z-index: 10;
+    backdrop-filter: blur(4px);
   }
 
   .resize-handle {
@@ -79,5 +85,11 @@
     height: 200px;
     border-top: 1px solid #333;
     background: #1e1e1e;
+    transition: height 0.3s ease;
+    overflow: hidden;
+  }
+
+  .bottom-panel.collapsed {
+    height: 40px;
   }
 </style>

@@ -14,8 +14,9 @@
     </button>
   </div>
 
-  <div class="panel-content">
-    {#if $parseError}
+  {#if !$outputPanelCollapsed}
+    <div class="panel-content">
+      {#if $parseError}
       <div class="error-section">
         <h4>Parse Error</h4>
         <pre class="error-message">{$parseError}</pre>
@@ -56,7 +57,8 @@
     {:else}
       <p class="placeholder">Parse a protocol to see verification results</p>
     {/if}
-  </div>
+    </div>
+  {/if}
 </div>
 
 <style>

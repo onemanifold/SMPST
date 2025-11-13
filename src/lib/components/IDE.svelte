@@ -2,8 +2,10 @@
   import CodeTab from './tabs/CodeTab.svelte';
   import SimulationTab from './tabs/SimulationTab.svelte';
   import Header from './Header.svelte';
+  import Sidebar from './sidebar/Sidebar.svelte';
 
   let currentTab: 'code' | 'simulation' = 'code';
+  let sidebarCollapsed = false;
 </script>
 
 <div class="ide-container">
@@ -26,13 +28,17 @@
     </button>
   </nav>
 
-  <main class="tab-content">
-    {#if currentTab === 'code'}
-      <CodeTab />
-    {:else}
-      <SimulationTab />
-    {/if}
-  </main>
+  <div class="main-content">
+    <Sidebar bind:collapsed={sidebarCollapsed} />
+
+    <main class="tab-content">
+      {#if currentTab === 'code'}
+        <CodeTab />
+      {:else}
+        <SimulationTab />
+      {/if}
+    </main>
+  </div>
 </div>
 
 <style>
@@ -68,6 +74,12 @@
   .tab.active {
     color: #fff;
     border-bottom-color: #007acc;
+  }
+
+  .main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
   }
 
   .tab-content {
