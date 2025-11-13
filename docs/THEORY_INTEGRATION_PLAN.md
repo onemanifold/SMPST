@@ -244,6 +244,67 @@
 - "Non-linear communication via graded modal session types" (Cutner, Yoshida 2024)
 - "Fundamentals of session types" (Vasconcelos 2012)
 
+#### 2.11 Bottom-Up MPST & Compatibility Checking
+**Current Status**: Not documented or implemented
+**What's Missing**:
+- Direct local type specification (no global type required)
+- Compatibility checking algorithm (replaces duality)
+- Safety invariant parametrization (deadlock-freedom, liveness)
+- Bottom-up composition and verification
+
+**Why Critical**:
+- Alternative MPST approach used in recent research
+- More flexible for protocol implementation
+- TCP session types paper (Cavoj et al. 2024) uses this approach
+- Enables gradual protocol development
+- Required for modeling transport-layer protocols
+
+**Key Papers Needed**:
+- "Less is More: Multiparty Session Types Revisited" (Scalas & Yoshida 2019)
+- "Session Types for the Transport Layer: Towards an Implementation of TCP" (Cavoj et al. 2024)
+
+#### 2.12 Refinement Types & Context-Dependent Branching
+**Current Status**: Not implemented
+**What's Missing**:
+- Predicate-based message types (refinement types)
+- Context-dependent branching (external state access)
+- Dependent types for session parameters
+- Static verification of predicates (SMT integration)
+- Picker functions with external state
+
+**Why Important**:
+- Enables protocols with semantic constraints (e.g., TCP sequence numbers)
+- Validates message content, not just types
+- Required for transport-layer protocols
+- Bridges gap between types and runtime validation
+- Same message type can route to different branches based on predicates
+
+**Key Papers Needed**:
+- "Parameterised Multiparty Session Types" (Castro et al. 2016) - dependent types
+- "Session Types for the Transport Layer: Towards an Implementation of TCP" (Cavoj et al. 2024) - picker functions
+
+#### 2.13 Transport-Layer Protocol Verification
+**Current Status**: Not considered
+**What's Missing**:
+- Reliability mechanism modeling (retransmission, ACKs)
+- Sliding window protocols
+- Packet loss and duplication handling
+- Network error injection for testing
+- Verification of eventual delivery properties
+- Retransmission queue semantics
+
+**Why Important**:
+- TCP, QUIC, SCTP require these mechanisms
+- Different from application-layer (SMTP, HTTP)
+- Enables session types for protocol stacks
+- Real-world networking requires unreliable channels
+- Timeout-based and duplicate-ACK triggered retransmission
+
+**Key Papers Needed**:
+- "Session Types for the Transport Layer: Towards an Implementation of TCP" (Cavoj et al. 2024)
+- "Multiparty Session Actors" (Fowler 2016) - failure handling
+- RFC 9293 - TCP specification
+
 ---
 
 ## 3. Essential Papers to Acquire
@@ -282,33 +343,47 @@
    - URL: https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ECOOP.2024.19
    - Alternative: https://mrg.cs.ox.ac.uk/publications/fearless-asynchronous-communications-with-timed-multiparty-session-protocols/main.pdf
 
+6. **Scalas, Yoshida (2019)**
+   - Title: "Less is More: Multiparty Session Types Revisited"
+   - Published: POPL 2019
+   - Why: Bottom-up MPST, compatibility checking, safety invariants
+   - URL: https://dl.acm.org/doi/10.1145/3290343
+   - **Note**: Critical for TCP implementation approach
+
 ### Priority 2: Important Extensions
 
-6. **Demangeon, Honda (2012)**
+7. **Cavoj et al. (2024)**
+   - Title: "Session Types for the Transport Layer: Towards an Implementation of TCP"
+   - Published: arXiv 2024
+   - Why: TCP protocol modeling, timeout emulation, context-dependent branching, transport-layer patterns
+   - URL: https://arxiv.org/abs/2404.05478
+   - **Note**: Demonstrates bottom-up MPST for real protocol, critical for understanding TCP requirements
+
+8. **Demangeon, Honda (2012)**
    - Title: "Nested Protocols in Session Types"
    - Published: CONCUR 2012
    - Why: Formal nested protocol semantics
    - URL: http://mrg.doc.ic.ac.uk/publications/nested-protocols-in-session-types/subsessioncam.pdf
 
-7. **Gheri, Yoshida (2023)**
+9. **Gheri, Yoshida (2023)**
    - Title: "Hybrid Multiparty Session Types - Full Version"
    - Published: POPL 2023
    - Why: Compositional protocol design
    - URL: https://mrg.cs.ox.ac.uk/publications/hybrid-multiparty-session-types/fullversion.pdf
 
-8. **Barbanera et al. (2021)**
-   - Title: "Fair Refinement for Asynchronous Session Types"
-   - Published: FOSSACS 2021
-   - Why: Subtyping and refinement
-   - URL: https://inria.hal.science/hal-03340696/document
+10. **Barbanera et al. (2021)**
+    - Title: "Fair Refinement for Asynchronous Session Types"
+    - Published: FOSSACS 2021
+    - Why: Subtyping and refinement
+    - URL: https://inria.hal.science/hal-03340696/document
 
-9. **Bocchi et al. (2014)**
-   - Title: "Timed Multiparty Session Types"
-   - Published: CONCUR 2014
-   - Why: Real-time constraints
-   - URL: https://kar.kent.ac.uk/43729/1/BYY14.pdf
+11. **Bocchi et al. (2014)**
+    - Title: "Timed Multiparty Session Types"
+    - Published: CONCUR 2014
+    - Why: Real-time constraints
+    - URL: https://kar.kent.ac.uk/43729/1/BYY14.pdf
 
-10. **Bocchi et al. (2013)**
+12. **Bocchi et al. (2013)**
     - Title: "Timed Runtime Monitoring for Multiparty Conversations"
     - Published: FMOODS/FORTE 2013
     - Why: Runtime verification
@@ -316,31 +391,31 @@
 
 ### Priority 3: Implementation Guidance
 
-11. **Yoshida et al. (2024)**
+13. **Yoshida et al. (2024)**
     - Title: "Programming Language Implementations with Multiparty Session Types"
     - Published: Behavioural Types 2024 (LNCS)
     - Why: Comprehensive survey of implementations
     - URL: https://mrg.cs.ox.ac.uk/publications/programming_languages_implementations_with_mpst/main.pdf
 
-12. **Miu et al. (2021)**
+14. **Miu et al. (2021)**
     - Title: "Communication-safe web programming in TypeScript with routed multiparty session types"
     - Published: CC 2021
     - Why: TypeScript code generation patterns
     - URL: https://dl.acm.org/doi/10.1145/3446804.3446854
 
-13. **Lagaillardie et al. (2020)**
+15. **Lagaillardie et al. (2020)**
     - Title: "Implementing Multiparty Session Types in Rust"
     - Published: COORDINATION 2020
     - Why: Rust implementation patterns
     - URL: http://mrg.doc.ic.ac.uk/publications/implementing-multiparty-session-types-in-rust/main.pdf
 
-14. **Hu et al. (2016)**
+16. **Hu et al. (2016)**
     - Title: "Hybrid Session Verification Through Endpoint API Generation"
     - Published: FASE 2016
     - Why: Hybrid static/dynamic verification
     - URL: https://link.springer.com/chapter/10.1007/978-3-662-49665-7_24
 
-15. **Cutner, Yoshida (2024)**
+17. **Cutner, Yoshida (2024)**
     - Title: "Non-linear communication via graded modal session types"
     - Published: Information and Computation, November 2024
     - Why: Shared channels, non-linearity
@@ -348,31 +423,25 @@
 
 ### Priority 4: Background & Surveys
 
-16. **Scalas, Yoshida (2019)**
-    - Title: "Less is More: Multiparty Session Types Revisited"
-    - Published: POPL 2019
-    - Why: Simplified MPST theory
-    - URL: https://dl.acm.org/doi/10.1145/3290343
-
-17. **Vasconcelos (2012)**
+18. **Vasconcelos (2012)**
     - Title: "Fundamentals of session types"
     - Published: Information and Computation 2012
     - Why: Foundational tutorial
     - URL: https://www.sciencedirect.com/science/article/pii/S0890540112001022
 
-18. **Ghilezan et al. (2023)**
+19. **Ghilezan et al. (2023)**
     - Title: "Precise Subtyping for Asynchronous Multiparty Sessions"
     - Published: ACM TOCL 2023
     - Why: Sound and complete subtyping
     - URL: https://dl.acm.org/doi/10.1145/3568422
 
-19. **Castro et al. (2016)**
+20. **Castro et al. (2016)**
     - Title: "Parameterised Multiparty Session Types"
     - Published: LMCS 2016
     - Why: Dependent type theory for sessions
     - URL: https://lmcs.episciences.org/924
 
-20. **Yoshida, Hu et al. (2013)**
+21. **Yoshida, Hu et al. (2013)**
     - Title: "The Scribble Protocol Language"
     - Published: TGC 2013
     - Why: Official Scribble specification paper
@@ -590,6 +659,29 @@ Create a new theory subdirectory with focused documents:
     - Graded modal types
     - Dependent session types
     - Resource usage tracking
+
+11. **`bottom-up-mpst.md`** *(NEW - TCP Support)*
+    - Bottom-up MPST formalization (Scalas & Yoshida 2019)
+    - Compatibility checking algorithm
+    - Safety invariant parametrization
+    - Comparison with top-down approach
+    - TCP implementation use case
+
+12. **`refinement-dependent-types.md`** *(NEW - TCP Support)*
+    - Refinement types for messages
+    - Predicate-based branching
+    - Context-dependent routing
+    - Dependent session types (Castro et al. 2016)
+    - Picker functions and external state
+    - SMT integration for static checking
+
+13. **`transport-layer-protocols.md`** *(NEW - TCP Support)*
+    - Transport vs application layer modeling
+    - Reliability mechanisms (retransmission, ACKs)
+    - Sliding window protocols
+    - Packet loss and duplication
+    - Network error injection
+    - TCP case study (Cavoj et al. 2024)
 
 ### Enhanced Existing Documentation
 
