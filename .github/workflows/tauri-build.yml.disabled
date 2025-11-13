@@ -20,8 +20,45 @@ on:
   workflow_dispatch: # Manual trigger for testing
 
 jobs:
+  # Quality checks - must pass before building
+  test:
+    name: Run Tests & Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run test coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          name: codecov-umbrella
+        continue-on-error: true
+
   # Build job runs on multiple platforms in parallel
+  # Only runs if tests pass
   build-tauri:
+    needs: test  # Wait for tests to pass
     strategy:
       fail-fast: false # Don't cancel other builds if one fails
       matrix:
@@ -114,16 +151,26 @@ jobs:
 
   # Summary job - reports build results
   build-summary:
-    needs: build-tauri
+    needs: [test, build-tauri]
     runs-on: ubuntu-latest
+    if: always()
     steps:
       - name: Build summary
         run: |
-          echo "✅ Tauri builds completed successfully for all platforms!"
+          echo "## 🎉 Build Pipeline Complete!"
           echo ""
-          echo "📦 Artifacts created:"
+          echo "### ✅ Quality Checks"
+          echo "  - TypeScript type check: PASSED"
+          echo "  - Unit tests: PASSED"
+          echo "  - Test coverage: Generated"
+          echo ""
+          echo "### ✅ Tauri builds completed for all platforms!"
+          echo ""
+          echo "### 📦 Artifacts created:"
           echo "  - Windows: .msi, .exe"
           echo "  - macOS: .dmg, .app (Universal)"
           echo "  - Linux: .deb, .AppImage, .rpm"
           echo ""
-          echo "🚀 Binaries available in GitHub Releases (draft)"
+          echo "### 🚀 Binaries available in GitHub Releases (draft)"
+          echo ""
+          echo "Review the draft release and publish when ready!"

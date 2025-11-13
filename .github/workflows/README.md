@@ -50,15 +50,27 @@ git push --tags
 
 ### What Happens Next
 
-GitHub Actions will automatically:
+GitHub Actions will automatically run a multi-stage pipeline:
+
+**Stage 1: Quality Checks** (~2-3 minutes)
+1. ✅ TypeScript type checking (`tsc --noEmit`)
+2. ✅ Run all unit tests (`npm test`)
+3. ✅ Generate test coverage report
+4. ✅ Upload coverage to Codecov (optional)
+
+**Stage 2: Multi-Platform Builds** (only if tests pass, ~10-15 minutes)
 1. ✅ Build Windows x64 binary (`.exe`, `.msi`)
 2. ✅ Build macOS Universal binary (`.dmg`, Intel + Apple Silicon)
 3. ✅ Build Linux binaries (`.deb`, `.AppImage`, `.rpm`)
-4. ✅ Create GitHub Release (draft mode)
-5. ✅ Upload all binaries to the release
-6. ✅ Generate release notes
 
-**Total build time:** ~10-15 minutes (all platforms in parallel)
+**Stage 3: Release Creation**
+1. ✅ Create GitHub Release (draft mode)
+2. ✅ Upload all binaries to the release
+3. ✅ Generate release notes
+
+**⚠️ Important:** If any test fails, the build stage is skipped entirely. This ensures only tested code is distributed.
+
+**Total pipeline time:** ~15-20 minutes (tests + builds in parallel)
 
 ### Build Matrix
 
