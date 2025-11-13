@@ -119,7 +119,7 @@ export async function parseProtocol(content: string) {
     // Dynamic import to avoid circular dependencies
     const { ScribbleParser } = await import('../../core/parser/parser');
     const { CFGBuilder } = await import('../../core/cfg/builder');
-    const { Verifier } = await import('../../core/verification/verifier');
+    const { verifyProtocol } = await import('../../core/verification/verifier');
 
     // 1. Parse Scribble
     const parser = new ScribbleParser();
@@ -134,32 +134,86 @@ export async function parseProtocol(content: string) {
     const cfg = builder.build(ast as any);
 
     // 3. Verify protocol
-    const verifier = new Verifier();
-    const result = verifier.verify(cfg);
+    const result = verifyProtocol(cfg);
 
     // 4. Project to CFSMs (Phase 2)
-    const { Projector } = await import('../../core/projection/projector');
-    const projector = new Projector();
-    const cfsms = projector.project(cfg);
+    const { projectAll } = await import('../../core/projection/projector');
+    const projectionResult = projectAll(cfg);
 
-    // Extract roles from AST
-    const globalProtocol = ast as any;
-    const roles = globalProtocol.roles?.map((r: any) => r.name) || [];
+    // Extract roles from projection result
+    const roles = projectionResult.roles;
 
-    // 5. Update stores
+    // 5. Collect errors and warnings from verification
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Deadlock
+    if (result.deadlock.hasDeadlock) {
+      errors.push(`Deadlock detected: ${result.deadlock.cycles.length} cycle(s)`);
+    }
+
+    // Liveness
+    if (!result.liveness.isLive) {
+      errors.push(`Liveness violated: ${result.liveness.violations.length} violation(s)`);
+    }
+
+    // Parallel deadlock
+    if (result.parallelDeadlock.hasDeadlock) {
+      errors.push(`Parallel deadlock detected: ${result.parallelDeadlock.conflicts.length} conflict(s)`);
+    }
+
+    // Race conditions
+    if (result.raceConditions.hasRaces) {
+      warnings.push(`Race conditions detected: ${result.raceConditions.races.length} race(s)`);
+    }
+
+    // Progress
+    if (!result.progress.satisfiesProgress) {
+      errors.push('Progress not satisfied');
+    }
+
+    // Choice determinism
+    if (!result.choiceDeterminism.isDeterministic) {
+      errors.push(`Choice non-determinism: ${result.choiceDeterminism.violations.length} violation(s)`);
+    }
+
+    // Multicast warnings
+    if (result.multicast && result.multicast.warnings.length > 0) {
+      result.multicast.warnings.forEach(w => warnings.push(`Multicast: ${w.message}`));
+    }
+
+    // 6. Update stores
     parseStatus.set('success');
     verificationResult.set({
-      deadlockFree: !result.errors.some(e => e.includes('deadlock')),
-      livenessSatisfied: !result.errors.some(e => e.includes('liveness')),
-      safetySatisfied: result.errors.length === 0,
-      warnings: result.warnings,
-      errors: result.errors
+      deadlockFree: !result.deadlock.hasDeadlock,
+      livenessSatisfied: result.liveness.isLive,
+      safetySatisfied: errors.length === 0,
+      warnings,
+      errors
     });
+
+    // Helper to format CFSM action as display label
+    const formatActionLabel = (action: any): string => {
+      if (!action) return 'τ';
+
+      switch (action.type) {
+        case 'send':
+          return `send ${action.label || ''}`;
+        case 'receive':
+          return `recv ${action.label || ''}`;
+        case 'tau':
+          return 'τ';
+        case 'choice':
+          return `choice ${action.branch || ''}`;
+        default:
+          return action.label || action.type || 'τ';
+      }
+    };
 
     // Update projection data
     projectionData.set(
       roles.map((role: string) => {
-        const cfsm = cfsms[role];
+        const cfsm = projectionResult.cfsms.get(role);
         if (!cfsm) {
           return {
             role,
@@ -170,21 +224,19 @@ export async function parseProtocol(content: string) {
 
         return {
           role,
-          states: Object.keys(cfsm.states),
-          transitions: Object.entries(cfsm.states).flatMap(([from, state]) =>
-            state.transitions.map((t: any) => ({
-              from,
-              to: t.target,
-              label: t.action?.label || t.action?.kind || 'τ'
-            }))
-          )
+          states: cfsm.states.map(s => s.id),
+          transitions: cfsm.transitions.map(t => ({
+            from: t.from,
+            to: t.to,
+            label: formatActionLabel(t.action)
+          }))
         };
       })
     );
 
     // TODO: 6. Generate TypeScript (future)
 
-    return { success: true, cfg, ast, cfsms };
+    return { success: true, cfg, ast, cfsms: projectionResult.cfsms };
   } catch (error) {
     parseStatus.set('error');
     const message = error instanceof Error ? error.message : String(error);
