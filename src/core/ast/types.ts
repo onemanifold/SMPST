@@ -143,7 +143,7 @@ export interface Payload {
 export interface Send {
   type: 'Send';
   message: Message;
-  to: string;
+  to: string | string[];  // string[] for multicast
   location?: SourceLocation;
 }
 

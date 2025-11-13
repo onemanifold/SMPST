@@ -229,7 +229,14 @@ class ScribbleParser extends CstParser {
   private messageTransfer = this.RULE('messageTransfer', () => {
     this.CONSUME(tokens.Identifier, { LABEL: 'from' });
     this.CONSUME(tokens.Arrow);
+
+    // Support multicast: to1, to2, to3
     this.CONSUME2(tokens.Identifier, { LABEL: 'to' });
+    this.MANY(() => {
+      this.CONSUME(tokens.Comma);
+      this.CONSUME3(tokens.Identifier, { LABEL: 'toAdditional' });
+    });
+
     this.CONSUME(tokens.Colon);
     this.SUBRULE(this.message);
     this.CONSUME(tokens.Semicolon);
@@ -610,10 +617,15 @@ class ScribbleToAstVisitor extends BaseCstVisitor {
   }
 
   messageTransfer(ctx: any): AST.MessageTransfer {
+    // Support multicast: if toAdditional exists, create array of all receivers
+    const to = ctx.toAdditional
+      ? [ctx.to[0].image, ...ctx.toAdditional.map((t: any) => t.image)]
+      : ctx.to[0].image;
+
     return {
       type: 'MessageTransfer',
       from: ctx.from[0].image,
-      to: ctx.to[0].image,
+      to,
       message: this.visit(ctx.message),
       location: this.getLocation(ctx),
     };
