@@ -117,14 +117,13 @@ export async function parseProtocol(content: string) {
 
   try {
     // Dynamic imports
-    const { ScribbleParser } = await import('../../core/parser/parser');
+    const { parse } = await import('../../core/parser/parser');
     const { CFGBuilder } = await import('../../core/cfg/builder');
     const { verifyProtocol } = await import('../../core/verification/verifier');
     const { projectAll } = await import('../../core/projection/projector');
 
     // 1. Parse Scribble
-    const parser = new ScribbleParser();
-    const ast = parser.parse(content);
+    const ast = parse(content);
 
     if (!ast || ast.type !== 'GlobalProtocol') {
       throw new Error('Expected global protocol');

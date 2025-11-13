@@ -12,7 +12,7 @@ import type * as AST from '../ast/types';
 // Parser Class
 // ============================================================================
 
-class ScribbleParser extends CstParser {
+export class ScribbleParser extends CstParser {
   constructor() {
     super(allTokens, {
       recoveryEnabled: true,
