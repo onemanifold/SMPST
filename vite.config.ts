@@ -9,9 +9,7 @@ const monacoEditorPlugin = (monacoEditorPluginModule as any).default || monacoEd
 export default defineConfig({
   plugins: [
     svelte(),
-    monacoEditorPlugin({
-      publicPath: 'monacoeditorwork'
-    })
+    monacoEditorPlugin({})
   ],
   base: '/SMPST/',
   resolve: {
