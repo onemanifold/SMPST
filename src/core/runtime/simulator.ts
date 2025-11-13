@@ -103,6 +103,11 @@ export class Simulator {
 
   /**
    * Execute one step (for one role or all roles)
+   *
+   * Step counting semantics:
+   * - One call to step() = one simulation step (increments counter by 1)
+   * - May execute multiple role transitions per step (interleaving)
+   * - This matches user expectation: step() called N times → step counter = N
    */
   async step(role?: string): Promise<SimulationStepResult> {
     const updates = new Map();
@@ -120,9 +125,8 @@ export class Simulator {
 
       const result = await executor.step();
       updates.set(role, result);
-      this.stepCount++;
     } else {
-      // Step all roles
+      // Step all roles (one iteration of interleaving)
       for (const [roleName, executor] of this.executors.entries()) {
         // Skip completed roles
         if (executor.getState().completed) {
@@ -132,13 +136,11 @@ export class Simulator {
         // Try to step this role
         const result = await executor.step();
         updates.set(roleName, result);
-
-        // If successful, increment step count
-        if (result.success) {
-          this.stepCount++;
-        }
       }
     }
+
+    // Increment step counter once per step() call
+    this.stepCount++;
 
     const state = this.getState();
 
