@@ -55,11 +55,13 @@
 
   .pane-header {
     padding: 8px 16px;
-    background: #2d2d2d;
+    background: rgba(45, 45, 45, 0.5);
     border-bottom: 1px solid #1e1e1e;
     font-weight: 500;
     color: #ccc;
     font-size: 13px;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .resize-handle {
