@@ -6,6 +6,21 @@
 
   let editorContainer: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
+  let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Debounced auto-parse function (1 second delay)
+  function debouncedParse(content: string) {
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+    }
+
+    debounceTimeout = setTimeout(() => {
+      // Only parse if there's actual content
+      if (content.trim().length > 0) {
+        parseProtocol(content);
+      }
+    }, 1000); // 1 second delay
+  }
 
   onMount(() => {
     // Register Scribble language
@@ -60,12 +75,18 @@
     // Listen to content changes
     editor.onDidChangeModelContent(() => {
       if (editor) {
-        setEditorContent(editor.getValue());
+        const content = editor.getValue();
+        setEditorContent(content);
+        // Trigger debounced auto-parse
+        debouncedParse(content);
       }
     });
   });
 
   onDestroy(() => {
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+    }
     editor?.dispose();
   });
 
