@@ -344,6 +344,323 @@ When proposing significant changes:
 
 ---
 
+## Adding Future Features
+
+This section documents insights and best practices for adding new features to the Scribble implementation, based on lessons learned from theorem-driven development and formal correctness work.
+
+### Formal Correctness First
+
+**Before implementing any new feature, establish its formal semantics:**
+
+1. **Literature Review**: Find academic papers defining the feature
+   - Session types extensions (Honda, Yoshida, Carbone)
+   - Behavioral types (Deniélou & Yoshida)
+   - Protocol specifications (Scribble papers)
+
+2. **Formal Definition**: Document the mathematical model
+   ```typescript
+   /**
+    * FORMAL DEFINITION (Author et al. Year):
+    *
+    * Feature F is defined as: [mathematical notation]
+    *
+    * Properties:
+    * - Property 1: [formal statement]
+    * - Property 2: [formal statement]
+    *
+    * @reference Author, A., & Author, B. (Year). Paper Title. Conference/Journal.
+    */
+   ```
+
+3. **Theorem Identification**: List theorems that must hold
+   - Soundness: Does feature preserve protocol correctness?
+   - Completeness: Are all valid cases covered?
+   - Composability: Does feature interact correctly with others?
+
+**Example**: Exception handling
+- See `docs/theory/exceptions.md` for formal semantics
+- Reference: Carbone & Montesi's work on exception propagation
+- Theorems: Exception safety, handler completeness
+
+### Grammar Design: Avoiding Ambiguity
+
+When adding new syntax, **prevent parser conflicts**:
+
+#### Pattern 1: Lookahead-Based Disambiguation
+
+```typescript
+// Problem: Two rules start with same tokens
+private ruleA = this.RULE('ruleA', () => {
+  this.CONSUME(tokens.Protocol);
+  this.CONSUME(tokens.Identifier);
+  // ... rest of rule
+});
+
+private ruleB = this.RULE('ruleB', () => {
+  this.CONSUME(tokens.Protocol);
+  this.CONSUME(tokens.Identifier);
+  this.CONSUME(tokens.Extends);  // Distinguishing token
+  // ... rest of rule
+});
+
+// Solution: Use GATE for lookahead
+private moduleDeclaration = this.RULE('moduleDeclaration', () => {
+  this.OR([
+    {
+      GATE: () => this.LA(3).tokenType === tokens.Extends,
+      ALT: () => this.SUBRULE(this.ruleB)
+    },
+    { ALT: () => this.SUBRULE(this.ruleA) },
+  ]);
+});
+```
+
+#### Pattern 2: Unified Rule with Post-Processing
+
+```typescript
+// Instead of separate rules, parse generically then specialize
+private unifiedRule = this.RULE('unifiedRule', () => {
+  this.CONSUME(tokens.CommonPrefix);
+  // ... parse common structure
+
+  // Optional distinguishing suffix
+  this.OPTION(() => {
+    this.CONSUME(tokens.DistinguishingToken);
+    // ... parse extension
+  });
+});
+```
+
+#### Pattern 3: Keyword-First Design
+
+```typescript
+// Require distinguishing keyword BEFORE common prefix
+// BAD:  protocol P(...) extends Q  vs  protocol P(...)
+// GOOD: protocol P(...)  vs  extends protocol P(...) from Q
+```
+
+### Temporary Disabling: The TODO Pattern
+
+If a feature causes ambiguity, **disable it with comprehensive documentation**:
+
+```typescript
+private moduleDeclaration = this.RULE('moduleDeclaration', () => {
+  this.OR([
+    { ALT: () => this.SUBRULE(this.globalProtocolDeclaration) },
+
+    // TODO: Re-enable Protocol Subtyping (Phase 5)
+    // DISABLED: Grammar ambiguity with globalProtocolDeclaration
+    //
+    // ISSUE:
+    //   Both rules start with: Protocol Identifier TypeParameters? LParen
+    //   Parser cannot distinguish until it sees 'extends' keyword.
+    //
+    // RESOLUTION STRATEGIES:
+    //   1. Lookahead: Use GATE to check for 'extends' after role parameters
+    //   2. Unified Rule: Parse as globalProtocolDeclaration, check for extends
+    //   3. Keyword First: Require 'extends protocol' vs 'protocol' syntax
+    //
+    // DEPENDENCIES:
+    //   - Subtyping theory implementation (docs/theory/subtyping.md)
+    //   - Projection rules for subtyping
+    //   - Verification: subtype relation checking
+    //
+    // REFERENCES:
+    //   - Gay & Hole (2005): Subtyping for session types
+    //   - Honda et al. (2008): Asynchronous subtyping
+    //
+    // See: docs/FUTURE_FEATURES.md for full plan
+    //
+    // { ALT: () => this.SUBRULE(this.protocolExtension) },
+
+    { ALT: () => this.SUBRULE(this.localProtocolDeclaration) },
+  ]);
+});
+```
+
+**Create tracking document**: `docs/FUTURE_FEATURES.md`
+
+### Separation of Concerns: Implementation vs. Formal Model
+
+**Keep implementation details separate from formal semantics:**
+
+#### Example: CFG vs. LTS
+
+**WRONG - Polluting formal model:**
+```typescript
+// CFSM is formally an LTS, not a CFG
+interface CFSM {
+  states: CFSMState[];     // LTS: Q
+  transitions: Transition[]; // LTS: →
+  nodes?: any[];           // ❌ CFG pollution!
+  edges?: any[];           // ❌ CFG pollution!
+}
+```
+
+**RIGHT - Separation:**
+```typescript
+// Formal model (LTS)
+interface CFSM {
+  states: CFSMState[];       // Q
+  transitions: Transition[]; // →
+  initialState: string;      // q₀
+  terminalStates: string[];  // Q_term
+}
+
+// Implementation detail (separate file)
+// src/core/cfg/types.ts
+interface CFG {
+  nodes: CFGNode[];
+  edges: CFGEdge[];
+}
+
+// Optional conversion (when needed)
+// src/core/projection/cfg-view.ts
+function buildCFGView(cfsm: CFSM): CFG {
+  // Convert LTS to CFG for visualization/simulation
+}
+```
+
+### Theorem-Driven Testing
+
+**Write tests that verify formal properties, not implementation details:**
+
+#### Test Structure Template
+
+```typescript
+/**
+ * THEOREM X.Y: [Name] (Author et al. Year)
+ *
+ * STATEMENT:
+ *   [Formal statement in mathematical notation]
+ *
+ * FORMAL PROPERTY:
+ *   [Property being tested]
+ *
+ * LTS/FORMAL REPRESENTATION:
+ *   [Visual diagram or formal notation]
+ *
+ * WHY THIS TEST IS VALID:
+ *   [Explanation of testing methodology]
+ *
+ * @reference Author, A., et al. (Year). Paper. Conference, Section X.Y
+ */
+describe('Theorem X.Y: [Name]', () => {
+  describe('Proof Obligation 1: [Property]', () => {
+    it('proves: [specific claim]', () => {
+      const protocol = `...`;
+
+      // Parse and project
+      const ast = parse(protocol);
+      const projections = projectAll(buildCFG(ast.declarations[0]));
+
+      // Test using LTS primitives (not implementation details)
+      const cfsm = projections.cfsms.get('RoleName')!;
+
+      // FORMAL CHECK: [What we're verifying]
+      const property = checkProperty(cfsm);
+      expect(property).toBe(expectedValue);
+      // ✅ PROOF: [What this proves]
+    });
+  });
+});
+```
+
+#### Use LTS Primitives, Not Implementation Details
+
+```typescript
+// ❌ BAD - Testing implementation details (CFG structure)
+const branches = cfsm.nodes.filter(n => n.type === 'branch');
+const actions = cfsm.nodes.filter(isActionNode);
+
+// ✅ GOOD - Testing formal properties (LTS semantics)
+import { findBranchingStates, countActions } from '../lts-analysis';
+
+const branches = findBranchingStates(cfsm);
+const actionCount = countActions(cfsm, 'send') + countActions(cfsm, 'receive');
+```
+
+### Documentation Requirements for New Features
+
+Every new feature must include:
+
+1. **Theory Document**: `docs/theory/[feature].md`
+   - Formal definition from literature
+   - Theorems that must hold
+   - Examples demonstrating the feature
+   - References to academic papers
+
+2. **Implementation Guide**: Inline comments
+   ```typescript
+   /**
+    * Implements [feature] according to [Author et al. Year]
+    *
+    * FORMAL SEMANTICS:
+    *   [Brief formal description]
+    *
+    * ALGORITHM:
+    *   1. [Step 1]
+    *   2. [Step 2]
+    *   ...
+    *
+    * For teaching: [Intuitive explanation]
+    *
+    * @reference [Paper citation]
+    */
+   ```
+
+3. **Test Documentation**: As shown above
+
+4. **Integration Plan**: Update `docs/THEORY_INTEGRATION_PLAN.md`
+   - Add feature to appropriate phase
+   - List dependencies
+   - Identify research gaps (use Perplexity if needed)
+
+### Feature Implementation Checklist
+
+Before merging a new feature:
+
+- [ ] **Formal semantics documented** (`docs/theory/[feature].md`)
+- [ ] **Parser grammar** (no ambiguities)
+- [ ] **AST types** (with formal documentation)
+- [ ] **CFG construction** (if needed)
+- [ ] **Projection rules** (with theorem references)
+- [ ] **Verification checks** (formal properties)
+- [ ] **Theorem-based tests** (all passing)
+- [ ] **LTS analysis functions** (if new primitives needed)
+- [ ] **Integration tests** (feature interacts correctly)
+- [ ] **Documentation** (theory + inline + examples)
+- [ ] **Literature references** (proper citations)
+
+### Examples in This Codebase
+
+**Completed Features:**
+- **Basic projection**: See `src/core/projection/`
+  - Theory: `docs/theory/projection-correctness.md`
+  - Tests: `src/__tests__/theorems/projection/`
+  - LTS analysis: `src/core/projection/lts-analysis.ts`
+
+**Disabled Features (with TODOs):**
+- **Protocol subtyping**: See `src/core/parser/parser.ts:39-46`
+- **Exception handling**: See `src/core/parser/parser.ts:266-272`
+- **Timed session types**: See `src/core/parser/parser.ts:250-257`
+
+**Theory Documents:**
+- `docs/theory/asynchronous-subtyping.md`
+- `docs/theory/exception-handling-semantics.md`
+- `docs/theory/timed-session-types.md`
+
+### Getting Help
+
+If you're implementing a complex feature:
+
+1. **Create design doc** in `docs/implementation/[feature]-design.md`
+2. **Use Perplexity proxy** for literature review (see next section)
+3. **Open discussion** on GitHub to get feedback
+4. **Ask for theory review** from maintainers before implementation
+
+---
+
 ## Perplexity Proxy Workflow (AI Contributions)
 
 When AI assistants (like Claude) contribute to the project, they may encounter access restrictions when trying to retrieve academic papers, theorems, or formal proofs from certain websites (e.g., 403 errors due to AI site interaction policies).
