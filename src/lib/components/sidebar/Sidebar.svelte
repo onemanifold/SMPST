@@ -278,14 +278,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    padding: 6px 8px;
     background: #2d2d2d;
     border-bottom: 1px solid #1e1e1e;
   }
 
   .sidebar-title {
     margin: 0;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     color: #ccc;
     text-transform: uppercase;
@@ -297,9 +297,9 @@
     border: none;
     color: #ccc;
     cursor: pointer;
-    font-size: 20px;
+    font-size: 16px;
     line-height: 1;
-    padding: 4px 8px;
+    padding: 2px 4px;
     border-radius: 4px;
   }
 
@@ -308,18 +308,18 @@
   }
 
   .category-filter {
-    padding: 12px 16px;
+    padding: 6px 8px;
     border-bottom: 1px solid #1e1e1e;
   }
 
   .category-select {
     width: 100%;
-    padding: 6px 8px;
+    padding: 3px 4px;
     background: #3d3d3d;
     color: #ccc;
     border: 1px solid #555;
     border-radius: 4px;
-    font-size: 12px;
+    font-size: 11px;
     cursor: pointer;
   }
 
@@ -331,16 +331,16 @@
   .item-list {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 4px;
   }
 
   .list-item {
     width: 100%;
-    padding: 10px 12px;
+    padding: 5px 6px;
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     cursor: pointer;
     text-align: left;
     transition: all 0.2s;
@@ -364,19 +364,19 @@
   }
 
   .saved-actions {
-    padding: 12px 16px;
+    padding: 6px 8px;
     border-bottom: 1px solid #1e1e1e;
   }
 
   .btn-save {
     width: 100%;
-    padding: 8px 12px;
+    padding: 4px 6px;
     background: #007acc;
     color: #fff;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
   }
 
@@ -385,20 +385,20 @@
   }
 
   .save-dialog {
-    padding: 12px 16px;
+    padding: 6px 8px;
     background: #2d2d2d;
     border-bottom: 1px solid #1e1e1e;
   }
 
   .save-input {
     width: 100%;
-    padding: 8px;
+    padding: 4px;
     background: #3d3d3d;
     color: #ccc;
     border: 1px solid #555;
     border-radius: 4px;
-    font-size: 13px;
-    margin-bottom: 8px;
+    font-size: 12px;
+    margin-bottom: 4px;
   }
 
   .save-input:focus {
@@ -408,13 +408,13 @@
 
   .dialog-actions {
     display: flex;
-    gap: 8px;
+    gap: 4px;
   }
 
   .btn-dialog-save,
   .btn-dialog-cancel {
     flex: 1;
-    padding: 6px 12px;
+    padding: 3px 6px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -465,7 +465,7 @@
 
   .saved-item-load {
     flex: 1;
-    padding: 10px 12px;
+    padding: 5px 6px;
     background: transparent;
     border: none;
     text-align: left;
@@ -478,13 +478,13 @@
   }
 
   .saved-item-delete {
-    width: 32px;
+    width: 24px;
     background: transparent;
     border: none;
     border-left: 1px solid #3d3d3d;
     color: #888;
     cursor: pointer;
-    font-size: 20px;
+    font-size: 18px;
     line-height: 1;
     transition: all 0.2s;
   }

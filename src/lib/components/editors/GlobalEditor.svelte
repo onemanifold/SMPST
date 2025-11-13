@@ -70,7 +70,17 @@
       lineNumbers: 'on',
       renderWhitespace: 'selection',
       scrollBeyondLastLine: false,
+      padding: { top: 24 }, // Add top padding to allow scrolling past header
     });
+
+    // Allow scrolling to show content beneath the floating header
+    // by scrolling up initially
+    setTimeout(() => {
+      if (editor) {
+        const currentScroll = editor.getScrollTop();
+        editor.setScrollTop(Math.max(0, currentScroll - 24));
+      }
+    }, 100);
 
     // Listen to content changes
     editor.onDidChangeModelContent(() => {

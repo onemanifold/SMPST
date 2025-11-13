@@ -116,8 +116,8 @@
   .simulation-controls {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 8px 16px;
+    gap: 8px;
+    padding: 4px 8px;
     background: #2d2d2d;
     border-bottom: 1px solid #1e1e1e;
     flex-wrap: wrap;
@@ -125,7 +125,7 @@
 
   .simulation-controls.empty {
     justify-content: center;
-    padding: 12px;
+    padding: 6px;
   }
 
   .placeholder-text {
@@ -137,12 +137,12 @@
 
   .control-group {
     display: flex;
-    gap: 4px;
+    gap: 2px;
   }
 
   .control-btn {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     background: #3d3d3d;
     color: #ccc;
     border: 1px solid #555;
@@ -174,15 +174,15 @@
   .status-group {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding-left: 12px;
+    gap: 6px;
+    padding-left: 6px;
     border-left: 1px solid #555;
   }
 
   .status-item {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 3px;
     font-size: 13px;
   }
 
@@ -197,9 +197,9 @@
   }
 
   .status-badge {
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 11px;
     font-weight: 500;
   }
 
@@ -226,26 +226,26 @@
   .choice-group {
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding-left: 12px;
+    gap: 4px;
+    padding-left: 6px;
     border-left: 1px solid #555;
   }
 
   .choice-label {
     color: #ccc;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
   }
 
   .choice-select {
-    padding: 6px 12px;
+    padding: 3px 6px;
     background: #3d3d3d;
     color: #ccc;
     border: 1px solid #555;
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
-    min-width: 200px;
+    min-width: 180px;
   }
 
   .choice-select:hover {
