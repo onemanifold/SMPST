@@ -119,21 +119,59 @@ export interface CFSMTransition {
 }
 
 /**
- * A complete CFSM for a single role
+ * A complete CFSM (Communicating Finite State Machine) for a single role
  *
- * Formal definition: CFSM = (C, Σ, c₀, Δ)
- * - C = states (control locations)
- * - Σ = {send, receive, tau, choice} × message labels
- * - c₀ = initialState
- * - Δ = transitions (transition relation)
+ * FORMAL DEFINITION (Deniélou & Yoshida 2012):
+ *
+ * A CFSM is a Labeled Transition System (LTS): M = (Q, q₀, A, →)
+ * where:
+ * - Q: finite set of states (control locations)
+ * - q₀ ∈ Q: initial state
+ * - A: action alphabet = {!p⟨l⟩, ?p⟨l⟩, τ} (send, receive, internal)
+ * - → ⊆ Q × A × Q: transition relation
+ *
+ * REPRESENTATION IN CODE:
+ * - Q = states: CFSMState[]
+ * - q₀ = initialState: string
+ * - A = embedded in transitions via CFSMAction
+ * - → = transitions: CFSMTransition[] where each t = (from, action, to)
+ *
+ * IMPORTANT: This is a PURE LTS representation.
+ * - Actions live on TRANSITIONS, not as separate nodes
+ * - States are control locations, not computation steps
+ * - This differs from CFG where actions are nodes
+ *
+ * THEOREM TESTING: All session type theorems (projection soundness,
+ * completeness, composability) can be expressed using only LTS properties:
+ * - Traces: sequences of actions from initial to terminal states
+ * - Branching: states with multiple outgoing transitions
+ * - Cycles: back-edges in the transition graph
+ * - Composition: synchronous product of CFSMs
+ *
+ * See docs/theory/projection-semantics.md for formal semantics.
+ *
+ * @reference Deniélou, P.-M., & Yoshida, N. (2012). Multiparty Session Types
+ *            Meet Communicating Automata. ESOP 2012.
+ * @reference Honda, K., Yoshida, N., & Carbone, M. (2008). Multiparty
+ *            Asynchronous Session Types. POPL 2008.
  */
 export interface CFSM {
-  role: string;              // The role this CFSM represents
-  states: CFSMState[];       // C: control states
-  transitions: CFSMTransition[];  // Δ: transition relation with actions
-  initialState: string;      // c₀: initial state ID
-  terminalStates: string[];  // Final states (subset of C)
+  /** The role this CFSM represents (participant name) */
+  role: string;
 
+  /** Q: Finite set of control states */
+  states: CFSMState[];
+
+  /** →: Transition relation Q × A × Q (with actions on transitions) */
+  transitions: CFSMTransition[];
+
+  /** q₀: Initial state identifier */
+  initialState: string;
+
+  /** Q_term ⊆ Q: Terminal/accepting states */
+  terminalStates: string[];
+
+  /** Optional metadata for debugging and analysis */
   metadata?: {
     sourceProtocol?: string;
     projectionTime?: Date;
