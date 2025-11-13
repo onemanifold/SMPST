@@ -94,20 +94,9 @@
   $: if (editor && editor.getValue() !== $editorContent) {
     editor.setValue($editorContent);
   }
-
-  async function handleParse() {
-    await parseProtocol($editorContent);
-  }
-
-  $: isLoading = $parseStatus === 'parsing';
 </script>
 
 <div class="editor-wrapper">
-  <div class="editor-toolbar">
-    <button class="btn-parse" on:click={handleParse} disabled={isLoading}>
-      {isLoading ? 'Parsing...' : 'Parse & Verify'}
-    </button>
-  </div>
   <div class="editor-container" bind:this={editorContainer} />
 </div>
 
@@ -116,32 +105,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-  }
-
-  .editor-toolbar {
-    padding: 8px;
-    background: #2d2d2d;
-    border-bottom: 1px solid #1e1e1e;
-  }
-
-  .btn-parse {
-    padding: 6px 16px;
-    background: #007acc;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 13px;
-  }
-
-  .btn-parse:hover:not(:disabled) {
-    background: #005a9e;
-  }
-
-  .btn-parse:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
   }
 
   .editor-container {

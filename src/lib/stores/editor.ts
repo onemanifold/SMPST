@@ -116,10 +116,11 @@ export async function parseProtocol(content: string) {
   parseError.set(null);
 
   try {
-    // Dynamic import to avoid circular dependencies
+    // Dynamic imports
     const { ScribbleParser } = await import('../../core/parser/parser');
     const { CFGBuilder } = await import('../../core/cfg/builder');
     const { verifyProtocol } = await import('../../core/verification/verifier');
+    const { projectAll } = await import('../../core/projection/projector');
 
     // 1. Parse Scribble
     const parser = new ScribbleParser();
@@ -136,8 +137,7 @@ export async function parseProtocol(content: string) {
     // 3. Verify protocol
     const result = verifyProtocol(cfg);
 
-    // 4. Project to CFSMs (Phase 2)
-    const { projectAll } = await import('../../core/projection/projector');
+    // 4. Project to CFSMs
     const projectionResult = projectAll(cfg);
 
     // Extract roles from projection result
@@ -168,8 +168,8 @@ export async function parseProtocol(content: string) {
     }
 
     // Progress
-    if (!result.progress.satisfiesProgress) {
-      errors.push('Progress not satisfied');
+    if (!result.progress.canProgress) {
+      errors.push(`Progress not satisfied: ${result.progress.blockedNodes.length} blocked node(s)`);
     }
 
     // Choice determinism
