@@ -37,3 +37,6 @@ coverage/
 # Claude session notes (local only, not committed)
 CLAUDE.md
 CLAUDE_*.md
+
+# Contributing guidelines (temporarily gitignored during development)
+CONTRIBUTING.md
