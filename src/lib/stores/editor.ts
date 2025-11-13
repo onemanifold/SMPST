@@ -110,95 +110,56 @@ export function clearEditor() {
   projectionData.set([]);
 }
 
-// Mock parse action (for UI testing)
-export function mockParse(content: string) {
+// Real parse action (integrates parser, CFG builder, verifier)
+export async function parseProtocol(content: string) {
   parseStatus.set('parsing');
   parseError.set(null);
 
-  // Simulate async parsing
-  setTimeout(() => {
-    if (content.trim().length === 0) {
-      parseStatus.set('error');
-      parseError.set('Empty protocol');
-      return;
+  try {
+    // Dynamic import to avoid circular dependencies
+    const { ScribbleParser } = await import('../../core/parser/parser');
+    const { CFGBuilder } = await import('../../core/cfg/builder');
+    const { Verifier } = await import('../../core/verification/verifier');
+
+    // 1. Parse Scribble
+    const parser = new ScribbleParser();
+    const ast = parser.parse(content);
+
+    if (!ast || ast.type !== 'GlobalProtocol') {
+      throw new Error('Expected global protocol');
     }
 
-    // Mock success
+    // 2. Build CFG
+    const builder = new CFGBuilder();
+    const cfg = builder.build(ast as any);
+
+    // 3. Verify protocol
+    const verifier = new Verifier();
+    const result = verifier.verify(cfg);
+
+    // 4. Update stores
     parseStatus.set('success');
-
-    // Mock verification results
     verificationResult.set({
-      deadlockFree: true,
-      livenessSatisfied: true,
-      safetySatisfied: true,
-      warnings: [],
-      errors: []
+      deadlockFree: !result.errors.some(e => e.includes('deadlock')),
+      livenessSatisfied: !result.errors.some(e => e.includes('liveness')),
+      safetySatisfied: result.errors.length === 0,
+      warnings: result.warnings,
+      errors: result.errors
     });
 
-    // Mock projection data
-    projectionData.set([
-      {
-        role: 'Client',
-        states: ['S0', 'S1', 'S2'],
-        transitions: [
-          { from: 'S0', to: 'S1', label: 'send Request' },
-          { from: 'S1', to: 'S2', label: 'recv Response' }
-        ]
-      },
-      {
-        role: 'Server',
-        states: ['S0', 'S1', 'S2'],
-        transitions: [
-          { from: 'S0', to: 'S1', label: 'recv Request' },
-          { from: 'S1', to: 'S2', label: 'send Response' }
-        ]
-      }
-    ]);
+    // TODO: 5. Project to CFSMs (Phase 2)
+    // TODO: 6. Generate TypeScript (future)
 
-    // Mock generated TypeScript code
-    generatedCode.set({
-      Client: `// Generated TypeScript for Client role
-export class ClientProtocol {
-  private state: 'S0' | 'S1' | 'S2' = 'S0';
-
-  async sendRequest(data: string): Promise<void> {
-    if (this.state !== 'S0') {
-      throw new Error('Invalid state for sendRequest');
-    }
-    // Send request to Server
-    this.state = 'S1';
+    return { success: true, cfg, ast };
+  } catch (error) {
+    parseStatus.set('error');
+    const message = error instanceof Error ? error.message : String(error);
+    parseError.set(message);
+    return { success: false, error: message };
   }
+}
 
-  async recvResponse(): Promise<number> {
-    if (this.state !== 'S1') {
-      throw new Error('Invalid state for recvResponse');
-    }
-    // Receive response from Server
-    this.state = 'S2';
-    return 42; // Mock response
-  }
-}`,
-      Server: `// Generated TypeScript for Server role
-export class ServerProtocol {
-  private state: 'S0' | 'S1' | 'S2' = 'S0';
-
-  async recvRequest(): Promise<string> {
-    if (this.state !== 'S0') {
-      throw new Error('Invalid state for recvRequest');
-    }
-    // Receive request from Client
-    this.state = 'S1';
-    return 'request data'; // Mock request
-  }
-
-  async sendResponse(result: number): Promise<void> {
-    if (this.state !== 'S1') {
-      throw new Error('Invalid state for sendResponse');
-    }
-    // Send response to Client
-    this.state = 'S2';
-  }
-}`
-    });
-  }, 500);
+// Keep mock for backward compatibility (can be removed later)
+export function mockParse(content: string) {
+  parseProtocol(content);
 }
