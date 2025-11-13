@@ -45,23 +45,29 @@
     display: flex;
     flex-direction: column;
     border-right: 1px solid #333;
+    position: relative;
   }
 
   .right-pane {
     flex: 1;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
 
   .pane-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
     padding: 4px 12px;
     background: rgba(45, 45, 45, 0.5);
-    border-bottom: 1px solid #1e1e1e;
+    border-bottom: 1px solid rgba(30, 30, 30, 0.8);
     font-weight: 500;
     color: #ccc;
     font-size: 11px;
-    width: 100%;
-    box-sizing: border-box;
+    z-index: 10;
+    backdrop-filter: blur(4px);
   }
 
   .resize-handle {

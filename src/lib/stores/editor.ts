@@ -234,7 +234,11 @@ export async function parseProtocol(content: string) {
       })
     );
 
-    // TODO: 6. Generate TypeScript (future)
+    // 6. Initialize simulation with CFG
+    const { initializeSimulation } = await import('./simulation');
+    initializeSimulation(cfg);
+
+    // TODO: 7. Generate TypeScript (future)
 
     return { success: true, cfg, ast, cfsms: projectionResult.cfsms };
   } catch (error) {
