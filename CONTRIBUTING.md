@@ -172,7 +172,13 @@ git commit -m "feat: add new verification check"
    - Link related issues: "Closes #123"
    - Describe changes, motivation, and impact
 
-3. **PR Checklist**:
+3. **⚠️ IMPORTANT - PR Description Policy**:
+   - ❌ **NEVER commit PR descriptions** to the repository (e.g., `PR_DESCRIPTION.md`, `PULL_REQUEST.md`)
+   - ✅ Write PR descriptions **directly in GitHub's PR interface only**
+   - **Rationale**: PR descriptions are GitHub metadata, not repository documentation
+   - Committing PR descriptions is considered a bad practice that clutters the repository
+
+4. **PR Checklist**:
    - [ ] Tests added/updated
    - [ ] Documentation updated
    - [ ] CHANGELOG.md updated
@@ -335,6 +341,126 @@ When proposing significant changes:
 2. Describe the problem, proposed solution, alternatives
 3. Include examples and diagrams
 4. Get feedback before implementing
+
+---
+
+## Perplexity Proxy Workflow (AI Contributions)
+
+When AI assistants (like Claude) contribute to the project, they may encounter access restrictions when trying to retrieve academic papers, theorems, or formal proofs from certain websites (e.g., 403 errors due to AI site interaction policies).
+
+### The Problem
+
+AI assistants need access to:
+- Academic papers for formal theory
+- Theorem proofs for verification correctness
+- Formal specifications for implementation
+- Citations for documentation
+
+However, many academic sites block automated access, causing 403 errors.
+
+### The Solution: Perplexity Proxy
+
+Use **Perplexity AI** as a proxy to access papers and synthesize knowledge:
+
+#### Step 1: AI Generates Perplexity Prompt
+
+When blocked, the AI assistant will generate a detailed Perplexity prompt like:
+
+```markdown
+## Perplexity Prompt: [Topic Name]
+
+I'm implementing [feature] in the SMPST project. I need to understand:
+
+1. [Specific question 1]
+2. [Specific question 2]
+3. [Formal definition/theorem statement]
+4. [Implementation guidance]
+
+Please provide:
+- Formal definitions with citations
+- Theorem statements and proof sketches
+- Examples demonstrating the concept
+- References to specific papers (with URLs if available)
+
+Cite: [List of papers to reference]
+```
+
+**Examples in this project**:
+- See `docs/THEORY_INTEGRATION_PLAN.md` Section 4 for Perplexity prompts
+- Topics include: asynchronous semantics, parameterized protocols, exception handling, etc.
+
+#### Step 2: Human Proxies the Request
+
+1. Copy the Perplexity prompt
+2. Paste into [Perplexity AI](https://www.perplexity.ai/)
+3. Copy the response
+4. Paste back to the AI assistant
+
+#### Step 3: AI Integrates Knowledge
+
+The AI assistant:
+- Synthesizes the Perplexity response
+- Creates formal documentation
+- Adds proper citations
+- Updates theory documents
+
+### When to Use This Workflow
+
+Use Perplexity proxy when:
+- ✅ Accessing academic papers (arXiv, ACM, IEEE, SpringerLink)
+- ✅ Finding formal theorem statements and proofs
+- ✅ Synthesizing knowledge from multiple papers
+- ✅ Getting implementation guidance from research
+- ✅ Verifying correctness properties
+
+Do NOT use for:
+- ❌ Simple Google searches (use WebSearch tool instead)
+- ❌ General programming questions (AI can answer directly)
+- ❌ Reading GitHub documentation (AI can access directly)
+
+### Best Practices
+
+1. **Be Specific**: Prompts should request specific theorems, definitions, or proofs
+2. **Include Citations**: List papers the prompt should reference
+3. **Request Examples**: Ask for concrete examples demonstrating concepts
+4. **Verify**: Human should sanity-check Perplexity responses before providing to AI
+5. **Document**: Add Perplexity prompts to theory integration plan for future reference
+
+### Example Session
+
+**AI (Claude)**:
+```
+I'm getting 403 errors trying to access the Scalas & Yoshida 2019 paper on bottom-up MPST.
+I need the formal definition of the compatibility invariant and the safety invariant
+parametrization rules. Here's a Perplexity prompt:
+
+[Generates detailed prompt]
+
+Could you please run this through Perplexity and paste the response back?
+```
+
+**Human**:
+```
+[Runs prompt through Perplexity]
+[Pastes response]
+
+Here's the response from Perplexity...
+```
+
+**AI (Claude)**:
+```
+Thank you! Based on this, I can now document the compatibility checking algorithm...
+[Continues implementation]
+```
+
+### Files Affected
+
+When using this workflow, document the knowledge sources:
+- `docs/theory/*.md` - Theory documents cite Perplexity-assisted research
+- `docs/THEORY_INTEGRATION_PLAN.md` - Contains Perplexity prompts (Section 4)
+- Local `CLAUDE.md` - AI session notes (gitignored, not committed)
+
+**Note**: `CLAUDE.md` and `CLAUDE_*.md` files are automatically gitignored for AI session notes.
 
 ---
 
