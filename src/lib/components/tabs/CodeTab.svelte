@@ -22,11 +22,9 @@
     </div>
   </div>
 
-  {#if !$outputPanelCollapsed}
-    <div class="bottom-panel">
-      <VerificationPanel />
-    </div>
-  {/if}
+  <div class="bottom-panel" class:collapsed={$outputPanelCollapsed}>
+    <VerificationPanel />
+  </div>
 </div>
 
 <style>
@@ -79,5 +77,11 @@
     height: 200px;
     border-top: 1px solid #333;
     background: #1e1e1e;
+    transition: height 0.3s ease;
+    overflow: hidden;
+  }
+
+  .bottom-panel.collapsed {
+    height: 40px;
   }
 </style>
