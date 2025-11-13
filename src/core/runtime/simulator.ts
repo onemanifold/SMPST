@@ -173,6 +173,7 @@ export class Simulator {
           success: false,
           updates: new Map(),
           state,
+          completed: false, // Not completed if deadlocked
           deadlocked: true,
         };
       }
@@ -193,6 +194,7 @@ export class Simulator {
             success: false,
             updates: result.updates,
             state: this.getState(),
+            completed: false, // Not completed if deadlocked
             deadlocked: true,
           };
         }
@@ -201,10 +203,12 @@ export class Simulator {
     }
 
     // Reached max steps
+    const finalState = this.getState();
     return {
       success: false,
       updates: new Map(),
-      state: this.getState(),
+      state: finalState,
+      completed: finalState.completed, // Include completion status
     };
   }
 

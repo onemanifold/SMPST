@@ -16,7 +16,13 @@ import type {
   MessageReceivedEvent,
   ErrorEvent,
 } from './types';
-import type { CFSM, CFSMState, CFSMTransition } from '../projection/types';
+import type {
+  CFSM,
+  CFSMState,
+  CFSMTransition,
+  SendAction,
+  ReceiveAction,
+} from '../projection/types';
 import type { MessageTransport } from './types';
 
 /**
@@ -78,7 +84,7 @@ export class Executor {
     }
 
     // Check max steps limit
-    if (this.options.maxSteps && this.stepCount >= this.options.maxSteps) {
+    if (this.options?.maxSteps && this.stepCount >= this.options.maxSteps) {
       const error: ExecutionError = {
         type: 'no-transition',
         message: `Max steps limit (${this.options.maxSteps}) reached`,
@@ -89,23 +95,22 @@ export class Executor {
 
     this.stepCount++;
 
+    // Track execution results (messages sent/received during this step)
+    let messagesSent: Message[] = [];
+    let messagesReceived: Message[] = [];
+    let hadAction = false;
+
     // Auto-advance through epsilon transitions until we hit an action or terminal
     while (true) {
-      // Get current state
-      const state = this.cfsm.states.find(s => s.id === this.currentState);
-      if (!state) {
-        const error: ExecutionError = {
-          type: 'no-transition',
-          message: `Current state ${this.currentState} not found in CFSM`,
-          state: this.currentState,
-        };
-        return { success: false, error };
-      }
-
-      // Check if terminal
-      if (state.type === 'terminal') {
+      // Check if terminal (terminal states are explicitly listed in CFSM)
+      if (this.cfsm.terminalStates.includes(this.currentState)) {
         this.completed = true;
-        return { success: true, newState: this.currentState };
+        return {
+          success: true,
+          newState: this.currentState,
+          messagesSent: messagesSent.length > 0 ? messagesSent : undefined,
+          messagesConsumed: messagesReceived.length > 0 ? messagesReceived : undefined,
+        };
       }
 
       // Get outgoing transitions
@@ -119,22 +124,61 @@ export class Executor {
         return { success: false, error };
       }
 
-      // Execute based on state type
-      if (state.type === 'send') {
-        return await this.executeSend(state, transitions);
-      } else if (state.type === 'receive') {
-        return await this.executeReceive(state, transitions);
-      } else if (state.type === 'choice') {
-        return await this.executeChoice(transitions);
-      } else if (state.type === 'fork') {
-        return await this.executeFork(transitions);
-      } else if (state.type === 'join') {
-        return await this.executeJoin(transitions);
-      } else {
-        // Initial, merge, or other - auto-advance through epsilon
-        const transition = transitions[0];
-        this.transitionTo(transition.to);
+      // Check first transition's action to determine what to do
+      // Note: For non-deterministic states (choice), we need to handle multiple transitions
+      const firstTransition = transitions[0];
+      const action = firstTransition.action;
+
+      // No action = epsilon/tau transition - auto-advance
+      if (!action) {
+        this.transitionTo(firstTransition.to);
         // Continue loop to execute next state
+        continue;
+      }
+
+      // If we already executed an action and now hit another one, stop here
+      if (hadAction) {
+        // Return success with accumulated results
+        return {
+          success: true,
+          newState: this.currentState,
+          messagesSent: messagesSent.length > 0 ? messagesSent : undefined,
+          messagesConsumed: messagesReceived.length > 0 ? messagesReceived : undefined,
+        };
+      }
+
+      // Execute based on action type (actions live on transitions, not states!)
+      if (action.type === 'send') {
+        const result = await this.executeSend(firstTransition);
+        if (!result.success) {
+          return result;
+        }
+        // Accumulate messages and continue to auto-advance through epsilon transitions
+        if (result.messagesSent) {
+          messagesSent.push(...result.messagesSent);
+        }
+        hadAction = true;
+        // After action, continue loop to auto-advance through epsilon transitions
+        continue;
+      } else if (action.type === 'receive') {
+        const result = await this.executeReceive(firstTransition);
+        if (!result.success) {
+          return result;
+        }
+        // Accumulate messages and continue to auto-advance through epsilon transitions
+        if (result.messagesConsumed) {
+          messagesReceived.push(...result.messagesConsumed);
+        }
+        hadAction = true;
+        // After action, continue loop to auto-advance through epsilon transitions
+        continue;
+      } else if (action.type === 'tau') {
+        // Explicit tau action - treat as epsilon
+        this.transitionTo(firstTransition.to);
+        continue;
+      } else {
+        // Choice or other complex action - handle multiple transitions
+        return await this.executeChoice(transitions);
       }
     }
   }
@@ -142,24 +186,26 @@ export class Executor {
   /**
    * Execute send action
    */
-  private async executeSend(state: CFSMState, transitions: CFSMTransition[]): Promise<ExecutionResult> {
-    if (!state.action) {
+  private async executeSend(transition: CFSMTransition): Promise<ExecutionResult> {
+    const action = transition.action;
+    if (!action || action.type !== 'send') {
       const error: ExecutionError = {
         type: 'no-transition',
-        message: 'Send state has no action',
+        message: 'Transition has no send action',
         state: this.currentState,
       };
       return { success: false, error };
     }
 
-    const action = state.action;
+    // Type narrowing - action is now SendAction
+    const sendAction = action as SendAction;
 
     // Create message
     const message: Message = {
       id: `msg_${Date.now()}_${Math.random()}`,
-      from: action.from,
-      to: action.to,
-      label: action.label,
+      from: this.role,
+      to: sendAction.to,
+      label: sendAction.label,
       timestamp: Date.now(),
     };
 
@@ -170,7 +216,6 @@ export class Executor {
     this.notifyMessageSent(message);
 
     // Take transition
-    const transition = transitions[0]; // Send states have single transition
     const newState = transition.to;
     this.transitionTo(newState);
 
@@ -184,24 +229,26 @@ export class Executor {
   /**
    * Execute receive action
    */
-  private async executeReceive(state: CFSMState, transitions: CFSMTransition[]): Promise<ExecutionResult> {
-    if (!state.action) {
+  private async executeReceive(transition: CFSMTransition): Promise<ExecutionResult> {
+    const action = transition.action;
+    if (!action || action.type !== 'receive') {
       const error: ExecutionError = {
         type: 'no-transition',
-        message: 'Receive state has no action',
+        message: 'Transition has no receive action',
         state: this.currentState,
       };
       return { success: false, error };
     }
 
-    const expectedAction = state.action;
+    // Type narrowing - action is now ReceiveAction
+    const receiveAction = action as ReceiveAction;
 
     // Check if message available
     if (!this.transport.hasMessage(this.role)) {
       this.blocked = true;
       const error: ExecutionError = {
         type: 'message-not-ready',
-        message: `Waiting for message: ${expectedAction.label}`,
+        message: `Waiting for message: ${receiveAction.label}`,
         state: this.currentState,
       };
       return { success: false, error };
@@ -220,12 +267,12 @@ export class Executor {
     }
 
     // Verify message matches expected
-    if (this.options.strictMode && message.label !== expectedAction.label) {
+    if (this.options?.strictMode && message.label !== receiveAction.label) {
       const error: ExecutionError = {
         type: 'protocol-violation',
-        message: `Expected message ${expectedAction.label}, got ${message.label}`,
+        message: `Expected message ${receiveAction.label}, got ${message.label}`,
         state: this.currentState,
-        details: { expected: expectedAction.label, received: message.label },
+        details: { expected: receiveAction.label, received: message.label },
       };
       this.notifyError(error);
       return { success: false, error };
@@ -237,7 +284,6 @@ export class Executor {
     this.notifyMessageReceived(message);
 
     // Take transition
-    const transition = transitions[0]; // Receive states have single transition
     const newState = transition.to;
     this.transitionTo(newState);
 
