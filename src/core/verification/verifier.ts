@@ -574,7 +574,22 @@ function getActionsInBranch(cfg: CFG, branchNodes: string[]): ActionNode[] {
 }
 
 /**
- * Check if two actions have a conflict (operate on same role)
+ * Check if two actions have a conflict (use same channel)
+ *
+ * THEOREM 4.5 (Deniélou & Yoshida 2012): No Races
+ * Race condition occurs when: channels(G₁) ∩ channels(G₂) ≠ ∅
+ *
+ * A channel is a pair (sender, receiver). Two actions race if they use
+ * the exact same channel (same sender and same receiver).
+ *
+ * Examples:
+ *   Hub -> A: Msg1  uses channel (Hub, A)
+ *   Hub -> B: Msg2  uses channel (Hub, B)
+ *   These channels are DISJOINT → NO RACE
+ *
+ *   A -> B: Msg1    uses channel (A, B)
+ *   A -> B: Msg2    uses channel (A, B)
+ *   These channels OVERLAP → RACE
  */
 function hasConflict(action1: ActionNode, action2: ActionNode): boolean {
   if (!isMessageAction(action1.action) || !isMessageAction(action2.action)) {
@@ -584,12 +599,17 @@ function hasConflict(action1: ActionNode, action2: ActionNode): boolean {
   const msg1 = action1.action;
   const msg2 = action2.action;
 
-  // Check if they share a role (either as sender or receiver)
-  const roles1 = new Set([msg1.from, ...(typeof msg1.to === 'string' ? [msg1.to] : msg1.to)]);
-  const roles2 = new Set([msg2.from, ...(typeof msg2.to === 'string' ? [msg2.to] : msg2.to)]);
+  // Build channels for msg1: (from, to) pairs
+  const receivers1 = typeof msg1.to === 'string' ? [msg1.to] : msg1.to;
+  const channels1 = receivers1.map(r => `${msg1.from}->${r}`);
 
-  for (const role of roles1) {
-    if (roles2.has(role)) {
+  // Build channels for msg2: (from, to) pairs
+  const receivers2 = typeof msg2.to === 'string' ? [msg2.to] : msg2.to;
+  const channels2 = receivers2.map(r => `${msg2.from}->${r}`);
+
+  // Check if any channels overlap
+  for (const ch1 of channels1) {
+    if (channels2.includes(ch1)) {
       return true;
     }
   }

@@ -30,6 +30,10 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
+    "test:theorems": "vitest run src/__tests__/theorems",
+    "test:theorems:watch": "vitest watch src/__tests__/theorems",
+    "test:theorems:ui": "vitest --ui src/__tests__/theorems",
+    "test:coverage:theorems": "vitest run --coverage src/__tests__/theorems",
     "parse": "tsx src/core/parser/cli.ts",
     "project": "tsx src/core/projection/cli.ts",
     "project:help": "tsx src/core/projection/cli.ts --help"

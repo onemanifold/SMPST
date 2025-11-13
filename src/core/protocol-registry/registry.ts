@@ -156,41 +156,53 @@ export class ProtocolRegistry implements IProtocolRegistry {
   private dependencyGraph: Map<string, Set<string>>;
 
   /**
-   * Create registry from module
+   * Create registry from module (optional)
+   *
+   * If no module provided, creates empty registry.
+   * Use register() to add protocols manually.
    */
-  constructor(module: Module) {
+  constructor(module?: Module) {
     this.protocols = new Map();
     this.metadata = new Map();
     this.dependencyGraph = new Map();
 
-    // Extract all global protocols
-    for (const decl of module.declarations) {
-      if (decl.type === 'GlobalProtocolDeclaration') {
-        this.protocols.set(decl.name, decl);
+    if (module) {
+      // Extract all global protocols
+      for (const decl of module.declarations) {
+        if (decl.type === 'GlobalProtocolDeclaration') {
+          this.register(decl.name, decl);
+        }
+      }
 
-        // Extract dependencies (protocols referenced via 'do')
-        const dependencies = this.extractDependencies(decl);
-
-        this.metadata.set(decl.name, {
-          name: decl.name,
-          roles: decl.roles.map(r => r.name),
-          dependencies,
-        });
-
-        this.dependencyGraph.set(decl.name, new Set(dependencies));
+      // Validate on construction
+      const validation = this.validateDependencies();
+      if (!validation.valid) {
+        const error = validation.errors[0];
+        if (error.type === 'circular-dependency') {
+          throw new CircularDependencyError(error.details.cycle);
+        } else if (error.type === 'not-found') {
+          throw new ProtocolNotFoundError(error.protocolName, error.referencedBy);
+        }
       }
     }
+  }
 
-    // Validate on construction
-    const validation = this.validateDependencies();
-    if (!validation.valid) {
-      const error = validation.errors[0];
-      if (error.type === 'circular-dependency') {
-        throw new CircularDependencyError(error.details.cycle);
-      } else if (error.type === 'not-found') {
-        throw new ProtocolNotFoundError(error.protocolName, error.referencedBy);
-      }
-    }
+  /**
+   * Register a protocol manually
+   */
+  register(name: string, decl: GlobalProtocolDeclaration): void {
+    this.protocols.set(name, decl);
+
+    // Extract dependencies (protocols referenced via 'do')
+    const dependencies = this.extractDependencies(decl);
+
+    this.metadata.set(name, {
+      name: decl.name,
+      roles: decl.roles.map(r => r.name),
+      dependencies,
+    });
+
+    this.dependencyGraph.set(name, new Set(dependencies));
   }
 
   /**
