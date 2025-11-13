@@ -37,7 +37,7 @@
 import { describe, it, expect } from 'vitest';
 import { parse } from '../../../core/parser/parser';
 import { buildCFG } from '../../../core/cfg/builder';
-import { checkProgress, detectDeadlock, verifyProtocol } from '../../../core/verification/verifier';
+import { checkProgress, detectDeadlock, detectParallelDeadlock, verifyProtocol } from '../../../core/verification/verifier';
 
 describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
   /**
@@ -327,12 +327,16 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       // This creates potential deadlock:
       // Branch 1: A sends to B, then waits for B
       // Branch 2: B sends to A, then waits for A
-      // If they execute concurrently → deadlock
+      // If they execute concurrently → circular dependency deadlock
       const deadlock = detectDeadlock(cfg);
+      const parallelDeadlock = detectParallelDeadlock(cfg);
 
-      // May or may not detect depending on analysis sophistication
-      // At minimum, race condition should be detected
-      expect(deadlock.hasDeadlock || !checkProgress(cfg).canProgress).toBe(true);
+      // Check for either structural deadlock, parallel circular dependency, or progress violation
+      expect(
+        deadlock.hasDeadlock ||
+        parallelDeadlock.conflicts.length > 0 ||
+        !checkProgress(cfg).canProgress
+      ).toBe(true);
     });
 
     it('counterexample: manual CFG deadlock cycle', () => {

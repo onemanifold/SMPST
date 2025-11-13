@@ -170,9 +170,14 @@ function createRecursiveNode(label: string): RecursiveNode {
 
 /**
  * Build CFG from Global Protocol Declaration
+ *
+ * Note: Node IDs are globally unique across all CFG builds (counter not reset).
+ * This ensures different protocols have different node IDs, which is important
+ * for composition and debugging. See Theorem 5.1 (Recursion Scoping).
  */
 export function buildCFG(protocol: GlobalProtocolDeclaration): CFG {
-  resetCounters();
+  // Don't reset counters - maintain global uniqueness across protocol builds
+  // resetCounters();
 
   const roles = protocol.roles.map(r => r.name);
   const ctx = createContext(roles);

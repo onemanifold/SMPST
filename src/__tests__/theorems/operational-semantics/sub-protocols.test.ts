@@ -93,8 +93,8 @@ describe('Sub-Protocol Operational Semantics', () => {
       // Verify protocol is registered
       const genericProto = registry.resolve('GenericPair');
       expect(genericProto).toBeDefined();
-      expect(genericProto.roles).toContain('X');
-      expect(genericProto.roles).toContain('Y');
+      expect(genericProto.roles.map(r => r.name)).toContain('X');
+      expect(genericProto.roles.map(r => r.name)).toContain('Y');
     });
   });
 

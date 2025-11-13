@@ -163,7 +163,7 @@ describe('Theorem 3.1: CFG ↔ LTS Equivalence (Deniélou & Yoshida 2012)', () =
       const cfg = buildCFG(ast.declarations[0]);
 
       // CFG has sequence edges connecting nodes
-      const sequenceEdges = cfg.edges.filter(e => e.edgeType === 'next');
+      const sequenceEdges = cfg.edges.filter(e => e.edgeType === 'sequence');
       expect(sequenceEdges.length).toBeGreaterThan(0);
 
       // LTS has transitions between states
