@@ -79,14 +79,18 @@ export class Simulator {
       e => e.getState().completed
     );
 
-    // Check for deadlock (all roles blocked but not completed)
-    const allBlocked = Array.from(this.executors.values()).every(
+    // Check for deadlock (all roles blocked or completed, AND no pending messages for blocked roles)
+    const allBlockedOrCompleted = Array.from(this.executors.values()).every(
       e => e.getState().blocked || e.getState().completed
     );
     const someNotCompleted = Array.from(this.executors.values()).some(
       e => !e.getState().completed
     );
-    const deadlocked = allBlocked && someNotCompleted;
+    // Check if any blocked role has messages available
+    const blockedRoleHasMessages = Array.from(this.executors.values()).some(
+      e => e.getState().blocked && e.getState().pendingMessages.length > 0
+    );
+    const deadlocked = allBlockedOrCompleted && someNotCompleted && !blockedRoleHasMessages;
 
     return {
       roles,
@@ -99,6 +103,11 @@ export class Simulator {
 
   /**
    * Execute one step (for one role or all roles)
+   *
+   * Step counting semantics:
+   * - One call to step() = one simulation step (increments counter by 1)
+   * - May execute multiple role transitions per step (interleaving)
+   * - This matches user expectation: step() called N times → step counter = N
    */
   async step(role?: string): Promise<SimulationStepResult> {
     const updates = new Map();
@@ -116,9 +125,8 @@ export class Simulator {
 
       const result = await executor.step();
       updates.set(role, result);
-      this.stepCount++;
     } else {
-      // Step all roles
+      // Step all roles (one iteration of interleaving)
       for (const [roleName, executor] of this.executors.entries()) {
         // Skip completed roles
         if (executor.getState().completed) {
@@ -128,13 +136,11 @@ export class Simulator {
         // Try to step this role
         const result = await executor.step();
         updates.set(roleName, result);
-
-        // If successful, increment step count
-        if (result.success) {
-          this.stepCount++;
-        }
       }
     }
+
+    // Increment step counter once per step() call
+    this.stepCount++;
 
     const state = this.getState();
 
@@ -173,6 +179,7 @@ export class Simulator {
           success: false,
           updates: new Map(),
           state,
+          completed: false, // Not completed if deadlocked
           deadlocked: true,
         };
       }
@@ -193,6 +200,7 @@ export class Simulator {
             success: false,
             updates: result.updates,
             state: this.getState(),
+            completed: false, // Not completed if deadlocked
             deadlocked: true,
           };
         }
@@ -201,10 +209,12 @@ export class Simulator {
     }
 
     // Reached max steps
+    const finalState = this.getState();
     return {
       success: false,
       updates: new Map(),
-      state: this.getState(),
+      state: finalState,
+      completed: finalState.completed, // Include completion status
     };
   }
 
@@ -248,10 +258,9 @@ export class Simulator {
   addObserver(observer: ExecutionObserver): void {
     this.observers.add(observer);
 
-    // Also add to all executors
+    // Propagate observer to all executors so they can fire events
     for (const executor of this.executors.values()) {
-      // Need to access private observers - for now, recreate executors
-      // In production, would expose addObserver on Executor
+      executor.addObserver(observer);
     }
   }
 
@@ -260,6 +269,11 @@ export class Simulator {
    */
   removeObserver(observer: ExecutionObserver): void {
     this.observers.delete(observer);
+
+    // Propagate removal to all executors
+    for (const executor of this.executors.values()) {
+      executor.removeObserver(observer);
+    }
   }
 
   /**
@@ -291,13 +305,7 @@ export class Simulator {
       },
     };
 
-    // Add to transport as message listener
-    this.transport.onMessage((message) => {
-      this.trace.events.push({
-        type: 'message-sent',
-        timestamp: Date.now(),
-        message,
-      });
-    });
+    // Register the observer so it gets propagated to all executors
+    this.addObserver(recorder);
   }
 }

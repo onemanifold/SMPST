@@ -15,18 +15,28 @@ import type {
   MessageSentEvent,
   MessageReceivedEvent,
   ErrorEvent,
+  CallStackFrame,
 } from './types';
-import type { CFSM, CFSMState, CFSMTransition } from '../projection/types';
+import type {
+  CFSM,
+  CFSMState,
+  CFSMTransition,
+  SendAction,
+  ReceiveAction,
+  SubProtocolCallAction,
+} from '../projection/types';
 import type { MessageTransport } from './types';
 
 /**
  * CFSM Executor
  * Manages execution of a single role's state machine
+ * Now with call stack support for sub-protocol execution
  */
 export class Executor {
   private role: string;
-  private cfsm: CFSM;
+  private cfsm: CFSM;  // Root CFSM
   private transport: MessageTransport;
+  private cfsmRegistry: Map<string, Map<string, CFSM>>;
   private observers: ExecutionObserver[];
   private options: ExecutorConfig['options'];
 
@@ -36,14 +46,27 @@ export class Executor {
   private completed: boolean = false;
   private stepCount: number = 0;
 
+  // Call stack for sub-protocol execution
+  // Empty = executing root protocol
+  // Non-empty = executing sub-protocol(s)
+  // Each frame represents a PARENT context to return to
+  private callStack: CallStackFrame[] = [];
+
+  // Current CFSM being executed
+  // If callStack empty: this is this.cfsm (root)
+  // If callStack non-empty: this is the sub-protocol's CFSM
+  private currentCFSM: CFSM;
+
   constructor(config: ExecutorConfig) {
     this.role = config.role;
     this.cfsm = config.cfsm;
     this.transport = config.transport;
+    this.cfsmRegistry = config.cfsmRegistry || new Map();
     this.observers = config.observers || [];
     this.options = config.options || {};
 
-    // Initialize at initial state
+    // Initialize at initial state of root CFSM
+    this.currentCFSM = this.cfsm;
     this.currentState = this.cfsm.initialState;
     this.visitedStates.push(this.currentState);
   }
@@ -59,7 +82,22 @@ export class Executor {
       pendingMessages: this.transport.getPendingMessages(this.role),
       blocked: this.blocked,
       completed: this.completed,
+      callStack: [...this.callStack],  // Return copy of call stack
     };
+  }
+
+  /**
+   * Get the current CFSM being executed
+   */
+  private getCurrentCFSM(): CFSM {
+    return this.currentCFSM;
+  }
+
+  /**
+   * Get terminal states for current execution context
+   */
+  private getCurrentTerminalStates(): string[] {
+    return this.currentCFSM.terminalStates;
   }
 
   /**
@@ -78,7 +116,7 @@ export class Executor {
     }
 
     // Check max steps limit
-    if (this.options.maxSteps && this.stepCount >= this.options.maxSteps) {
+    if (this.options?.maxSteps && this.stepCount >= this.options.maxSteps) {
       const error: ExecutionError = {
         type: 'no-transition',
         message: `Max steps limit (${this.options.maxSteps}) reached`,
@@ -89,27 +127,41 @@ export class Executor {
 
     this.stepCount++;
 
+    // Track execution results (messages sent/received during this step)
+    let messagesSent: Message[] = [];
+    let messagesReceived: Message[] = [];
+    let hadAction = false;
+
     // Auto-advance through epsilon transitions until we hit an action or terminal
     while (true) {
-      // Get current state
-      const state = this.cfsm.states.find(s => s.id === this.currentState);
-      if (!state) {
-        const error: ExecutionError = {
-          type: 'no-transition',
-          message: `Current state ${this.currentState} not found in CFSM`,
-          state: this.currentState,
-        };
-        return { success: false, error };
-      }
+      const currentCFSM = this.getCurrentCFSM();
+      const terminalStates = this.getCurrentTerminalStates();
 
-      // Check if terminal
-      if (state.type === 'terminal') {
+      // Check if terminal (terminal states are explicitly listed in CFSM)
+      if (terminalStates.includes(this.currentState)) {
+        // If in sub-protocol, pop from call stack and return to parent
+        if (this.callStack.length > 0) {
+          const frame = this.callStack.pop()!;
+          // Return to parent CFSM and state
+          this.currentCFSM = frame.parentCFSM;
+          this.currentState = frame.returnState;
+          // Continue loop to execute in parent context
+          continue;
+        }
+
+        // Root protocol completed
         this.completed = true;
-        return { success: true, newState: this.currentState };
+        return {
+          success: true,
+          newState: this.currentState,
+          messagesSent: messagesSent.length > 0 ? messagesSent : undefined,
+          messagesConsumed: messagesReceived.length > 0 ? messagesReceived : undefined,
+        };
       }
 
-      // Get outgoing transitions
-      const transitions = this.cfsm.transitions.filter(t => t.from === this.currentState);
+      // Get outgoing transitions from current CFSM
+      const transitions = currentCFSM.transitions.filter(t => t.from === this.currentState);
+
       if (transitions.length === 0) {
         const error: ExecutionError = {
           type: 'no-transition',
@@ -119,22 +171,69 @@ export class Executor {
         return { success: false, error };
       }
 
-      // Execute based on state type
-      if (state.type === 'send') {
-        return await this.executeSend(state, transitions);
-      } else if (state.type === 'receive') {
-        return await this.executeReceive(state, transitions);
-      } else if (state.type === 'choice') {
-        return await this.executeChoice(transitions);
-      } else if (state.type === 'fork') {
-        return await this.executeFork(transitions);
-      } else if (state.type === 'join') {
-        return await this.executeJoin(transitions);
-      } else {
-        // Initial, merge, or other - auto-advance through epsilon
-        const transition = transitions[0];
-        this.transitionTo(transition.to);
+      // Check first transition's action to determine what to do
+      // Note: For non-deterministic states (choice), we need to handle multiple transitions
+      const firstTransition = transitions[0];
+      const action = firstTransition.action;
+
+      // No action = epsilon/tau transition - auto-advance
+      if (!action) {
+        this.transitionTo(firstTransition.to);
         // Continue loop to execute next state
+        continue;
+      }
+
+      // If we already executed an action and now hit another one, stop here
+      if (hadAction) {
+        // Return success with accumulated results
+        return {
+          success: true,
+          newState: this.currentState,
+          messagesSent: messagesSent.length > 0 ? messagesSent : undefined,
+          messagesConsumed: messagesReceived.length > 0 ? messagesReceived : undefined,
+        };
+      }
+
+      // Execute based on action type (actions live on transitions, not states!)
+      if (action.type === 'send') {
+        const result = await this.executeSend(firstTransition);
+        if (!result.success) {
+          return result;
+        }
+        // Accumulate messages and continue to auto-advance through epsilon transitions
+        if (result.messagesSent) {
+          messagesSent.push(...result.messagesSent);
+        }
+        hadAction = true;
+        // After action, continue loop to auto-advance through epsilon transitions
+        continue;
+      } else if (action.type === 'receive') {
+        const result = await this.executeReceive(firstTransition);
+        if (!result.success) {
+          return result;
+        }
+        // Accumulate messages and continue to auto-advance through epsilon transitions
+        if (result.messagesConsumed) {
+          messagesReceived.push(...result.messagesConsumed);
+        }
+        hadAction = true;
+        // After action, continue loop to auto-advance through epsilon transitions
+        continue;
+      } else if (action.type === 'tau') {
+        // Explicit tau action - treat as epsilon
+        this.transitionTo(firstTransition.to);
+        continue;
+      } else if (action.type === 'subprotocol') {
+        // Sub-protocol invocation - push onto call stack
+        const result = await this.executeSubProtocol(firstTransition);
+        if (!result.success) {
+          return result;
+        }
+        // Sub-protocol has been pushed onto stack, continue to execute it
+        continue;
+      } else {
+        // Choice or other complex action - handle multiple transitions
+        return await this.executeChoice(transitions);
       }
     }
   }
@@ -142,24 +241,27 @@ export class Executor {
   /**
    * Execute send action
    */
-  private async executeSend(state: CFSMState, transitions: CFSMTransition[]): Promise<ExecutionResult> {
-    if (!state.action) {
+  private async executeSend(transition: CFSMTransition): Promise<ExecutionResult> {
+    const action = transition.action;
+
+    if (!action || action.type !== 'send') {
       const error: ExecutionError = {
         type: 'no-transition',
-        message: 'Send state has no action',
+        message: 'Transition has no send action',
         state: this.currentState,
       };
       return { success: false, error };
     }
 
-    const action = state.action;
+    // Type narrowing - action is now SendAction
+    const sendAction = action as SendAction;
 
     // Create message
     const message: Message = {
       id: `msg_${Date.now()}_${Math.random()}`,
-      from: action.from,
-      to: action.to,
-      label: action.label,
+      from: this.role,
+      to: sendAction.to,
+      label: sendAction.label,
       timestamp: Date.now(),
     };
 
@@ -170,7 +272,6 @@ export class Executor {
     this.notifyMessageSent(message);
 
     // Take transition
-    const transition = transitions[0]; // Send states have single transition
     const newState = transition.to;
     this.transitionTo(newState);
 
@@ -184,24 +285,26 @@ export class Executor {
   /**
    * Execute receive action
    */
-  private async executeReceive(state: CFSMState, transitions: CFSMTransition[]): Promise<ExecutionResult> {
-    if (!state.action) {
+  private async executeReceive(transition: CFSMTransition): Promise<ExecutionResult> {
+    const action = transition.action;
+    if (!action || action.type !== 'receive') {
       const error: ExecutionError = {
         type: 'no-transition',
-        message: 'Receive state has no action',
+        message: 'Transition has no receive action',
         state: this.currentState,
       };
       return { success: false, error };
     }
 
-    const expectedAction = state.action;
+    // Type narrowing - action is now ReceiveAction
+    const receiveAction = action as ReceiveAction;
 
     // Check if message available
     if (!this.transport.hasMessage(this.role)) {
       this.blocked = true;
       const error: ExecutionError = {
         type: 'message-not-ready',
-        message: `Waiting for message: ${expectedAction.label}`,
+        message: `Waiting for message: ${receiveAction.label}`,
         state: this.currentState,
       };
       return { success: false, error };
@@ -220,12 +323,12 @@ export class Executor {
     }
 
     // Verify message matches expected
-    if (this.options.strictMode && message.label !== expectedAction.label) {
+    if (this.options?.strictMode && message.label !== receiveAction.label) {
       const error: ExecutionError = {
         type: 'protocol-violation',
-        message: `Expected message ${expectedAction.label}, got ${message.label}`,
+        message: `Expected message ${receiveAction.label}, got ${message.label}`,
         state: this.currentState,
-        details: { expected: expectedAction.label, received: message.label },
+        details: { expected: receiveAction.label, received: message.label },
       };
       this.notifyError(error);
       return { success: false, error };
@@ -237,7 +340,6 @@ export class Executor {
     this.notifyMessageReceived(message);
 
     // Take transition
-    const transition = transitions[0]; // Receive states have single transition
     const newState = transition.to;
     this.transitionTo(newState);
 
@@ -291,6 +393,94 @@ export class Executor {
     return {
       success: true,
       newState,
+    };
+  }
+
+  /**
+   * Execute sub-protocol invocation
+   * Pushes new frame onto call stack and transitions to sub-protocol's initial state
+   */
+  private async executeSubProtocol(transition: CFSMTransition): Promise<ExecutionResult> {
+    const action = transition.action;
+    if (!action || action.type !== 'subprotocol') {
+      const error: ExecutionError = {
+        type: 'no-transition',
+        message: 'Transition has no sub-protocol action',
+        state: this.currentState,
+      };
+      return { success: false, error };
+    }
+
+    // Type narrowing - action is now SubProtocolCallAction
+    const subProtocolAction = action as SubProtocolCallAction;
+
+    // Look up sub-protocol CFSM from registry
+    const protocolCFSMs = this.cfsmRegistry.get(subProtocolAction.protocol);
+    if (!protocolCFSMs) {
+      const error: ExecutionError = {
+        type: 'protocol-violation',
+        message: `Sub-protocol '${subProtocolAction.protocol}' not found in registry`,
+        state: this.currentState,
+        details: { protocol: subProtocolAction.protocol },
+      };
+      return { success: false, error };
+    }
+
+    // Map this role to the sub-protocol's formal parameter using role mapping
+    // The roleMapping maps: formalRole → actualRole (e.g., {Client: 'Alice', Server: 'Bob'})
+    // We need to find which formal role corresponds to this executor's actual role
+    const formalRole = Object.entries(subProtocolAction.roleMapping)
+      .find(([formal, actual]) => actual === this.role)?.[0];
+
+    if (!formalRole) {
+      const error: ExecutionError = {
+        type: 'protocol-violation',
+        message: `Role '${this.role}' not found in role mapping for sub-protocol '${subProtocolAction.protocol}'`,
+        state: this.currentState,
+        details: {
+          protocol: subProtocolAction.protocol,
+          role: this.role,
+          roleMapping: subProtocolAction.roleMapping
+        },
+      };
+      return { success: false, error };
+    }
+
+    // Get the CFSM for the formal role in the sub-protocol
+    const subProtocolCFSM = protocolCFSMs.get(formalRole);
+    if (!subProtocolCFSM) {
+      const error: ExecutionError = {
+        type: 'protocol-violation',
+        message: `CFSM for role '${formalRole}' not found in sub-protocol '${subProtocolAction.protocol}'`,
+        state: this.currentState,
+        details: {
+          protocol: subProtocolAction.protocol,
+          formalRole,
+          actualRole: this.role
+        },
+      };
+      return { success: false, error };
+    }
+
+    // Create call stack frame for parent context
+    const frame: CallStackFrame = {
+      parentCFSM: this.currentCFSM,        // Current CFSM becomes parent
+      returnState: subProtocolAction.returnState,  // Where to return after sub-protocol completes
+      roleMapping: subProtocolAction.roleMapping,
+      protocol: subProtocolAction.protocol,
+    };
+
+    // Push parent frame onto call stack
+    this.callStack.push(frame);
+
+    // Switch to sub-protocol execution context
+    this.currentCFSM = subProtocolCFSM;
+    this.currentState = subProtocolCFSM.initialState;
+    this.visitedStates.push(this.currentState);
+
+    return {
+      success: true,
+      newState: this.currentState,
     };
   }
 
@@ -387,11 +577,30 @@ export class Executor {
    * Reset to initial state
    */
   reset(): void {
+    this.currentCFSM = this.cfsm;  // Reset to root CFSM
     this.currentState = this.cfsm.initialState;
     this.visitedStates = [this.currentState];
+    this.callStack = [];  // Clear call stack
     this.blocked = false;
     this.completed = false;
     this.stepCount = 0;
+  }
+
+  /**
+   * Add an observer to this executor
+   */
+  addObserver(observer: ExecutionObserver): void {
+    this.observers.push(observer);
+  }
+
+  /**
+   * Remove an observer from this executor
+   */
+  removeObserver(observer: ExecutionObserver): void {
+    const index = this.observers.indexOf(observer);
+    if (index !== -1) {
+      this.observers.splice(index, 1);
+    }
   }
 }
 

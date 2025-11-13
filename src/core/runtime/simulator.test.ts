@@ -79,7 +79,7 @@ describe('Protocol Simulator - Basic Protocols', () => {
     const result = await simulator.run();
 
     expect(result.completed).toBe(true);
-    expect(state.roles.size).toBe(3);
+    expect(result.state.roles.size).toBe(3);
   });
 });
 
@@ -167,7 +167,10 @@ describe('Protocol Simulator - Choice', () => {
     const cfg = buildCFG(parse(source).declarations[0]);
     const { cfsms } = projectAll(cfg);
 
-    const simulator = new Simulator({ roles: cfsms });
+    const simulator = new Simulator({
+      roles: cfsms,
+      options: { recordTrace: true },
+    });
 
     const result = await simulator.run();
 

@@ -233,10 +233,8 @@ describe('CFSM Executor - Parallel', () => {
 
     const executor = new Executor({ role: 'A', cfsm, transport });
 
-    // Should enter fork
-    await executor.step();
-
-    // Should send both messages (in some order)
+    // Diamond pattern: executor sends both messages in two steps (no "enter fork" epsilon)
+    // Path chosen: M1 then M2, OR M2 then M1
     const result1 = await executor.step();
     const result2 = await executor.step();
 

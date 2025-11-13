@@ -42,7 +42,8 @@ export type CFSMAction =
   | SendAction
   | ReceiveAction
   | TauAction       // Silent/internal action (epsilon)
-  | ChoiceAction;   // Internal choice (branch selection)
+  | ChoiceAction    // Internal choice (branch selection)
+  | SubProtocolCallAction;  // Sub-protocol invocation
 
 /**
  * Send action: ! ⟨p, l⟨U⟩⟩
@@ -82,6 +83,18 @@ export interface TauAction {
 export interface ChoiceAction {
   type: 'choice';
   branch: string;  // Branch label/identifier
+}
+
+/**
+ * Sub-protocol call action: do SubProtocol(args)
+ * Represents invoking a sub-protocol with role mapping
+ * Requires call stack semantics (push/pop) for proper execution
+ */
+export interface SubProtocolCallAction {
+  type: 'subprotocol';
+  protocol: string;           // Sub-protocol name
+  roleMapping: Record<string, string>;  // Formal parameter → actual role mapping
+  returnState: string;        // State to return to after sub-protocol completes
 }
 
 /**
