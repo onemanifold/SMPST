@@ -179,3 +179,7 @@ export function isMessageAction(action: Action): action is MessageAction {
 export function isParallelAction(action: Action): action is ParallelAction {
   return action.kind === 'parallel';
 }
+
+export function isSubProtocolAction(action: Action): action is SubProtocolAction {
+  return action.kind === 'subprotocol';
+}

@@ -163,6 +163,7 @@ export class Simulator {
           success: true,
           updates: new Map(),
           state,
+          completed: true,
         };
       }
 
@@ -182,13 +183,20 @@ export class Simulator {
       // Check if any role made progress
       const anySuccess = Array.from(result.updates.values()).some(r => r.success);
       if (!anySuccess) {
-        // No progress - likely deadlock
-        return {
-          success: false,
-          updates: result.updates,
-          state: this.getState(),
-          deadlocked: true,
-        };
+        // Check if all roles are just blocked waiting for messages (not a deadlock, just need to retry)
+        const allBlocked = Array.from(result.updates.values()).every(
+          r => !r.success && r.error?.type === 'message-not-ready'
+        );
+        if (!allBlocked) {
+          // No progress and not all blocked on messages - likely deadlock
+          return {
+            success: false,
+            updates: result.updates,
+            state: this.getState(),
+            deadlocked: true,
+          };
+        }
+        // All roles blocked on messages - continue loop, they may make progress next iteration
       }
     }
 
