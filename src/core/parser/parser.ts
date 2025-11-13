@@ -36,6 +36,7 @@ class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.importDeclaration) },
       { ALT: () => this.SUBRULE(this.typeDeclaration) },
       { ALT: () => this.SUBRULE(this.globalProtocolDeclaration) },
+      { ALT: () => this.SUBRULE(this.protocolExtension) },       // Future: Subtyping
       { ALT: () => this.SUBRULE(this.localProtocolDeclaration) },
     ]);
   });
@@ -130,6 +131,54 @@ class ScribbleParser extends CstParser {
   });
 
   // ==========================================================================
+  // Protocol Extension (Subtyping - Future Feature)
+  // Based on docs/theory/asynchronous-subtyping.md
+  // ==========================================================================
+
+  /**
+   * Protocol extension for subtyping
+   * Syntax: protocol Enhanced(role A, role B) extends Basic(A, B) { ... }
+   */
+  private protocolExtension = this.RULE('protocolExtension', () => {
+    this.CONSUME(tokens.Protocol);
+    this.CONSUME(tokens.Identifier, { LABEL: 'name' });
+
+    // Type parameters (optional)
+    this.OPTION(() => {
+      this.SUBRULE(this.typeParameters);
+    });
+
+    // Role parameters
+    this.CONSUME(tokens.LParen);
+    this.SUBRULE(this.roleDeclarationList);
+    this.CONSUME(tokens.RParen);
+
+    // Extends clause
+    this.CONSUME(tokens.Extends);
+    this.CONSUME2(tokens.Identifier, { LABEL: 'baseProtocol' });
+
+    // Type arguments for base protocol (optional)
+    this.OPTION2(() => {
+      this.SUBRULE(this.typeArguments);
+    });
+
+    // Role arguments for base protocol
+    this.CONSUME2(tokens.LParen);
+    this.AT_LEAST_ONE_SEP({
+      SEP: tokens.Comma,
+      DEF: () => {
+        this.CONSUME3(tokens.Identifier, { LABEL: 'baseRoleArg' });
+      },
+    });
+    this.CONSUME2(tokens.RParen);
+
+    // Refinement body
+    this.CONSUME(tokens.LCurly);
+    this.SUBRULE(this.globalProtocolBody, { LABEL: 'refinements' });
+    this.CONSUME(tokens.RCurly);
+  });
+
+  // ==========================================================================
   // Local Protocol Declaration
   // ==========================================================================
 
@@ -165,11 +214,15 @@ class ScribbleParser extends CstParser {
   private globalInteraction = this.RULE('globalInteraction', () => {
     this.OR([
       { ALT: () => this.SUBRULE(this.messageTransfer) },
+      { ALT: () => this.SUBRULE(this.timedMessage) },       // Future: Timed types
       { ALT: () => this.SUBRULE(this.choice) },
       { ALT: () => this.SUBRULE(this.parallel) },
       { ALT: () => this.SUBRULE(this.recursion) },
       { ALT: () => this.SUBRULE(this.continueStatement) },
       { ALT: () => this.SUBRULE(this.doStatement) },
+      { ALT: () => this.SUBRULE(this.tryStatement) },       // Future: Exceptions
+      { ALT: () => this.SUBRULE(this.throwStatement) },     // Future: Exceptions
+      { ALT: () => this.SUBRULE(this.timeoutStatement) },   // Future: Timed types
     ]);
   });
 
@@ -255,6 +308,84 @@ class ScribbleParser extends CstParser {
   });
 
   // ==========================================================================
+  // Exception Handling (Future Feature)
+  // Based on docs/theory/exception-handling.md
+  // ==========================================================================
+
+  /**
+   * Try-catch block
+   * Syntax: try { ... } catch Label { ... }
+   */
+  private tryStatement = this.RULE('tryStatement', () => {
+    this.CONSUME(tokens.Try);
+    this.CONSUME(tokens.LCurly);
+    this.SUBRULE(this.globalProtocolBody, { LABEL: 'body' });
+    this.CONSUME(tokens.RCurly);
+
+    // One or more catch handlers
+    this.AT_LEAST_ONE(() => {
+      this.CONSUME(tokens.Catch);
+      this.CONSUME(tokens.Identifier, { LABEL: 'exceptionLabel' });
+      this.CONSUME2(tokens.LCurly);
+      this.SUBRULE2(this.globalProtocolBody, { LABEL: 'handler' });
+      this.CONSUME2(tokens.RCurly);
+    });
+  });
+
+  /**
+   * Throw statement
+   * Syntax: throw Label;
+   */
+  private throwStatement = this.RULE('throwStatement', () => {
+    this.CONSUME(tokens.Throw);
+    this.CONSUME(tokens.Identifier, { LABEL: 'exceptionLabel' });
+    this.CONSUME(tokens.Semicolon);
+  });
+
+  // ==========================================================================
+  // Timed Session Types (Future Feature)
+  // Based on docs/theory/timed-session-types.md
+  // ==========================================================================
+
+  /**
+   * Timed message with deadline
+   * Syntax: A -> B: Msg() within 5s;
+   */
+  private timedMessage = this.RULE('timedMessage', () => {
+    this.CONSUME(tokens.Identifier, { LABEL: 'from' });
+    this.CONSUME(tokens.Arrow);
+    this.CONSUME2(tokens.Identifier, { LABEL: 'to' });
+    this.CONSUME(tokens.Colon);
+    this.SUBRULE(this.message);
+    this.CONSUME(tokens.Within);
+    this.SUBRULE(this.timeConstraint);
+    this.CONSUME(tokens.Semicolon);
+  });
+
+  /**
+   * Time constraint: value + unit
+   * Syntax: 5s, 100ms, 2min
+   */
+  private timeConstraint = this.RULE('timeConstraint', () => {
+    this.CONSUME(tokens.NumberLiteral, { LABEL: 'value' });
+    this.CONSUME(tokens.Identifier, { LABEL: 'unit' }); // 's', 'ms', 'min'
+  });
+
+  /**
+   * Timeout handler
+   * Syntax: timeout(5s) { ... }
+   */
+  private timeoutStatement = this.RULE('timeoutStatement', () => {
+    this.CONSUME(tokens.Timeout);
+    this.CONSUME(tokens.LParen);
+    this.SUBRULE(this.timeConstraint);
+    this.CONSUME(tokens.RParen);
+    this.CONSUME(tokens.LCurly);
+    this.SUBRULE(this.globalProtocolBody);
+    this.CONSUME(tokens.RCurly);
+  });
+
+  // ==========================================================================
   // Local Interactions
   // NOTE: Local protocols are typically generated through projection,
   // not parsed directly. For now, we treat local interactions similarly
@@ -271,6 +402,9 @@ class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.recursion) },
       { ALT: () => this.SUBRULE(this.continueStatement) },
       { ALT: () => this.SUBRULE(this.doStatement) },
+      { ALT: () => this.SUBRULE(this.tryStatement) },       // Future: Exceptions
+      { ALT: () => this.SUBRULE(this.throwStatement) },     // Future: Exceptions
+      { ALT: () => this.SUBRULE(this.timeoutStatement) },   // Future: Timed types
     ]);
   });
 
