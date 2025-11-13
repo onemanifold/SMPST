@@ -58,9 +58,9 @@
   "dependencies": {
     "chevrotain": "^11.0.0",
     "d3": "^7.9.0",
-    "dexie": "^4.0.0",
+    "dexie": "^4.2.1",
     "monaco-editor": "^0.54.0",
-    "ts-morph": "^24.0.0",
+    "ts-morph": "^27.0.2",
     "vite-plugin-monaco-editor": "^1.1.0"
   }
 }

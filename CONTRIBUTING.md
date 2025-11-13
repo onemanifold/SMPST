@@ -172,7 +172,13 @@ git commit -m "feat: add new verification check"
    - Link related issues: "Closes #123"
    - Describe changes, motivation, and impact
 
-3. **PR Checklist**:
+3. **⚠️ IMPORTANT - PR Description Policy**:
+   - ❌ **NEVER commit PR descriptions** to the repository (e.g., `PR_DESCRIPTION.md`, `PULL_REQUEST.md`)
+   - ✅ Write PR descriptions **directly in GitHub's PR interface only**
+   - **Rationale**: PR descriptions are GitHub metadata, not repository documentation
+   - Committing PR descriptions is considered a bad practice that clutters the repository
+
+4. **PR Checklist**:
    - [ ] Tests added/updated
    - [ ] Documentation updated
    - [ ] CHANGELOG.md updated

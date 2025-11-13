@@ -1,37 +1,27 @@
 <script lang="ts">
   import { protocolExamples, categories, getExamplesByCategory } from '$lib/data/examples';
   import { loadExample, editorContent } from '$lib/stores/editor';
+  import { protocolDB, type SavedProtocol } from '$lib/stores/protocol-db';
   import { onMount } from 'svelte';
 
   export let collapsed = false;
 
   let activeView: 'examples' | 'saved' | null = 'examples';
   let selectedCategory = 'All';
-  let savedProtocols: Array<{ id: string; name: string; code: string; timestamp: number }> = [];
+  let savedProtocols: SavedProtocol[] = [];
   let newProtocolName = '';
   let showSaveDialog = false;
 
-  // Load saved protocols from localStorage
+  // Load saved protocols from Dexie
   onMount(() => {
     loadSavedProtocols();
   });
 
-  function loadSavedProtocols() {
+  async function loadSavedProtocols() {
     try {
-      const saved = localStorage.getItem('smpst-saved-protocols');
-      if (saved) {
-        savedProtocols = JSON.parse(saved);
-      }
+      savedProtocols = await protocolDB.getAll();
     } catch (error) {
       console.error('Failed to load saved protocols:', error);
-    }
-  }
-
-  function saveSavedProtocols() {
-    try {
-      localStorage.setItem('smpst-saved-protocols', JSON.stringify(savedProtocols));
-    } catch (error) {
-      console.error('Failed to save protocols:', error);
     }
   }
 
@@ -42,7 +32,7 @@
     }
   }
 
-  function handleSaveProtocol() {
+  async function handleSaveProtocol() {
     // Get current editor content
     let currentContent = '';
     const unsubscribe = editorContent.subscribe(value => {
@@ -60,31 +50,43 @@
       return;
     }
 
-    const newProtocol = {
-      id: Date.now().toString(),
-      name: newProtocolName.trim(),
-      code: currentContent,
-      timestamp: Date.now()
-    };
+    try {
+      await protocolDB.add({
+        name: newProtocolName.trim(),
+        code: currentContent,
+        timestamp: Date.now()
+      });
 
-    savedProtocols = [newProtocol, ...savedProtocols];
-    saveSavedProtocols();
+      // Reload protocols from DB
+      await loadSavedProtocols();
 
-    newProtocolName = '';
-    showSaveDialog = false;
+      newProtocolName = '';
+      showSaveDialog = false;
+    } catch (error) {
+      console.error('Failed to save protocol:', error);
+      alert('Failed to save protocol');
+    }
   }
 
-  function handleLoadSaved(id: string) {
+  function handleLoadSaved(id: number | undefined) {
+    if (!id) return;
     const protocol = savedProtocols.find(p => p.id === id);
     if (protocol) {
       editorContent.set(protocol.code);
     }
   }
 
-  function handleDeleteSaved(id: string) {
+  async function handleDeleteSaved(id: number | undefined) {
+    if (!id) return;
     if (confirm('Are you sure you want to delete this protocol?')) {
-      savedProtocols = savedProtocols.filter(p => p.id !== id);
-      saveSavedProtocols();
+      try {
+        await protocolDB.delete(id);
+        // Reload protocols from DB
+        await loadSavedProtocols();
+      } catch (error) {
+        console.error('Failed to delete protocol:', error);
+        alert('Failed to delete protocol');
+      }
     }
   }
 
