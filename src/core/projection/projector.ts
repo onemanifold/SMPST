@@ -174,6 +174,114 @@ export function project(cfg: CFG, role: string): CFSM {
     return false;
   };
 
+  /**
+   * Extract actions from a parallel branch for a role
+   * Returns list of actions the role performs in this branch
+   */
+  const extractBranchActions = (startNodeId: string, parallelId: string): CFSMAction[] => {
+    const actions: CFSMAction[] = [];
+    const visited = new Set<string>();
+    const queue = [startNodeId];
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      if (visited.has(nodeId)) continue;
+      visited.add(nodeId);
+
+      const node = cfg.nodes.find(n => n.id === nodeId);
+      if (!node) continue;
+
+      // Stop at join node
+      if (isJoinNode(node) && node.parallel_id === parallelId) {
+        continue;
+      }
+
+      // Extract action if role is involved
+      if (isActionNode(node) && isMessageAction(node.action)) {
+        const action = node.action;
+        if (isRoleInvolved(action)) {
+          // Convert to CFSM action
+          if (action.from === role) {
+            actions.push({
+              type: 'send',
+              to: action.to,
+              label: action.label,
+              payloadType: action.payloadType,
+            } as SendAction);
+          } else {
+            actions.push({
+              type: 'receive',
+              from: action.from,
+              label: action.label,
+              payloadType: action.payloadType,
+            } as ReceiveAction);
+          }
+        }
+      }
+
+      // Continue traversal
+      const edges = getOutgoingEdges(nodeId).filter(e => e.edgeType !== 'continue');
+      for (const edge of edges) {
+        queue.push(edge.to);
+      }
+    }
+
+    return actions;
+  };
+
+  /**
+   * Generate diamond pattern for parallel interleaving
+   * Creates states for all possible orderings of parallel actions
+   * For N branches with actions [a1], [a2], ..., generates states for a1;a2, a2;a1, etc.
+   */
+  const generateDiamondPattern = (
+    fromStateId: string,
+    toStateId: string,
+    branchActions: CFSMAction[][]
+  ): void => {
+    // Flatten all actions with branch index
+    const allActions = branchActions.flatMap((actions, branchIdx) =>
+      actions.map(action => ({ action, branchIdx }))
+    );
+
+    if (allActions.length === 0) {
+      // No actions - just epsilon transition
+      createTransition(fromStateId, toStateId);
+      return;
+    }
+
+    if (allActions.length === 1) {
+      // Single action - simple path
+      const { action } = allActions[0];
+      createTransition(fromStateId, toStateId, action);
+      return;
+    }
+
+    // Multiple actions - need to generate interleavings
+    // For now, support 2 actions (most common case)
+    if (allActions.length === 2) {
+      const [action1, action2] = allActions;
+
+      // Path 1: action1 then action2
+      const mid1 = createState(`par_${fromStateId}_path1`);
+      createTransition(fromStateId, mid1.id, action1.action);
+      createTransition(mid1.id, toStateId, action2.action);
+
+      // Path 2: action2 then action1
+      const mid2 = createState(`par_${fromStateId}_path2`);
+      createTransition(fromStateId, mid2.id, action2.action);
+      createTransition(mid2.id, toStateId, action1.action);
+    } else {
+      // More than 2 actions - for now, just do sequential (TODO: full interleaving)
+      let currentState = fromStateId;
+      for (let i = 0; i < allActions.length; i++) {
+        const nextState = i === allActions.length - 1 ? toStateId : createState(`par_seq_${i}`).id;
+        createTransition(currentState, nextState, allActions[i].action);
+        currentState = nextState;
+      }
+    }
+  };
+
   // ============================================================================
   // Projection Algorithm
   // ============================================================================
@@ -307,13 +415,34 @@ export function project(cfg: CFG, role: string): CFSM {
 
         if (branchesWithRole.length > 1) {
           // Role participates in multiple parallel branches - need interleaving
-          // Mark this fork for special handling
-          // For now, just pass through and let the join handle it
-          // FIXME: This creates choice semantics instead of parallel semantics
-          // Need to implement proper diamond pattern generation
+          // Extract actions from each branch
+          const branchActions = branchesWithRole.map(edge =>
+            extractBranchActions(edge.to, targetNode.parallel_id)
+          );
+
+          // Find the join node to get target state
+          const joinNode = cfg.nodes.find(
+            n => isJoinNode(n) && n.parallel_id === targetNode.parallel_id
+          );
+          if (!joinNode) {
+            throw new Error(`No join node found for parallel block ${targetNode.parallel_id}`);
+          }
+
+          // Create or get state for join node
+          let joinStateId = cfgNodeToState.get(joinNode.id);
+          if (!joinStateId) {
+            const joinState = createState(joinNode.id);
+            joinStateId = joinState.id;
+            cfgNodeToState.set(joinNode.id, joinStateId);
+          }
+
+          // Generate diamond pattern for interleaving
+          generateDiamondPattern(lastStateId, joinStateId, branchActions);
+
+          // Continue from join node (don't process branches individually)
           queue.push({
-            cfgNodeId: targetNode.id,
-            lastStateId,
+            cfgNodeId: joinNode.id,
+            lastStateId: joinStateId,
           });
         } else {
           // Role participates in 0 or 1 branch - pass through
