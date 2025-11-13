@@ -49,16 +49,16 @@
     // Define Scribble syntax highlighting
     monaco.languages.setMonarchTokensProvider('scribble', {
       keywords: [
-        'global', 'protocol', 'role', 'from', 'to', 'choice', 'at',
-        'or', 'rec', 'continue', 'par', 'and', 'do', 'as'
+        'protocol', 'role', 'choice', 'at', 'or', 'rec', 'continue', 'par', 'and', 'do', 'as', 'type', 'import'
       ],
-      operators: ['(', ')', '{', '}', ';', ',', '<', '>'],
+      operators: ['(', ')', '{', '}', ';', ',', '<', '>', '->', ':'],
       tokenizer: {
         root: [
-          [/\b(global|protocol|role|from|to|choice|at|or|rec|continue|par|and|do|as)\b/, 'keyword'],
+          [/\b(protocol|role|choice|at|or|rec|continue|par|and|do|as|type|import)\b/, 'keyword'],
+          [/->/, 'keyword'],
           [/\b[A-Z][a-zA-Z0-9]*\b/, 'type'],
           [/\b[a-z][a-zA-Z0-9]*\b/, 'variable'],
-          [/[(){}\[\];,<>]/, 'delimiter'],
+          [/[(){}\[\];,<>:]/, 'delimiter'],
           [/\/\/.*$/, 'comment'],
         ]
       }
