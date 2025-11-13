@@ -682,13 +682,78 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
  * - LTS states → CFG state nodes
  * - LTS transitions with actions → CFG action nodes + edges
  * - Tau transitions → direct CFG edges
+ * - Multiple outgoing transitions from same state → branch node
+ * - Multiple incoming transitions to same state → merge node
+ *
+ * NOTE: This is a derived view for testing/visualization.
+ * The canonical representation is the LTS (states/transitions).
  */
 function addCFGView(cfsm: CFSM): void {
   const nodes: any[] = [];
   const edges: any[] = [];
   let actionNodeCounter = 0;
+  let branchNodeCounter = 0;
+  let mergeNodeCounter = 0;
 
-  // Convert states to nodes
+  // Analyze transition structure to find branches and merges
+  const outgoingTransitions = new Map<string, CFSMTransition[]>();
+  const incomingTransitions = new Map<string, CFSMTransition[]>();
+
+  for (const transition of cfsm.transitions) {
+    // Track outgoing transitions
+    if (!outgoingTransitions.has(transition.from)) {
+      outgoingTransitions.set(transition.from, []);
+    }
+    outgoingTransitions.get(transition.from)!.push(transition);
+
+    // Track incoming transitions
+    if (!incomingTransitions.has(transition.to)) {
+      incomingTransitions.set(transition.to, []);
+    }
+    incomingTransitions.get(transition.to)!.push(transition);
+  }
+
+  // Find branch points: states with multiple outgoing transitions
+  const branchStates = new Set<string>();
+  for (const [stateId, transitions] of outgoingTransitions.entries()) {
+    // Filter out tau transitions for branch detection
+    const nonTauTransitions = transitions.filter(t => t.action.type !== 'tau');
+    if (nonTauTransitions.length > 1) {
+      branchStates.add(stateId);
+    }
+  }
+
+  // Find merge points: states with multiple incoming transitions
+  const mergeStates = new Set<string>();
+  for (const [stateId, transitions] of incomingTransitions.entries()) {
+    // Filter out tau transitions for merge detection
+    const nonTauTransitions = transitions.filter(t => t.action.type !== 'tau');
+    if (nonTauTransitions.length > 1) {
+      mergeStates.add(stateId);
+    }
+  }
+
+  // Find recursive points: states with back-edges (cycles)
+  // A back-edge is a transition to a state that appears earlier in traversal order
+  // or to a state we've already processed (creating a cycle)
+  const recursiveStates = new Set<string>();
+  const stateOrder = new Map<string, number>();
+  cfsm.states.forEach((state, index) => {
+    stateOrder.set(state.id, index);
+  });
+
+  for (const transition of cfsm.transitions) {
+    const fromOrder = stateOrder.get(transition.from) ?? Infinity;
+    const toOrder = stateOrder.get(transition.to) ?? Infinity;
+
+    // Back-edge: points to earlier state (or initial state for recursion)
+    if (toOrder <= fromOrder && transition.to === cfsm.initialState) {
+      // This is a back-edge to initial state - marks recursion entry
+      recursiveStates.add(transition.to);
+    }
+  }
+
+  // Convert states to nodes (including branch/merge markers)
   for (const state of cfsm.states) {
     const nodeType = state.id === cfsm.initialState ? 'initial'
       : cfsm.terminalStates.includes(state.id) ? 'terminal'
@@ -699,6 +764,37 @@ function addCFGView(cfsm: CFSM): void {
       type: nodeType,
       label: state.label,
     });
+
+    // Add branch node after states that branch
+    if (branchStates.has(state.id)) {
+      const branchNodeId = `branch_${branchNodeCounter++}`;
+      nodes.push({
+        id: branchNodeId,
+        type: 'branch',
+        from_state: state.id,
+      });
+    }
+
+    // Add merge node before states that merge
+    if (mergeStates.has(state.id)) {
+      const mergeNodeId = `merge_${mergeNodeCounter++}`;
+      nodes.push({
+        id: mergeNodeId,
+        type: 'merge',
+        to_state: state.id,
+      });
+    }
+
+    // Add recursive node for states that are recursion entry points
+    if (recursiveStates.has(state.id)) {
+      const recursiveNodeId = `rec_${state.id}`;
+      nodes.push({
+        id: recursiveNodeId,
+        type: 'recursive',
+        entry_state: state.id,
+        label: state.label || `rec_${state.id}`,
+      });
+    }
   }
 
   // Convert transitions to nodes/edges
@@ -707,11 +803,16 @@ function addCFGView(cfsm: CFSM): void {
 
     if (action.type === 'tau') {
       // Tau transitions become direct edges
+      // Determine edge type: continue for back-edges, sequence otherwise
+      const fromOrder = stateOrder.get(transition.from) ?? Infinity;
+      const toOrder = stateOrder.get(transition.to) ?? Infinity;
+      const isContinueEdge = toOrder <= fromOrder && transition.to === cfsm.initialState;
+
       edges.push({
         id: transition.id,
         from: transition.from,
         to: transition.to,
-        edgeType: 'sequence',
+        edgeType: isContinueEdge ? 'continue' : 'sequence',
       });
     } else {
       // Non-tau transitions become action node + 2 edges
@@ -724,12 +825,16 @@ function addCFGView(cfsm: CFSM): void {
         action: action,
       });
 
+      // Determine edge type for source → action edge
+      // If source state has multiple outgoing transitions, this is a branch edge
+      const isBranchEdge = branchStates.has(transition.from);
+
       // Edge from source state to action node
       edges.push({
         id: `${transition.id}_in`,
         from: transition.from,
         to: actionNodeId,
-        edgeType: 'sequence',
+        edgeType: isBranchEdge ? 'branch' : 'sequence',
       });
 
       // Edge from action node to target state
