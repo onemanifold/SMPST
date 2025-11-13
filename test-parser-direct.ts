@@ -32,6 +32,10 @@ async function testParserPipeline() {
       console.log('\n✅ SUCCESS! Parser works correctly\n');
       console.log('Parsed AST type:', ast.type);
       console.log('Number of declarations:', ast.declarations?.length);
+      if (ast.declarations && ast.declarations.length > 0) {
+        console.log('First declaration type:', ast.declarations[0].type);
+        console.log('First declaration:', JSON.stringify(ast.declarations[0], null, 2).substring(0, 500));
+      }
     } else {
       console.error('✗ Parser returned null/undefined');
       process.exit(1);
