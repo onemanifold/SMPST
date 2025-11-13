@@ -33,3 +33,7 @@ coverage/
 .env
 .env.local
 .env.*.local
+
+# Claude session notes (local only, not committed)
+CLAUDE.md
+CLAUDE_*.md

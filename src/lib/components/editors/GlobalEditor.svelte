@@ -23,6 +23,26 @@
   }
 
   onMount(() => {
+    // Configure Monaco Environment for worker loading (GitHub Pages compatible)
+    (window as any).MonacoEnvironment = {
+      getWorkerUrl: function (_moduleId: string, label: string) {
+        const base = import.meta.env.BASE_URL || '/';
+        if (label === 'json') {
+          return `${base}monacoeditorwork/json.worker.bundle.js`;
+        }
+        if (label === 'css' || label === 'scss' || label === 'less') {
+          return `${base}monacoeditorwork/css.worker.bundle.js`;
+        }
+        if (label === 'html' || label === 'handlebars' || label === 'razor') {
+          return `${base}monacoeditorwork/html.worker.bundle.js`;
+        }
+        if (label === 'typescript' || label === 'javascript') {
+          return `${base}monacoeditorwork/ts.worker.bundle.js`;
+        }
+        return `${base}monacoeditorwork/editor.worker.bundle.js`;
+      }
+    };
+
     // Register Scribble language
     monaco.languages.register({ id: 'scribble' });
 
