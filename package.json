@@ -1,6 +1,26 @@
 {
   "name": "smpst-ide",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha",
+  "description": "Web-based IDE for Multiparty Session Types with CFG-based verification",
+  "author": "onemanifold",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/onemanifold/SMPST.git"
+  },
+  "homepage": "https://onemanifold.github.io/SMPST/",
+  "bugs": {
+    "url": "https://github.com/onemanifold/SMPST/issues"
+  },
+  "keywords": [
+    "multiparty-session-types",
+    "scribble",
+    "protocol",
+    "verification",
+    "IDE",
+    "TypeScript",
+    "Svelte"
+  ],
   "private": true,
   "type": "module",
   "scripts": {
