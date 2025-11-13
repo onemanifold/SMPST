@@ -1251,6 +1251,191 @@ export const ideState = new IDEState();
 4. Implement Phase 1 (Core Editor) following spec sections 3.1-3.3
 5. Integrate backend (parser, CFG, verification already complete)
 
+### 14.4 Desktop Deployment (Tauri)
+
+**Decision Date:** 2025-11-12
+**Status:** Optional Enhancement (Post-Web Implementation)
+**Implementation Difficulty:** Easy (1-2 days after web version complete)
+
+#### Overview
+
+The selected stack (Svelte 5 + Vite + Carbon Components) is fully compatible with Tauri for desktop deployment. This enables dual-platform distribution from a single codebase:
+- **Web**: GitHub Pages (primary deployment)
+- **Desktop**: Windows, macOS, Linux binaries (optional enhancement)
+
+#### Tauri Benefits for IDE Applications
+
+**Performance Improvements:**
+- **Bundle Size**: 2.5-3 MB (vs 80-120 MB for Electron)
+- **Memory Usage**: 30-40 MB idle (50% less than web equivalent)
+- **Startup Time**: <500ms cold start
+- **Native Speed**: OS-native webview, Rust backend
+
+**IDE-Specific Features:**
+- **File System Access**: Save/load `.scr` protocol files directly
+- **Native Dialogs**: OS-native open/save dialogs
+- **System Integration**: Recent files, custom protocol handlers (`scribble://`)
+- **Native Menus**: OS-standard menu bar (File, Edit, View, etc.)
+- **Better Performance**: Native file watching, faster large file handling
+
+#### Platform-Specific Binaries
+
+Tauri requires separate builds for each operating system (no universal binary):
+
+| Platform | Outputs | Size | Architecture | Build Time |
+|----------|---------|------|--------------|------------|
+| **Windows** | `.exe`, `.msi` installer | ~8-12 MB | x64 | ~5-10 min |
+| **macOS** | `.dmg`, `.app` bundle | ~8-12 MB | Universal (Intel + Apple Silicon) | ~8-15 min |
+| **Linux** | `.deb`, `.AppImage`, `.rpm` | ~8-12 MB | x64 | ~5-10 min |
+
+**Note:** macOS supports "universal binaries" (single file for Intel + Apple Silicon), but Windows/macOS/Linux still require separate builds.
+
+#### Automated Build Pipeline
+
+A GitHub Actions workflow (`.github/workflows/tauri-build.yml.disabled`) is ready for activation:
+
+**Build Matrix Strategy:**
+- **Parallel builds**: Windows, macOS, Linux build simultaneously
+- **GitHub-hosted runners**: Microsoft provides free CI/CD runners for all platforms
+- **Automatic releases**: Builds triggered on version tags (`v0.1.0`, `v1.0.0`, etc.)
+- **Artifact upload**: Binaries attached to GitHub Releases automatically
+
+**Build triggers:**
+```yaml
+on:
+  push:
+    tags:
+      - 'v*'  # Any version tag triggers builds
+  workflow_dispatch:  # Manual trigger for testing
+```
+
+**Build time:** ~10-15 minutes total (all platforms in parallel)
+
+#### Implementation Strategy
+
+**Phase 1 (Current): Web-Only**
+1. Build complete web version
+2. Deploy to GitHub Pages
+3. Validate all features work in browser
+
+**Phase 2 (Future): Add Tauri Wrapper**
+1. Install Tauri CLI: `npm install --save-dev @tauri-apps/cli`
+2. Initialize: `npm run tauri init` (auto-generates config)
+3. Test locally: `npm run tauri dev`
+4. Enable workflow: Rename `.github/workflows/tauri-build.yml.disabled` → `.yml`
+5. Create version tag: `git tag v0.1.0 && git push --tags`
+6. GitHub Actions builds all platforms automatically
+
+**Effort required:** ~1-2 days after web version is complete
+
+#### Minimal Configuration
+
+Tauri requires minimal setup beyond your existing Vite config:
+
+```json
+// tauri.conf.json (auto-generated, ~50 lines)
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "productName": "Scribble MPST IDE",
+  "identifier": "com.onemanifold.smpst",
+  "version": "0.1.0"
+}
+```
+
+```rust
+// src-tauri/src/main.rs (auto-generated, ~20 lines)
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+fn main() {
+    tauri::Builder::default()
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+```
+
+**That's it!** The rest is automatic.
+
+#### Distribution Strategy
+
+**Web Version (Primary):**
+- URL: `https://onemanifold.github.io/SMPST/`
+- Instant access, no installation
+- Works on any device with browser
+- Automatic updates via GitHub Pages
+
+**Desktop Version (Optional):**
+- GitHub Releases: Download page with all platforms
+- Version control: Users can download specific versions
+- Offline capable: Works without internet
+- Better performance: Native file I/O, more memory
+
+#### Shared Codebase
+
+**99% code reuse** between web and desktop:
+
+```
+SMPST/
+├── src/              # Svelte app (100% shared!)
+│   ├── lib/
+│   ├── routes/
+│   └── App.svelte
+├── src-tauri/        # Tauri-specific (Rust backend)
+│   ├── tauri.conf.json  (~50 lines)
+│   └── src/
+│       └── main.rs      (~20 lines)
+├── dist/             # Build output
+│   ├── web/          # GitHub Pages
+│   └── desktop/      # Tauri bundles
+└── .github/
+    └── workflows/
+        ├── deploy.yml        # Web deployment
+        └── tauri-build.yml   # Desktop builds
+```
+
+#### Optional Desktop Features
+
+Once Tauri is added, you can optionally enhance with desktop-specific features:
+
+```typescript
+// Optional: Add native file operations
+import { open, save } from '@tauri-apps/api/dialog';
+import { writeTextFile, readTextFile } from '@tauri-apps/api/fs';
+
+// Save protocol to disk
+async function saveProtocol() {
+  const path = await save({
+    filters: [{ name: 'Scribble', extensions: ['scr'] }]
+  });
+  if (path) {
+    await writeTextFile(path, protocol);
+  }
+}
+
+// These APIs no-op in web version (graceful degradation)
+```
+
+#### Recommendation
+
+**Current Focus:** Build web version first with the selected stack (Svelte 5 + Carbon)
+
+**Future Enhancement:** Add Tauri wrapper after web version is validated
+- Low effort (~1-2 days)
+- High value for power users
+- Automated builds via GitHub Actions
+- No impact on web version
+
+**Timeline:**
+1. **Months 1-2**: Implement web UI (primary goal)
+2. **Month 3**: Polish, testing, user feedback
+3. **Month 4**: Add Tauri wrapper, release desktop builds
+
+The build pipeline is ready to activate when needed (`.github/workflows/tauri-build.yml.disabled`).
+
 ---
 
 ## 15. Rationale Summary
