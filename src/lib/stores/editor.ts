@@ -236,7 +236,7 @@ export async function parseProtocol(content: string) {
 
     // 6. Initialize simulation with CFG
     const { initializeSimulation } = await import('./simulation');
-    initializeSimulation(cfg);
+    await initializeSimulation(cfg);
 
     // TODO: 7. Generate TypeScript (future)
 

@@ -3,7 +3,6 @@
  */
 import { writable, derived, get } from 'svelte/store';
 import type { CFG } from '../../core/cfg/types';
-import { CFGSimulator } from '../../core/simulation/cfg-simulator';
 import type { CFGExecutionState, CFGStepResult } from '../../core/simulation/types';
 
 // Simulation mode
@@ -11,7 +10,7 @@ export type SimulationMode = 'idle' | 'stepping' | 'playing';
 export const simulationMode = writable<SimulationMode>('idle');
 
 // Simulator instance
-let simulator: CFGSimulator | null = null;
+let simulator: any = null;
 
 // Current execution state
 export const executionState = writable<CFGExecutionState | null>(null);
@@ -25,9 +24,12 @@ let playInterval: ReturnType<typeof setInterval> | null = null;
 /**
  * Initialize simulator with a CFG
  */
-export function initializeSimulation(cfg: CFG) {
+export async function initializeSimulation(cfg: CFG) {
   // Clean up existing simulator
   stopSimulation();
+
+  // Dynamic import to avoid bundling issues
+  const { CFGSimulator } = await import('../../core/simulation/cfg-simulator');
 
   // Create new simulator with random choice strategy for play mode
   simulator = new CFGSimulator(cfg, {
