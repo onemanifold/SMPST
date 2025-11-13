@@ -136,6 +136,44 @@ export function project(cfg: CFG, role: string): CFSM {
     return edges;
   };
 
+  /**
+   * Check if role participates in a CFG branch (reachable from nodeId until join)
+   * Used to detect if role appears in multiple parallel branches
+   */
+  const roleParticipatesInBranch = (startNodeId: string, parallelId: string): boolean => {
+    const visited = new Set<string>();
+    const queue = [startNodeId];
+
+    while (queue.length > 0) {
+      const nodeId = queue.shift()!;
+      if (visited.has(nodeId)) continue;
+      visited.add(nodeId);
+
+      const node = cfg.nodes.find(n => n.id === nodeId);
+      if (!node) continue;
+
+      // Stop at join node for this parallel block
+      if (isJoinNode(node) && node.parallel_id === parallelId) {
+        continue;
+      }
+
+      // Check if this is an action involving our role
+      if (isActionNode(node) && isMessageAction(node.action)) {
+        if (isRoleInvolved(node.action)) {
+          return true;
+        }
+      }
+
+      // Continue searching in this branch
+      const edges = getOutgoingEdges(nodeId).filter(e => e.edgeType !== 'continue');
+      for (const edge of edges) {
+        queue.push(edge.to);
+      }
+    }
+
+    return false;
+  };
+
   // ============================================================================
   // Projection Algorithm
   // ============================================================================
@@ -261,12 +299,29 @@ export function project(cfg: CFG, role: string): CFSM {
         });
       } else if (isForkNode(targetNode)) {
         // Fork node (parallel split)
-        // For now, pass through
-        // TODO: Handle fork/join when role in multiple branches
-        queue.push({
-          cfgNodeId: targetNode.id,
-          lastStateId,
-        });
+        // Check if role participates in multiple branches
+        const forkEdges = getOutgoingEdges(targetNode.id, 'fork');
+        const branchesWithRole = forkEdges.filter(edge =>
+          roleParticipatesInBranch(edge.to, targetNode.parallel_id)
+        );
+
+        if (branchesWithRole.length > 1) {
+          // Role participates in multiple parallel branches - need interleaving
+          // Mark this fork for special handling
+          // For now, just pass through and let the join handle it
+          // FIXME: This creates choice semantics instead of parallel semantics
+          // Need to implement proper diamond pattern generation
+          queue.push({
+            cfgNodeId: targetNode.id,
+            lastStateId,
+          });
+        } else {
+          // Role participates in 0 or 1 branch - pass through
+          queue.push({
+            cfgNodeId: targetNode.id,
+            lastStateId,
+          });
+        }
       } else if (isJoinNode(targetNode)) {
         // Join node (parallel synchronization)
         // Pass through
