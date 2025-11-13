@@ -100,6 +100,7 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
   /**
    * Create a transition with an action
    * Actions live HERE, on transitions, following LTS semantics
+   * If no action provided, defaults to tau (epsilon transition)
    */
   const createTransition = (
     from: string,
@@ -110,7 +111,7 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
       id: `t${transitionCounter++}`,
       from,
       to,
-      action: action!,
+      action: action || { type: 'tau' },  // Use tau for epsilon transitions
     };
     transitions.push(transition);
     return transition;
