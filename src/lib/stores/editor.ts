@@ -110,95 +110,146 @@ export function clearEditor() {
   projectionData.set([]);
 }
 
-// Mock parse action (for UI testing)
-export function mockParse(content: string) {
+// Real parse action (integrates parser, CFG builder, verifier)
+export async function parseProtocol(content: string) {
   parseStatus.set('parsing');
   parseError.set(null);
 
-  // Simulate async parsing
-  setTimeout(() => {
-    if (content.trim().length === 0) {
-      parseStatus.set('error');
-      parseError.set('Empty protocol');
-      return;
+  try {
+    // Dynamic imports
+    const { ScribbleParser } = await import('../../core/parser/parser');
+    const { CFGBuilder } = await import('../../core/cfg/builder');
+    const { verifyProtocol } = await import('../../core/verification/verifier');
+    const { projectAll } = await import('../../core/projection/projector');
+
+    // 1. Parse Scribble
+    const parser = new ScribbleParser();
+    const ast = parser.parse(content);
+
+    if (!ast || ast.type !== 'GlobalProtocol') {
+      throw new Error('Expected global protocol');
     }
 
-    // Mock success
+    // 2. Build CFG
+    const builder = new CFGBuilder();
+    const cfg = builder.build(ast as any);
+
+    // 3. Verify protocol
+    const result = verifyProtocol(cfg);
+
+    // 4. Project to CFSMs
+    const projectionResult = projectAll(cfg);
+
+    // Extract roles from projection result
+    const roles = projectionResult.roles;
+
+    // 5. Collect errors and warnings from verification
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Deadlock
+    if (result.deadlock.hasDeadlock) {
+      errors.push(`Deadlock detected: ${result.deadlock.cycles.length} cycle(s)`);
+    }
+
+    // Liveness
+    if (!result.liveness.isLive) {
+      errors.push(`Liveness violated: ${result.liveness.violations.length} violation(s)`);
+    }
+
+    // Parallel deadlock
+    if (result.parallelDeadlock.hasDeadlock) {
+      errors.push(`Parallel deadlock detected: ${result.parallelDeadlock.conflicts.length} conflict(s)`);
+    }
+
+    // Race conditions
+    if (result.raceConditions.hasRaces) {
+      warnings.push(`Race conditions detected: ${result.raceConditions.races.length} race(s)`);
+    }
+
+    // Progress
+    if (!result.progress.canProgress) {
+      errors.push(`Progress not satisfied: ${result.progress.blockedNodes.length} blocked node(s)`);
+    }
+
+    // Choice determinism
+    if (!result.choiceDeterminism.isDeterministic) {
+      errors.push(`Choice non-determinism: ${result.choiceDeterminism.violations.length} violation(s)`);
+    }
+
+    // Multicast warnings
+    if (result.multicast && result.multicast.warnings.length > 0) {
+      result.multicast.warnings.forEach(w => warnings.push(`Multicast: ${w.message}`));
+    }
+
+    // 6. Update stores
     parseStatus.set('success');
-
-    // Mock verification results
     verificationResult.set({
-      deadlockFree: true,
-      livenessSatisfied: true,
-      safetySatisfied: true,
-      warnings: [],
-      errors: []
+      deadlockFree: !result.deadlock.hasDeadlock,
+      livenessSatisfied: result.liveness.isLive,
+      safetySatisfied: errors.length === 0,
+      warnings,
+      errors
     });
 
-    // Mock projection data
-    projectionData.set([
-      {
-        role: 'Client',
-        states: ['S0', 'S1', 'S2'],
-        transitions: [
-          { from: 'S0', to: 'S1', label: 'send Request' },
-          { from: 'S1', to: 'S2', label: 'recv Response' }
-        ]
-      },
-      {
-        role: 'Server',
-        states: ['S0', 'S1', 'S2'],
-        transitions: [
-          { from: 'S0', to: 'S1', label: 'recv Request' },
-          { from: 'S1', to: 'S2', label: 'send Response' }
-        ]
+    // Helper to format CFSM action as display label
+    const formatActionLabel = (action: any): string => {
+      if (!action) return 'τ';
+
+      switch (action.type) {
+        case 'send':
+          return `send ${action.label || ''}`;
+        case 'receive':
+          return `recv ${action.label || ''}`;
+        case 'tau':
+          return 'τ';
+        case 'choice':
+          return `choice ${action.branch || ''}`;
+        default:
+          return action.label || action.type || 'τ';
       }
-    ]);
+    };
 
-    // Mock generated TypeScript code
-    generatedCode.set({
-      Client: `// Generated TypeScript for Client role
-export class ClientProtocol {
-  private state: 'S0' | 'S1' | 'S2' = 'S0';
+    // Update projection data
+    projectionData.set(
+      roles.map((role: string) => {
+        const cfsm = projectionResult.cfsms.get(role);
+        if (!cfsm) {
+          return {
+            role,
+            states: [],
+            transitions: []
+          };
+        }
 
-  async sendRequest(data: string): Promise<void> {
-    if (this.state !== 'S0') {
-      throw new Error('Invalid state for sendRequest');
-    }
-    // Send request to Server
-    this.state = 'S1';
+        return {
+          role,
+          states: cfsm.states.map(s => s.id),
+          transitions: cfsm.transitions.map(t => ({
+            from: t.from,
+            to: t.to,
+            label: formatActionLabel(t.action)
+          }))
+        };
+      })
+    );
+
+    // 6. Initialize simulation with CFG
+    const { initializeSimulation } = await import('./simulation');
+    await initializeSimulation(cfg);
+
+    // TODO: 7. Generate TypeScript (future)
+
+    return { success: true, cfg, ast, cfsms: projectionResult.cfsms };
+  } catch (error) {
+    parseStatus.set('error');
+    const message = error instanceof Error ? error.message : String(error);
+    parseError.set(message);
+    return { success: false, error: message };
   }
+}
 
-  async recvResponse(): Promise<number> {
-    if (this.state !== 'S1') {
-      throw new Error('Invalid state for recvResponse');
-    }
-    // Receive response from Server
-    this.state = 'S2';
-    return 42; // Mock response
-  }
-}`,
-      Server: `// Generated TypeScript for Server role
-export class ServerProtocol {
-  private state: 'S0' | 'S1' | 'S2' = 'S0';
-
-  async recvRequest(): Promise<string> {
-    if (this.state !== 'S0') {
-      throw new Error('Invalid state for recvRequest');
-    }
-    // Receive request from Client
-    this.state = 'S1';
-    return 'request data'; // Mock request
-  }
-
-  async sendResponse(result: number): Promise<void> {
-    if (this.state !== 'S1') {
-      throw new Error('Invalid state for sendResponse');
-    }
-    // Send response to Client
-    this.state = 'S2';
-  }
-}`
-    });
-  }, 500);
+// Keep mock for backward compatibility (can be removed later)
+export function mockParse(content: string) {
+  parseProtocol(content);
 }
