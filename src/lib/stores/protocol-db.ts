@@ -23,32 +23,39 @@ export class ProtocolDatabase extends Dexie {
   }
 }
 
-// Create singleton instance
-export const db = new ProtocolDatabase();
+// Lazy singleton instance
+let db: ProtocolDatabase | null = null;
+
+function getDB(): ProtocolDatabase {
+  if (!db) {
+    db = new ProtocolDatabase();
+  }
+  return db;
+}
 
 // Database operations
 export const protocolDB = {
   async getAll(): Promise<SavedProtocol[]> {
-    return await db.protocols.orderBy('timestamp').reverse().toArray();
+    return await getDB().protocols.orderBy('timestamp').reverse().toArray();
   },
 
   async add(protocol: Omit<SavedProtocol, 'id'>): Promise<number> {
-    return await db.protocols.add(protocol);
+    return await getDB().protocols.add(protocol);
   },
 
   async get(id: number): Promise<SavedProtocol | undefined> {
-    return await db.protocols.get(id);
+    return await getDB().protocols.get(id);
   },
 
   async update(id: number, changes: Partial<SavedProtocol>): Promise<number> {
-    return await db.protocols.update(id, changes);
+    return await getDB().protocols.update(id, changes);
   },
 
   async delete(id: number): Promise<void> {
-    await db.protocols.delete(id);
+    await getDB().protocols.delete(id);
   },
 
   async clear(): Promise<void> {
-    await db.protocols.clear();
+    await getDB().protocols.clear();
   }
 };
