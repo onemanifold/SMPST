@@ -62,9 +62,10 @@ import type {
  *
  * @param cfg - Global CFG
  * @param role - Role to project for
+ * @param protocolRegistry - Optional protocol registry for sub-protocol role mapping
  * @returns CFSM for the specified role
  */
-export function project(cfg: CFG, role: string): CFSM {
+export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegistry): CFSM {
   // Validate role exists
   if (!cfg.roles.includes(role)) {
     throw new Error(
@@ -385,12 +386,57 @@ export function project(cfg: CFG, role: string): CFSM {
             // Create state for after sub-protocol returns
             const returnState = createState(`after_${action.protocol}`);
 
-            // Build role mapping (for now, simplified: role → role)
-            // TODO: Proper role mapping from formal parameters to actual arguments
-            const roleMapping: Record<string, string> = {};
-            action.roleArguments.forEach((r, idx) => {
-              roleMapping[`role${idx}`] = r;
-            });
+            // Build role mapping from formal parameters to actual arguments
+            // Using protocol registry for formal correctness (Pabble, Hu et al. 2015)
+            let roleMapping: Record<string, string> = {};
+
+            if (protocolRegistry && protocolRegistry.has(action.protocol)) {
+              // Look up sub-protocol declaration to get formal parameters
+              const subProtocolDecl = protocolRegistry.resolve(action.protocol);
+              const formalParams = subProtocolDecl.roles.map(r => r.name);
+              const actualArgs = action.roleArguments;
+
+              // ================================================================
+              // Well-Formedness Validation (Pabble, Hu et al. 2015)
+              // ================================================================
+
+              // 1. Arity: |formal params| = |actual args|
+              if (formalParams.length !== actualArgs.length) {
+                throw new Error(
+                  `Role arity mismatch in sub-protocol '${action.protocol}': ` +
+                  `expected ${formalParams.length} roles, got ${actualArgs.length}`
+                );
+              }
+
+              // 2. Uniqueness: No role aliasing (each actual role used at most once)
+              const uniqueActuals = new Set(actualArgs);
+              if (uniqueActuals.size !== actualArgs.length) {
+                throw new Error(
+                  `Role aliasing detected in sub-protocol '${action.protocol}': ` +
+                  `roles must be distinct, got [${actualArgs.join(', ')}]`
+                );
+              }
+
+              // 3. Scope: All actual roles must exist in parent protocol
+              for (const actualRole of actualArgs) {
+                if (!cfg.roles.includes(actualRole)) {
+                  throw new Error(
+                    `Role '${actualRole}' not found in parent protocol. ` +
+                    `Available roles: [${cfg.roles.join(', ')}]`
+                  );
+                }
+              }
+
+              // Build formal substitution: σ(formalParam[i]) = actualArg[i]
+              formalParams.forEach((formal, idx) => {
+                roleMapping[formal] = actualArgs[idx];
+              });
+            } else {
+              // No registry available - use placeholder mapping for backward compatibility
+              action.roleArguments.forEach((r, idx) => {
+                roleMapping[`role${idx}`] = r;
+              });
+            }
 
             // Create sub-protocol call action
             const subProtocolAction: SubProtocolCallAction = {

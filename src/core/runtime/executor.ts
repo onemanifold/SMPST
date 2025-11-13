@@ -426,14 +426,38 @@ export class Executor {
       return { success: false, error };
     }
 
-    // Get this role's CFSM for the sub-protocol
-    const subProtocolCFSM = protocolCFSMs.get(this.role);
+    // Map this role to the sub-protocol's formal parameter using role mapping
+    // The roleMapping maps: formalRole → actualRole (e.g., {Client: 'Alice', Server: 'Bob'})
+    // We need to find which formal role corresponds to this executor's actual role
+    const formalRole = Object.entries(subProtocolAction.roleMapping)
+      .find(([formal, actual]) => actual === this.role)?.[0];
+
+    if (!formalRole) {
+      const error: ExecutionError = {
+        type: 'protocol-violation',
+        message: `Role '${this.role}' not found in role mapping for sub-protocol '${subProtocolAction.protocol}'`,
+        state: this.currentState,
+        details: {
+          protocol: subProtocolAction.protocol,
+          role: this.role,
+          roleMapping: subProtocolAction.roleMapping
+        },
+      };
+      return { success: false, error };
+    }
+
+    // Get the CFSM for the formal role in the sub-protocol
+    const subProtocolCFSM = protocolCFSMs.get(formalRole);
     if (!subProtocolCFSM) {
       const error: ExecutionError = {
         type: 'protocol-violation',
-        message: `Role '${this.role}' not found in sub-protocol '${subProtocolAction.protocol}'`,
+        message: `CFSM for role '${formalRole}' not found in sub-protocol '${subProtocolAction.protocol}'`,
         state: this.currentState,
-        details: { protocol: subProtocolAction.protocol, role: this.role },
+        details: {
+          protocol: subProtocolAction.protocol,
+          formalRole,
+          actualRole: this.role
+        },
       };
       return { success: false, error };
     }
