@@ -28,6 +28,6 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts']
   },
   optimizeDeps: {
-    include: ['monaco-editor']
+    include: ['monaco-editor', 'chevrotain', 'dexie', 'd3']
   }
 });
