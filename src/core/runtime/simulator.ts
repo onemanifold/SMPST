@@ -79,14 +79,18 @@ export class Simulator {
       e => e.getState().completed
     );
 
-    // Check for deadlock (all roles blocked but not completed)
-    const allBlocked = Array.from(this.executors.values()).every(
+    // Check for deadlock (all roles blocked or completed, AND no pending messages for blocked roles)
+    const allBlockedOrCompleted = Array.from(this.executors.values()).every(
       e => e.getState().blocked || e.getState().completed
     );
     const someNotCompleted = Array.from(this.executors.values()).some(
       e => !e.getState().completed
     );
-    const deadlocked = allBlocked && someNotCompleted;
+    // Check if any blocked role has messages available
+    const blockedRoleHasMessages = Array.from(this.executors.values()).some(
+      e => e.getState().blocked && e.getState().pendingMessages.length > 0
+    );
+    const deadlocked = allBlockedOrCompleted && someNotCompleted && !blockedRoleHasMessages;
 
     return {
       roles,

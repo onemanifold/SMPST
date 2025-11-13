@@ -51,29 +51,37 @@ describe('Debug Simulator', () => {
     console.log('  Overall completed:', initialState.completed);
     console.log('  Overall deadlocked:', initialState.deadlocked);
 
-    const result = await simulator.run();
+    // Run step by step to see what happens
+    console.log('\n=== Step-by-step execution ===');
+    for (let i = 0; i < 10; i++) {
+      const stepResult = await simulator.step();
+      const state = simulator.getState();
+      console.log(`\nStep ${i + 1}:`);
+      console.log('  Client:', state.roles.get('Client')?.currentState, '| completed:', state.roles.get('Client')?.completed, '| blocked:', state.roles.get('Client')?.blocked, '| pending msgs:', state.roles.get('Client')?.pendingMessages);
+      console.log('  Server:', state.roles.get('Server')?.currentState, '| completed:', state.roles.get('Server')?.completed, '| blocked:', state.roles.get('Server')?.blocked, '| pending msgs:', state.roles.get('Server')?.pendingMessages);
+      console.log('  Overall completed:', state.completed, '| deadlocked:', state.deadlocked);
 
-    console.log('\n=== Final result ===');
-    console.log('Result success:', result.success);
-    console.log('Result completed:', result.completed);
-    console.log('Result deadlocked:', result.deadlocked);
-    console.log('Result error:', result.error);
+      if (state.completed || state.deadlocked) {
+        console.log('  Stopping:', state.completed ? 'completed' : 'deadlocked');
+        break;
+      }
+    }
 
-    console.log('\nFinal state:');
-    console.log('  Client completed:', result.state.roles.get('Client')?.completed);
-    console.log('  Server completed:', result.state.roles.get('Server')?.completed);
-    console.log('  Overall completed:', result.state.completed);
-    console.log('  Overall deadlocked:', result.state.deadlocked);
-    console.log('  Step count:', result.state.step);
+    const finalState = simulator.getState();
+    console.log('\n=== Final state ===');
+    console.log('  Client completed:', finalState.roles.get('Client')?.completed);
+    console.log('  Server completed:', finalState.roles.get('Server')?.completed);
+    console.log('  Overall completed:', finalState.completed);
+    console.log('  Overall deadlocked:', finalState.deadlocked);
 
     console.log('\nClient state:');
-    const clientState = result.state.roles.get('Client');
+    const clientState = finalState.roles.get('Client');
     console.log('  Current state:', clientState?.currentState);
     console.log('  Blocked:', clientState?.blocked);
     console.log('  Error:', clientState?.error);
 
     console.log('\nServer state:');
-    const serverState = result.state.roles.get('Server');
+    const serverState = finalState.roles.get('Server');
     console.log('  Current state:', serverState?.currentState);
     console.log('  Blocked:', serverState?.blocked);
     console.log('  Error:', serverState?.error);
