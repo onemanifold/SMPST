@@ -118,7 +118,7 @@ export async function parseProtocol(content: string) {
   try {
     // Dynamic imports
     const { parse } = await import('../../core/parser/parser');
-    const { CFGBuilder } = await import('../../core/cfg/builder');
+    const { buildCFG } = await import('../../core/cfg/builder');
     const { verifyProtocol } = await import('../../core/verification/verifier');
     const { projectAll } = await import('../../core/projection/projector');
 
@@ -130,8 +130,7 @@ export async function parseProtocol(content: string) {
     }
 
     // 2. Build CFG
-    const builder = new CFGBuilder();
-    const cfg = builder.build(ast as any);
+    const cfg = buildCFG(ast as any);
 
     // 3. Verify protocol
     const result = verifyProtocol(cfg);
