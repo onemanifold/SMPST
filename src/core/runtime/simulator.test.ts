@@ -167,7 +167,10 @@ describe('Protocol Simulator - Choice', () => {
     const cfg = buildCFG(parse(source).declarations[0]);
     const { cfsms } = projectAll(cfg);
 
-    const simulator = new Simulator({ roles: cfsms });
+    const simulator = new Simulator({
+      roles: cfsms,
+      options: { recordTrace: true },
+    });
 
     const result = await simulator.run();
 
