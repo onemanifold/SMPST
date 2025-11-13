@@ -80,6 +80,7 @@ export class CFSMSimulator {
       maxBufferSize: config.maxBufferSize ?? 0, // 0 = unbounded
       recordTrace: config.recordTrace ?? false,
       transitionStrategy: config.transitionStrategy ?? 'first',
+      verifyFIFO: config.verifyFIFO ?? false,
     };
 
     // Initialize at initial state
@@ -347,7 +348,26 @@ export class CFSMSimulator {
       throw new Error(`No message from ${action.from} in buffer`);
     }
 
-    const msg = queue.shift()!;
+    const msg = queue[0]; // Peek at head without removing yet
+
+    // Verify FIFO property (Theorem 5.3, Honda 2016)
+    const violation = this.verifyFIFOProperty(action.from, msg);
+    if (violation) {
+      // FIFO violation detected - return error
+      return {
+        success: false,
+        error: {
+          type: 'fifo-violation',
+          message: violation.message,
+          stateId: this.currentState,
+          details: violation.details,
+        },
+        state: this.getState(),
+      };
+    }
+
+    // Dequeue message (now safe after verification)
+    queue.shift()!;
 
     // Emit receive event
     this.emit('receive', {
@@ -479,6 +499,10 @@ export class CFSMSimulator {
   /**
    * Deliver a message to this simulator's buffer
    * Called by distributed coordinator
+   *
+   * FIFO Semantics (Theorem 5.3, Honda 2016):
+   * Messages are enqueued using push() to maintain send order.
+   * The queue is FIFO: first message in is first message out.
    */
   deliverMessage(message: Message): void {
     const from = message.from;
@@ -491,7 +515,7 @@ export class CFSMSimulator {
       }
     }
 
-    // Add to buffer
+    // Add to buffer (maintains FIFO: push to end, shift from start)
     if (!this.buffer.channels.has(from)) {
       this.buffer.channels.set(from, []);
     }
@@ -523,6 +547,68 @@ export class CFSMSimulator {
       throw new Error(`Invalid transition index ${index} (${enabled.length} enabled)`);
     }
     this.pendingTransitionChoice = index;
+  }
+
+  /**
+   * Verify FIFO ordering property (Theorem 5.3, Honda et al. 2016)
+   *
+   * Theorem 5.3: For all messages (mᵢ, mⱼ) in queue Q_{p → q}:
+   *   i < j ⟹ receive(mᵢ) ≺ receive(mⱼ)
+   *
+   * Property: Messages from sender p to receiver q must be received
+   * in the exact order they were sent.
+   *
+   * @param channel - Sender role
+   * @param messageToReceive - Message about to be received
+   * @returns Violation details if FIFO violated, undefined otherwise
+   */
+  private verifyFIFOProperty(channel: string, messageToReceive: Message): { type: 'fifo-violation'; message: string; details: any } | undefined {
+    if (!this.config.verifyFIFO) {
+      return undefined; // Verification disabled
+    }
+
+    const queue = this.buffer.channels.get(channel);
+    if (!queue || queue.length === 0) {
+      return undefined; // Empty queue, no violation possible
+    }
+
+    // Theorem 5.3 verification:
+    // The message at the head of the queue (index 0) must be the oldest (lowest timestamp)
+    const headMessage = queue[0];
+
+    // Verify that headMessage is indeed the oldest in the queue
+    for (let i = 1; i < queue.length; i++) {
+      if (queue[i].timestamp < headMessage.timestamp) {
+        // VIOLATION: A newer message (at index i) has an earlier timestamp
+        // This violates FIFO ordering
+        return {
+          type: 'fifo-violation' as const,
+          message: `FIFO violation detected on channel ${channel}: Message at index ${i} (ts=${queue[i].timestamp}) sent before head message (ts=${headMessage.timestamp})`,
+          details: {
+            channel,
+            expectedMessage: queue[i], // Should have been at head
+            actualMessage: headMessage,
+            queueState: [...queue],
+          },
+        };
+      }
+    }
+
+    // Verify the message we're about to receive is indeed the head
+    if (messageToReceive.id !== headMessage.id) {
+      return {
+        type: 'fifo-violation' as const,
+        message: `FIFO violation: Attempting to receive message ${messageToReceive.id} but head of queue is ${headMessage.id}`,
+        details: {
+          channel,
+          expectedMessage: headMessage,
+          actualMessage: messageToReceive,
+          queueState: [...queue],
+        },
+      };
+    }
+
+    return undefined; // No violation
   }
 
   /**

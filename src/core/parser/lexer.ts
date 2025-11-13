@@ -27,6 +27,14 @@ export const Rec = createToken({ name: 'Rec', pattern: /rec/ });
 export const Continue = createToken({ name: 'Continue', pattern: /continue/ });
 export const Do = createToken({ name: 'Do', pattern: /do/ });
 
+// Future features
+export const Try = createToken({ name: 'Try', pattern: /try/ });
+export const Catch = createToken({ name: 'Catch', pattern: /catch/ });
+export const Throw = createToken({ name: 'Throw', pattern: /throw/ });
+export const Within = createToken({ name: 'Within', pattern: /within/ });
+export const Timeout = createToken({ name: 'Timeout', pattern: /timeout/ });
+export const Extends = createToken({ name: 'Extends', pattern: /extends/ });
+
 // ============================================================================
 // Operators and Punctuation
 // ============================================================================
@@ -56,6 +64,11 @@ export const Identifier = createToken({
 export const StringLiteral = createToken({
   name: 'StringLiteral',
   pattern: /"(?:[^"\\]|\\.)*"/,
+});
+
+export const NumberLiteral = createToken({
+  name: 'NumberLiteral',
+  pattern: /[0-9]+/,
 });
 
 // ============================================================================
@@ -108,6 +121,13 @@ export const allTokens = [
   Rec,
   Continue,
   Do,
+  // Future features
+  Try,
+  Catch,
+  Throw,
+  Within,
+  Timeout,
+  Extends,
 
   // Operators (must come before single-char tokens)
   Arrow,
@@ -125,6 +145,7 @@ export const allTokens = [
   RAngle,
 
   // Identifiers and literals
+  NumberLiteral,
   Identifier,
   StringLiteral,
 ];

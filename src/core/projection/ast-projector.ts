@@ -266,14 +266,11 @@ function projectMessageTransfer(
 
   // Case 1: Role is sender - project to Send
   if (from === role) {
-    // Handle multicast: if 'to' is an array, we send to multiple recipients
-    // For now, simplify by taking first recipient (or extend for multicast)
-    const recipient = Array.isArray(to) ? to[0] : to;
-
+    // Handle multicast: preserve the full recipient list (string or string[])
     const send: Send = {
       type: 'Send',
       message,
-      to: recipient,
+      to,  // Preserve multicast: string | string[]
       location: msg.location,
     };
     return send;
