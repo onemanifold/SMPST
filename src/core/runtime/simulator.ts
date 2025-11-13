@@ -258,10 +258,9 @@ export class Simulator {
   addObserver(observer: ExecutionObserver): void {
     this.observers.add(observer);
 
-    // Also add to all executors
+    // Propagate observer to all executors so they can fire events
     for (const executor of this.executors.values()) {
-      // Need to access private observers - for now, recreate executors
-      // In production, would expose addObserver on Executor
+      executor.addObserver(observer);
     }
   }
 
@@ -270,6 +269,11 @@ export class Simulator {
    */
   removeObserver(observer: ExecutionObserver): void {
     this.observers.delete(observer);
+
+    // Propagate removal to all executors
+    for (const executor of this.executors.values()) {
+      executor.removeObserver(observer);
+    }
   }
 
   /**
@@ -301,13 +305,7 @@ export class Simulator {
       },
     };
 
-    // Add to transport as message listener
-    this.transport.onMessage((message) => {
-      this.trace.events.push({
-        type: 'message-sent',
-        timestamp: Date.now(),
-        message,
-      });
-    });
+    // Register the observer so it gets propagated to all executors
+    this.addObserver(recorder);
   }
 }

@@ -439,6 +439,23 @@ export class Executor {
     this.completed = false;
     this.stepCount = 0;
   }
+
+  /**
+   * Add an observer to this executor
+   */
+  addObserver(observer: ExecutionObserver): void {
+    this.observers.push(observer);
+  }
+
+  /**
+   * Remove an observer from this executor
+   */
+  removeObserver(observer: ExecutionObserver): void {
+    const index = this.observers.indexOf(observer);
+    if (index !== -1) {
+      this.observers.splice(index, 1);
+    }
+  }
 }
 
 // Import ExecutionObserver type
