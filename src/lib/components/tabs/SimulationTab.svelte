@@ -1,5 +1,6 @@
 <script lang="ts">
   import CFSMNetwork from '../visualizations/CFSMNetwork.svelte';
+  import CFGSequence from '../visualizations/CFGSequence.svelte';
 
   let activeView: 'cfsm' | 'sequence' = 'cfsm';
 </script>
@@ -26,10 +27,7 @@
     {#if activeView === 'cfsm'}
       <CFSMNetwork />
     {:else}
-      <div class="placeholder">
-        <h3>📊 CFG Sequence Diagram</h3>
-        <p>Coming in Phase 4...</p>
-      </div>
+      <CFGSequence />
     {/if}
   </div>
 </div>
