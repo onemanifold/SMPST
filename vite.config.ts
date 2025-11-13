@@ -20,7 +20,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'dexie': ['dexie']
+        }
+      }
+    }
   },
   test: {
     globals: true,
@@ -28,6 +35,6 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts']
   },
   optimizeDeps: {
-    include: ['monaco-editor']
+    include: ['monaco-editor', 'chevrotain', 'dexie', 'd3']
   }
 });
