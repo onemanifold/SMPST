@@ -100,6 +100,8 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
   /**
    * Create a transition with an action
    * Actions live HERE, on transitions, following LTS semantics
+   *
+   * If no action is provided, creates a tau (epsilon/silent) transition
    */
   const createTransition = (
     from: string,
@@ -110,7 +112,8 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
       id: `t${transitionCounter++}`,
       from,
       to,
-      action: action!,
+      // If no action provided, use tau (epsilon transition)
+      action: action || { type: 'tau' },
     };
     transitions.push(transition);
     return transition;
@@ -313,7 +316,10 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
     if (visited.has(visitKey)) continue;
     visited.add(visitKey);
 
-    const cfgNode = cfg.nodes.find(n => n.id === cfgNodeId)!;
+    const cfgNode = cfg.nodes.find(n => n.id === cfgNodeId);
+    if (!cfgNode) {
+      throw new Error(`CFG node not found: ${cfgNodeId}. Available nodes: ${cfg.nodes.map(n => n.id).join(', ')}`);
+    }
 
     // Get outgoing edges (EXCLUDE continue edges - handle separately)
     let outgoingEdges = getOutgoingEdges(cfgNodeId).filter(
@@ -334,7 +340,10 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
     }
 
     for (const edge of outgoingEdges) {
-      const targetNode = cfg.nodes.find(n => n.id === edge.to)!;
+      const targetNode = cfg.nodes.find(n => n.id === edge.to);
+      if (!targetNode) {
+        throw new Error(`Target node not found for edge ${edge.id}: ${edge.from} -> ${edge.to}. Available nodes: ${cfg.nodes.map(n => n.id).join(', ')}`);
+      }
 
       // ========================================================================
       // Projection Rules (by node type)
