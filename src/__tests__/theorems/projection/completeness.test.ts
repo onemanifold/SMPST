@@ -35,6 +35,45 @@ import { buildCFG } from '../../../core/cfg/builder';
 import { projectAll } from '../../../core/projection/projector';
 import { isActionNode, isMessageAction } from '../../../core/cfg/types';
 
+// Helper: Count non-tau actions in CFSM (actions live on transitions in LTS)
+const countActions = (cfsm: any) =>
+  cfsm.transitions.filter((t: any) => t.action.type !== 'tau').length;
+
+// Helper: Get all send/receive transitions
+const getMessageTransitions = (cfsm: any) =>
+  cfsm.transitions.filter((t: any) => t.action.type === 'send' || t.action.type === 'receive');
+
+// Helper: Check if CFSM has choice (state with multiple outgoing transitions)
+const hasChoice = (cfsm: any) => {
+  const outgoingCounts = new Map<string, number>();
+  for (const t of cfsm.transitions) {
+    outgoingCounts.set(t.from, (outgoingCounts.get(t.from) || 0) + 1);
+  }
+  return Array.from(outgoingCounts.values()).some(count => count > 1);
+};
+
+// Helper: Check if CFSM has recursion (transitions that loop back to earlier states)
+const hasRecursion = (cfsm: any) => {
+  const stateOrder = new Map<string, number>();
+  cfsm.states.forEach((s: string, i: number) => stateOrder.set(s, i));
+  return cfsm.transitions.some((t: any) => {
+    const fromOrder = stateOrder.get(t.from) || 0;
+    const toOrder = stateOrder.get(t.to) || 0;
+    return toOrder <= fromOrder && t.action.type !== 'tau'; // Back-edge with action
+  });
+};
+
+// Helper: Count choice branches (states with multiple non-tau outgoing transitions)
+const countChoiceBranches = (cfsm: any) => {
+  const branchCounts = new Map<string, number>();
+  for (const t of cfsm.transitions) {
+    if (t.action.type !== 'tau') {
+      branchCounts.set(t.from, (branchCounts.get(t.from) || 0) + 1);
+    }
+  }
+  return Array.from(branchCounts.values()).reduce((sum, count) => sum + (count > 1 ? count : 0), 0);
+};
+
 describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
   /**
    * PROOF OBLIGATION 1: Message actions appear in both sender and receiver projections
@@ -69,17 +108,18 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
         const sender = action.from;
         const receiver = typeof action.to === 'string' ? action.to : action.to[0];
 
-        // Action must appear in sender's projection
-        const senderCFG = projections.cfsms.get(sender);
-        expect(senderCFG).toBeDefined();
+        // Action must appear in sender's projection (CFSM/LTS semantics)
+        const senderCFSM = projections.cfsms.get(sender);
+        expect(senderCFSM).toBeDefined();
 
-        // Action must appear in receiver's projection
-        const receiverCFG = projections.cfsms.get(receiver);
-        expect(receiverCFG).toBeDefined();
+        // Action must appear in receiver's projection (CFSM/LTS semantics)
+        const receiverCFSM = projections.cfsms.get(receiver);
+        expect(receiverCFSM).toBeDefined();
 
-        // Both projections should have action nodes
-        const senderActions = senderCFG!.nodes.filter(isActionNode);
-        const receiverActions = receiverCFG!.nodes.filter(isActionNode);
+        // Both projections should have transitions with send/receive actions
+        // In CFSM, actions live on TRANSITIONS, not nodes
+        const senderActions = senderCFSM!.transitions.filter(t => t.action.type === 'send');
+        const receiverActions = receiverCFSM!.transitions.filter(t => t.action.type === 'receive');
 
         expect(senderActions.length).toBeGreaterThan(0);
         expect(receiverActions.length).toBeGreaterThan(0);
@@ -106,14 +146,17 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
 
       const projections = projectAll(cfg);
 
-      // Verify each role has actions
-      expect(projections.cfsms.get('A')!.nodes.filter(isActionNode)).toHaveLength(2); // send M1, receive M3
-      expect(projections.cfsms.get('B')!.nodes.filter(isActionNode)).toHaveLength(2); // receive M1, send M2
-      expect(projections.cfsms.get('C')!.nodes.filter(isActionNode)).toHaveLength(2); // receive M2, send M3
+      // Verify each role has actions (CFSM semantics: count non-tau transitions)
+      const countActions = (cfsm: any) =>
+        cfsm.transitions.filter((t: any) => t.action.type !== 'tau').length;
+
+      expect(countActions(projections.cfsms.get('A')!)).toBe(2); // send M1, receive M3
+      expect(countActions(projections.cfsms.get('B')!)).toBe(2); // receive M1, send M2
+      expect(countActions(projections.cfsms.get('C')!)).toBe(2); // receive M2, send M3
 
       // Total: 3 global actions × 2 (send+receive) = 6 local actions
       const totalLocalActions = Array.from(projections.cfsms.values())
-        .reduce((sum, cfsm) => sum + cfsm.nodes.filter(isActionNode).length, 0);
+        .reduce((sum, cfsm) => sum + countActions(cfsm), 0);
 
       expect(totalLocalActions).toBe(6);
     });
@@ -130,16 +173,16 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
 
       const projections = projectAll(cfg);
 
-      // Coordinator sends
-      const coordActions = projections.cfsms.get('Coordinator')!.nodes.filter(isActionNode);
-      expect(coordActions.length).toBeGreaterThan(0);
+      // Coordinator sends (CFSM semantics: check transitions)
+      const coordCFSM = projections.cfsms.get('Coordinator')!;
+      expect(countActions(coordCFSM)).toBeGreaterThan(0);
 
-      // Both workers receive
-      const w1Actions = projections.cfsms.get('W1')!.nodes.filter(isActionNode);
-      const w2Actions = projections.cfsms.get('W2')!.nodes.filter(isActionNode);
+      // Both workers receive (CFSM semantics: check transitions)
+      const w1CFSM = projections.cfsms.get('W1')!;
+      const w2CFSM = projections.cfsms.get('W2')!;
 
-      expect(w1Actions.length).toBeGreaterThan(0);
-      expect(w2Actions.length).toBeGreaterThan(0);
+      expect(countActions(w1CFSM)).toBeGreaterThan(0);
+      expect(countActions(w2CFSM)).toBeGreaterThan(0);
     });
   });
 
@@ -172,15 +215,15 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
       expect(projections.cfsms.has('Client')).toBe(true);
       expect(projections.cfsms.has('Server')).toBe(true);
 
-      // Client projection must have branch node (internal choice)
-      const clientCFG = projections.cfsms.get('Client')!;
-      const clientBranches = clientCFG.nodes.filter(n => n.type === 'branch');
-      expect(clientBranches.length).toBeGreaterThan(0);
+      // Client projection must have choice (CFSM semantics: state with multiple outgoing transitions)
+      const clientCFSM = projections.cfsms.get('Client')!;
+      expect(hasChoice(clientCFSM)).toBe(true);
+      expect(countChoiceBranches(clientCFSM)).toBeGreaterThan(0);
 
-      // Server projection must have branch node (external choice)
-      const serverCFG = projections.cfsms.get('Server')!;
-      const serverBranches = serverCFG.nodes.filter(n => n.type === 'branch');
-      expect(serverBranches.length).toBeGreaterThan(0);
+      // Server projection must have choice (CFSM semantics: external choice)
+      const serverCFSM = projections.cfsms.get('Server')!;
+      expect(hasChoice(serverCFSM)).toBe(true);
+      expect(countChoiceBranches(serverCFSM)).toBeGreaterThan(0);
     });
 
     it('proves: nested choices preserve all actions', () => {
@@ -206,16 +249,13 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
       const globalActions = cfg.nodes.filter(isActionNode);
       const projections = projectAll(cfg);
 
-      // All global actions must appear in projections
+      // All global actions must appear in projections (CFSM semantics)
       const projA = projections.cfsms.get('A')!;
       const projB = projections.cfsms.get('B')!;
 
-      const actionsA = projA.nodes.filter(isActionNode);
-      const actionsB = projB.nodes.filter(isActionNode);
-
-      // Both projections should have multiple actions
-      expect(actionsA.length).toBeGreaterThan(2);
-      expect(actionsB.length).toBeGreaterThan(2);
+      // Both projections should have multiple actions (count transitions)
+      expect(countActions(projA)).toBeGreaterThan(2);
+      expect(countActions(projB)).toBeGreaterThan(2);
     });
   });
 
@@ -241,19 +281,19 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
 
       const projections = projectAll(cfg);
 
-      // A and B participate in first branch
+      // A and B participate in first branch (CFSM semantics: count transitions)
       const projA = projections.cfsms.get('A')!;
       const projB = projections.cfsms.get('B')!;
 
-      expect(projA.nodes.filter(isActionNode).length).toBe(2);
-      expect(projB.nodes.filter(isActionNode).length).toBe(2);
+      expect(countActions(projA)).toBe(2);
+      expect(countActions(projB)).toBe(2);
 
-      // C and D participate in second branch
+      // C and D participate in second branch (CFSM semantics: count transitions)
       const projC = projections.cfsms.get('C')!;
       const projD = projections.cfsms.get('D')!;
 
-      expect(projC.nodes.filter(isActionNode).length).toBe(2);
-      expect(projD.nodes.filter(isActionNode).length).toBe(2);
+      expect(countActions(projC)).toBe(2);
+      expect(countActions(projD)).toBe(2);
     });
   });
 
@@ -282,24 +322,21 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
 
       const projections = projectAll(cfg);
 
-      // Both roles must have projections with recursion
+      // Both roles must have projections with recursion (CFSM semantics)
       const projClient = projections.cfsms.get('Client')!;
       const projServer = projections.cfsms.get('Server')!;
 
-      // Client should have recursive node
-      const clientRecursive = projClient.nodes.filter(n => n.type === 'recursive');
-      expect(clientRecursive.length).toBeGreaterThan(0);
+      // Both should have actions (recursion means they loop back)
+      expect(countActions(projClient)).toBeGreaterThan(0);
+      expect(countActions(projServer)).toBeGreaterThan(0);
 
-      // Server should have recursive node
-      const serverRecursive = projServer.nodes.filter(n => n.type === 'recursive');
-      expect(serverRecursive.length).toBeGreaterThan(0);
+      // Both should have choice (from the choice at Client and its projection)
+      expect(hasChoice(projClient)).toBe(true);
+      expect(hasChoice(projServer)).toBe(true);
 
-      // Both should have continue edges
-      const clientContinue = projClient.edges.filter(e => e.edgeType === 'continue');
-      const serverContinue = projServer.edges.filter(e => e.edgeType === 'continue');
-
-      expect(clientContinue.length).toBeGreaterThan(0);
-      expect(serverContinue.length).toBeGreaterThan(0);
+      // Both should have recursive structure (back-edges in transitions)
+      expect(hasRecursion(projClient)).toBe(true);
+      expect(hasRecursion(projServer)).toBe(true);
     });
   });
 
@@ -330,7 +367,7 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
       const globalActions = cfg.nodes.filter(isActionNode);
       const projections = projectAll(cfg);
 
-      // Every global action must appear in projections
+      // Every global action must appear in projections (CFSM semantics)
       for (const node of globalActions) {
         if (!isMessageAction(node.action)) continue;
 
@@ -338,16 +375,16 @@ describe('Theorem 4.7: Projection Completeness (Honda et al. 2016)', () => {
         const sender = action.from;
         const receivers = typeof action.to === 'string' ? [action.to] : action.to;
 
-        // Sender projection must exist and have actions
+        // Sender projection must exist and have actions (count transitions)
         const senderProj = projections.cfsms.get(sender);
         expect(senderProj).toBeDefined();
-        expect(senderProj!.nodes.filter(isActionNode).length).toBeGreaterThan(0);
+        expect(countActions(senderProj!)).toBeGreaterThan(0);
 
-        // Each receiver projection must exist and have actions
+        // Each receiver projection must exist and have actions (count transitions)
         for (const receiver of receivers) {
           const receiverProj = projections.cfsms.get(receiver);
           expect(receiverProj).toBeDefined();
-          expect(receiverProj!.nodes.filter(isActionNode).length).toBeGreaterThan(0);
+          expect(countActions(receiverProj!)).toBeGreaterThan(0);
         }
       }
     });

@@ -33,6 +33,45 @@ import { buildCFG } from '../../../core/cfg/builder';
 import { projectAll } from '../../../core/projection/projector';
 import { isActionNode, isMessageAction } from '../../../core/cfg/types';
 
+// Helper: Count non-tau actions in CFSM (actions live on transitions in LTS)
+const countActions = (cfsm: any) =>
+  cfsm.transitions.filter((t: any) => t.action.type !== 'tau').length;
+
+// Helper: Get all send/receive transitions
+const getMessageTransitions = (cfsm: any) =>
+  cfsm.transitions.filter((t: any) => t.action.type === 'send' || t.action.type === 'receive');
+
+// Helper: Check if CFSM has choice (state with multiple outgoing transitions)
+const hasChoice = (cfsm: any) => {
+  const outgoingCounts = new Map<string, number>();
+  for (const t of cfsm.transitions) {
+    outgoingCounts.set(t.from, (outgoingCounts.get(t.from) || 0) + 1);
+  }
+  return Array.from(outgoingCounts.values()).some(count => count > 1);
+};
+
+// Helper: Check if CFSM has recursion (transitions that loop back to earlier states)
+const hasRecursion = (cfsm: any) => {
+  const stateOrder = new Map<string, number>();
+  cfsm.states.forEach((s: string, i: number) => stateOrder.set(s, i));
+  return cfsm.transitions.some((t: any) => {
+    const fromOrder = stateOrder.get(t.from) || 0;
+    const toOrder = stateOrder.get(t.to) || 0;
+    return toOrder <= fromOrder && t.action.type !== 'tau'; // Back-edge with action
+  });
+};
+
+// Helper: Count choice branches (states with multiple non-tau outgoing transitions)
+const countChoiceBranches = (cfsm: any) => {
+  const branchCounts = new Map<string, number>();
+  for (const t of cfsm.transitions) {
+    if (t.action.type !== 'tau') {
+      branchCounts.set(t.from, (branchCounts.get(t.from) || 0) + 1);
+    }
+  }
+  return Array.from(branchCounts.values()).reduce((sum, count) => sum + (count > 1 ? count : 0), 0);
+};
+
 describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
   /**
    * PROOF OBLIGATION 1: Send/Receive Duality
@@ -53,13 +92,10 @@ describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
       const projA = projections.cfsms.get('A')!;
       const projB = projections.cfsms.get('B')!;
 
-      const actionsA = projA.nodes.filter(isActionNode);
-      const actionsB = projB.nodes.filter(isActionNode);
-
-      // A: send Request, receive Response
-      // B: receive Request, send Response
-      expect(actionsA.length).toBe(2);
-      expect(actionsB.length).toBe(2);
+      // A: send Request, receive Response (CFSM semantics: count transitions)
+      // B: receive Request, send Response (CFSM semantics: count transitions)
+      expect(countActions(projA)).toBe(2);
+      expect(countActions(projB)).toBe(2);
 
       // Verify duality: complementary actions
       // This is implicit in the projection - if A sends to B, B receives from A
@@ -78,10 +114,10 @@ describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const projections = projectAll(cfg);
 
-      // Each global message appears twice: once as send, once as receive
+      // Each global message appears twice: once as send, once as receive (CFSM semantics)
       const globalActions = cfg.nodes.filter(isActionNode).length;
       const localActionsTotal = Array.from(projections.cfsms.values())
-        .reduce((sum, cfsm) => sum + cfsm.nodes.filter(isActionNode).length, 0);
+        .reduce((sum, cfsm) => sum + countActions(cfsm), 0);
 
       expect(localActionsTotal).toBe(globalActions * 2);
     });
@@ -97,16 +133,16 @@ describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const projections = projectAll(cfg);
 
-      // Sender has 1 send action (to multiple receivers)
-      const senderActions = projections.cfsms.get('Sender')!.nodes.filter(isActionNode);
-      expect(senderActions.length).toBeGreaterThan(0);
+      // Sender has 1 send action (to multiple receivers) (CFSM semantics)
+      const senderCFSM = projections.cfsms.get('Sender')!;
+      expect(countActions(senderCFSM)).toBeGreaterThan(0);
 
-      // Each receiver has 1 receive action
-      const r1Actions = projections.cfsms.get('R1')!.nodes.filter(isActionNode);
-      const r2Actions = projections.cfsms.get('R2')!.nodes.filter(isActionNode);
+      // Each receiver has 1 receive action (CFSM semantics)
+      const r1CFSM = projections.cfsms.get('R1')!;
+      const r2CFSM = projections.cfsms.get('R2')!;
 
-      expect(r1Actions.length).toBeGreaterThan(0);
-      expect(r2Actions.length).toBeGreaterThan(0);
+      expect(countActions(r1CFSM)).toBeGreaterThan(0);
+      expect(countActions(r2CFSM)).toBeGreaterThan(0);
     });
   });
 
@@ -132,19 +168,18 @@ describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
       const projDecider = projections.cfsms.get('Decider')!;
       const projReactor = projections.cfsms.get('Reactor')!;
 
-      // Decider has internal choice (branch node)
-      const deciderBranches = projDecider.nodes.filter(n => n.type === 'branch');
-      expect(deciderBranches.length).toBeGreaterThan(0);
+      // Decider has internal choice (CFSM semantics: state with multiple outgoing transitions)
+      expect(hasChoice(projDecider)).toBe(true);
+      const deciderBranches = countChoiceBranches(projDecider);
+      expect(deciderBranches).toBeGreaterThan(0);
 
-      // Reactor has external choice (also branch node, but receiving)
-      const reactorBranches = projReactor.nodes.filter(n => n.type === 'branch');
-      expect(reactorBranches.length).toBeGreaterThan(0);
+      // Reactor has external choice (CFSM semantics: state with multiple outgoing transitions)
+      expect(hasChoice(projReactor)).toBe(true);
+      const reactorBranches = countChoiceBranches(projReactor);
+      expect(reactorBranches).toBeGreaterThan(0);
 
       // Number of branches should match
-      const deciderBranchEdges = projDecider.edges.filter(e => e.edgeType === 'branch');
-      const reactorBranchEdges = projReactor.edges.filter(e => e.edgeType === 'branch');
-
-      expect(deciderBranchEdges.length).toBe(reactorBranchEdges.length);
+      expect(deciderBranches).toBe(reactorBranches);
     });
 
     it('proves: n-way choice duality', () => {
@@ -167,12 +202,12 @@ describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
       const projC = projections.cfsms.get('C')!;
       const projS = projections.cfsms.get('S')!;
 
-      // Both should have 3 branches
-      const cBranches = projC.edges.filter(e => e.edgeType === 'branch');
-      const sBranches = projS.edges.filter(e => e.edgeType === 'branch');
+      // Both should have 3 branches (CFSM semantics: count choice branches)
+      const cBranches = countChoiceBranches(projC);
+      const sBranches = countChoiceBranches(projS);
 
-      expect(cBranches.length).toBe(sBranches.length);
-      expect(cBranches.length).toBe(3);
+      expect(cBranches).toBe(sBranches);
+      expect(cBranches).toBe(3);
     });
   });
 
@@ -197,21 +232,21 @@ describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const projections = projectAll(cfg);
 
-      // Each pair should have dual actions
+      // Each pair should have dual actions (CFSM semantics: count transitions)
       const projA = projections.cfsms.get('A')!;
       const projB = projections.cfsms.get('B')!;
 
       // A sends, then receives
-      expect(projA.nodes.filter(isActionNode).length).toBe(2);
+      expect(countActions(projA)).toBe(2);
       // B receives, then sends
-      expect(projB.nodes.filter(isActionNode).length).toBe(2);
+      expect(countActions(projB)).toBe(2);
 
       // Same for C-D pair
       const projC = projections.cfsms.get('C')!;
       const projD = projections.cfsms.get('D')!;
 
-      expect(projC.nodes.filter(isActionNode).length).toBe(2);
-      expect(projD.nodes.filter(isActionNode).length).toBe(2);
+      expect(countActions(projC)).toBe(2);
+      expect(countActions(projD)).toBe(2);
     });
   });
 
@@ -242,19 +277,17 @@ describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
       const projClient = projections.cfsms.get('Client')!;
       const projServer = projections.cfsms.get('Server')!;
 
-      // Both should have recursive nodes
-      const clientRecursive = projClient.nodes.filter(n => n.type === 'recursive');
-      const serverRecursive = projServer.nodes.filter(n => n.type === 'recursive');
+      // Both should have actions (CFSM semantics)
+      expect(countActions(projClient)).toBeGreaterThan(0);
+      expect(countActions(projServer)).toBeGreaterThan(0);
 
-      expect(clientRecursive.length).toBeGreaterThan(0);
-      expect(serverRecursive.length).toBeGreaterThan(0);
+      // Both should have choice (from the choice at Client and its projection)
+      expect(hasChoice(projClient)).toBe(true);
+      expect(hasChoice(projServer)).toBe(true);
 
-      // Both should have continue edges (duality in recursion)
-      const clientContinue = projClient.edges.filter(e => e.edgeType === 'continue');
-      const serverContinue = projServer.edges.filter(e => e.edgeType === 'continue');
-
-      expect(clientContinue.length).toBeGreaterThan(0);
-      expect(serverContinue.length).toBeGreaterThan(0);
+      // Both should have recursive structure (back-edges in transitions)
+      expect(hasRecursion(projClient)).toBe(true);
+      expect(hasRecursion(projServer)).toBe(true);
     });
   });
 
@@ -282,20 +315,17 @@ describe('Theorem 5.3: Projection Composability (Honda et al. 2016)', () => {
       const projClient = projections.cfsms.get('Client')!;
       const projServer = projections.cfsms.get('Server')!;
 
-      // Client makes choice (2 branches)
-      const clientBranches = projClient.edges.filter(e => e.edgeType === 'branch');
-      expect(clientBranches.length).toBe(2);
+      // Client makes choice (2 branches) (CFSM semantics)
+      const clientBranches = countChoiceBranches(projClient);
+      expect(clientBranches).toBe(2);
 
-      // Server reacts to choice (2 branches)
-      const serverBranches = projServer.edges.filter(e => e.edgeType === 'branch');
-      expect(serverBranches.length).toBe(2);
+      // Server reacts to choice (2 branches) (CFSM semantics)
+      const serverBranches = countChoiceBranches(projServer);
+      expect(serverBranches).toBe(2);
 
-      // Both should have multiple actions
-      const clientActions = projClient.nodes.filter(isActionNode);
-      const serverActions = projServer.nodes.filter(isActionNode);
-
-      expect(clientActions.length).toBeGreaterThan(2);
-      expect(serverActions.length).toBeGreaterThan(2);
+      // Both should have multiple actions (CFSM semantics: count transitions)
+      expect(countActions(projClient)).toBeGreaterThan(2);
+      expect(countActions(projServer)).toBeGreaterThan(2);
     });
   });
 
