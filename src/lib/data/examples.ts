@@ -16,9 +16,9 @@ export const protocolExamples: ProtocolExample[] = [
     name: 'Request-Response',
     description: 'Simple client-server request-response pattern',
     category: 'Basic',
-    code: `global protocol RequestResponse(role Client, role Server) {
-  Request(String) from Client to Server;
-  Response(Int) from Server to Client;
+    code: `protocol RequestResponse(role Client, role Server) {
+  Client -> Server: Request(String);
+  Server -> Client: Response(Int);
 }`
   },
   {
@@ -26,17 +26,17 @@ export const protocolExamples: ProtocolExample[] = [
     name: 'Two-Buyer Protocol',
     description: 'Classic two-buyer coordination protocol',
     category: 'Classic',
-    code: `global protocol TwoBuyer(role Buyer1, role Buyer2, role Seller) {
-  BookQuote(String) from Buyer1 to Seller;
-  Quote(Int) from Seller to Buyer1;
-  Quote(Int) from Seller to Buyer2;
-  Share(Int) from Buyer1 to Buyer2;
+    code: `protocol TwoBuyer(role Buyer1, role Buyer2, role Seller) {
+  Buyer1 -> Seller: BookQuote(String);
+  Seller -> Buyer1: Quote(Int);
+  Seller -> Buyer2: Quote(Int);
+  Buyer1 -> Buyer2: Share(Int);
   choice at Buyer2 {
-    Buy() from Buyer2 to Seller;
-    Buy() from Buyer2 to Buyer1;
+    Buyer2 -> Seller: Buy();
+    Buyer2 -> Buyer1: Buy();
   } or {
-    Quit() from Buyer2 to Seller;
-    Quit() from Buyer2 to Buyer1;
+    Buyer2 -> Seller: Quit();
+    Buyer2 -> Buyer1: Quit();
   }
 }`
   },
@@ -45,13 +45,13 @@ export const protocolExamples: ProtocolExample[] = [
     name: 'Three-Party Coordination',
     description: 'Coordinator pattern with three roles',
     category: 'Basic',
-    code: `global protocol ThreeParty(role A, role B, role C) {
-  Init(String) from A to B;
-  Init(String) from A to C;
-  Ack() from B to A;
-  Ack() from C to A;
-  Done() from A to B;
-  Done() from A to C;
+    code: `protocol ThreeParty(role A, role B, role C) {
+  A -> B: Init(String);
+  A -> C: Init(String);
+  B -> A: Ack();
+  C -> A: Ack();
+  A -> B: Done();
+  A -> C: Done();
 }`
   },
   {
@@ -59,13 +59,13 @@ export const protocolExamples: ProtocolExample[] = [
     name: 'Streaming Protocol',
     description: 'Producer-consumer streaming with recursion',
     category: 'Advanced',
-    code: `global protocol Streaming(role Producer, role Consumer) {
+    code: `protocol Streaming(role Producer, role Consumer) {
   rec Loop {
     choice at Producer {
-      Data(String) from Producer to Consumer;
+      Producer -> Consumer: Data(String);
       continue Loop;
     } or {
-      End() from Producer to Consumer;
+      Producer -> Consumer: End();
     }
   }
 }`
@@ -75,13 +75,13 @@ export const protocolExamples: ProtocolExample[] = [
     name: 'Parallel Branches',
     description: 'Independent parallel communication branches',
     category: 'Advanced',
-    code: `global protocol Parallel(role A, role B, role C) {
+    code: `protocol Parallel(role A, role B, role C) {
   par {
-    Msg1(Int) from A to B;
+    A -> B: Msg1(Int);
   } and {
-    Msg2(String) from A to C;
+    A -> C: Msg2(String);
   }
-  Sync() from B to C;
+  B -> C: Sync();
 }`
   },
   {
@@ -89,17 +89,17 @@ export const protocolExamples: ProtocolExample[] = [
     name: 'Nested Choice',
     description: 'Protocol with nested choice constructs',
     category: 'Advanced',
-    code: `global protocol NestedChoice(role Client, role Server) {
-  Request(String) from Client to Server;
+    code: `protocol NestedChoice(role Client, role Server) {
+  Client -> Server: Request(String);
   choice at Server {
-    Success(Int) from Server to Client;
+    Server -> Client: Success(Int);
     choice at Client {
-      Continue() from Client to Server;
+      Client -> Server: Continue();
     } or {
-      Stop() from Client to Server;
+      Client -> Server: Stop();
     }
   } or {
-    Error(String) from Server to Client;
+    Server -> Client: Error(String);
   }
 }`
   },
@@ -108,26 +108,26 @@ export const protocolExamples: ProtocolExample[] = [
     name: 'Two-Phase Commit',
     description: 'Distributed transaction coordination',
     category: 'Classic',
-    code: `global protocol TwoPhaseCommit(role Coordinator, role Participant1, role Participant2) {
-  Prepare() from Coordinator to Participant1;
-  Prepare() from Coordinator to Participant2;
+    code: `protocol TwoPhaseCommit(role Coordinator, role Participant1, role Participant2) {
+  Coordinator -> Participant1: Prepare();
+  Coordinator -> Participant2: Prepare();
 
   par {
     choice at Participant1 {
-      Vote(Boolean) from Participant1 to Coordinator;
+      Participant1 -> Coordinator: Vote(Boolean);
     }
   } and {
     choice at Participant2 {
-      Vote(Boolean) from Participant2 to Coordinator;
+      Participant2 -> Coordinator: Vote(Boolean);
     }
   }
 
   choice at Coordinator {
-    Commit() from Coordinator to Participant1;
-    Commit() from Coordinator to Participant2;
+    Coordinator -> Participant1: Commit();
+    Coordinator -> Participant2: Commit();
   } or {
-    Abort() from Coordinator to Participant1;
-    Abort() from Coordinator to Participant2;
+    Coordinator -> Participant1: Abort();
+    Coordinator -> Participant2: Abort();
   }
 }`
   },
@@ -136,14 +136,14 @@ export const protocolExamples: ProtocolExample[] = [
     name: 'Conditional Recursion',
     description: 'Recursion with conditional exit',
     category: 'Advanced',
-    code: `global protocol ConditionalLoop(role Client, role Server) {
+    code: `protocol ConditionalLoop(role Client, role Server) {
   rec Loop {
-    Request(Int) from Client to Server;
+    Client -> Server: Request(Int);
     choice at Server {
-      Continue(String) from Server to Client;
+      Server -> Client: Continue(String);
       continue Loop;
     } or {
-      Stop() from Server to Client;
+      Server -> Client: Stop();
     }
   }
 }`

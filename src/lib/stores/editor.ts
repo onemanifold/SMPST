@@ -125,12 +125,21 @@ export async function parseProtocol(content: string) {
     // 1. Parse Scribble
     const ast = parse(content);
 
-    if (!ast || ast.type !== 'GlobalProtocol') {
-      throw new Error('Expected global protocol');
+    if (!ast || ast.type !== 'Module') {
+      throw new Error('Expected module from parser');
+    }
+
+    if (!ast.declarations || ast.declarations.length === 0) {
+      throw new Error('No protocol declarations found');
+    }
+
+    const protocol = ast.declarations[0];
+    if (protocol.type !== 'GlobalProtocolDeclaration') {
+      throw new Error('Expected global protocol declaration');
     }
 
     // 2. Build CFG
-    const cfg = buildCFG(ast as any);
+    const cfg = buildCFG(protocol);
 
     // 3. Verify protocol
     const result = verifyProtocol(cfg);
