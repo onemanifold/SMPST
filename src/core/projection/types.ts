@@ -126,6 +126,10 @@ export interface CFSMTransition {
  * - Σ = {send, receive, tau, choice} × message labels
  * - c₀ = initialState
  * - Δ = transitions (transition relation)
+ *
+ * NOTE: CFSMs also expose a CFG-compatible view (nodes/edges) for theorem testing.
+ * This allows tests to work with both LTS semantics (states/transitions) and
+ * CFG semantics (nodes/edges).
  */
 export interface CFSM {
   role: string;              // The role this CFSM represents
@@ -133,6 +137,11 @@ export interface CFSM {
   transitions: CFSMTransition[];  // Δ: transition relation with actions
   initialState: string;      // c₀: initial state ID
   terminalStates: string[];  // Final states (subset of C)
+
+  // CFG-compatible view for theorem testing
+  // These are computed from states/transitions to provide a node-based view
+  nodes?: any[];             // CFG nodes (states + action nodes)
+  edges?: any[];             // CFG edges
 
   metadata?: {
     sourceProtocol?: string;

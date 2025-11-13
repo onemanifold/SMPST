@@ -664,6 +664,80 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
 }
 
 /**
+ * Add CFG-compatible view to CFSM for theorem testing
+ *
+ * Converts LTS representation (states + transitions with actions)
+ * to CFG representation (nodes + edges).
+ *
+ * Transformation:
+ * - LTS states → CFG state nodes
+ * - LTS transitions with actions → CFG action nodes + edges
+ * - Tau transitions → direct CFG edges
+ */
+function addCFGView(cfsm: CFSM): void {
+  const nodes: any[] = [];
+  const edges: any[] = [];
+  let actionNodeCounter = 0;
+
+  // Convert states to nodes
+  for (const state of cfsm.states) {
+    const nodeType = state.id === cfsm.initialState ? 'initial'
+      : cfsm.terminalStates.includes(state.id) ? 'terminal'
+      : 'state';
+
+    nodes.push({
+      id: state.id,
+      type: nodeType,
+      label: state.label,
+    });
+  }
+
+  // Convert transitions to nodes/edges
+  for (const transition of cfsm.transitions) {
+    const action = transition.action;
+
+    if (action.type === 'tau') {
+      // Tau transitions become direct edges
+      edges.push({
+        id: transition.id,
+        from: transition.from,
+        to: transition.to,
+        edgeType: 'sequence',
+      });
+    } else {
+      // Non-tau transitions become action node + 2 edges
+      const actionNodeId = `action_${actionNodeCounter++}`;
+
+      // Create action node
+      nodes.push({
+        id: actionNodeId,
+        type: 'action',
+        action: action,
+      });
+
+      // Edge from source state to action node
+      edges.push({
+        id: `${transition.id}_in`,
+        from: transition.from,
+        to: actionNodeId,
+        edgeType: 'sequence',
+      });
+
+      // Edge from action node to target state
+      edges.push({
+        id: `${transition.id}_out`,
+        from: actionNodeId,
+        to: transition.to,
+        edgeType: 'sequence',
+      });
+    }
+  }
+
+  cfsm.nodes = nodes;
+  cfsm.edges = edges;
+}
+
+/**
  * Project a CFG to all roles' CFSMs
  *
  * @param cfg - Global CFG
@@ -676,6 +750,8 @@ export function projectAll(cfg: CFG): ProjectionResult {
   for (const role of cfg.roles) {
     try {
       const cfsm = project(cfg, role);
+      // Add CFG-compatible view for theorem testing
+      addCFGView(cfsm);
       cfsms.set(role, cfsm);
     } catch (error) {
       errors.push({
