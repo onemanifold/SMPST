@@ -56,10 +56,10 @@
   .pane-header {
     position: absolute;
     top: 0;
-    left: 0;
+    right: 0;
     padding: 4px 12px;
     background: rgba(45, 45, 45, 0.5);
-    border-bottom-right-radius: 4px;
+    border-bottom-left-radius: 4px;
     font-weight: 500;
     color: #ccc;
     font-size: 11px;
