@@ -1,10 +1,16 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import path from 'path';
+import monacoEditorPluginModule from 'vite-plugin-monaco-editor';
+
+const monacoEditorPlugin = (monacoEditorPluginModule as any).default || monacoEditorPluginModule;
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [
+    svelte(),
+    monacoEditorPlugin({})
+  ],
   base: '/SMPST/',
   resolve: {
     alias: {
@@ -20,5 +26,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts']
+  },
+  optimizeDeps: {
+    include: ['monaco-editor']
   }
 });
