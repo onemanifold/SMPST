@@ -50,11 +50,12 @@ describe('CFSM Projection - Known Protocols', () => {
     );
     expect(voteRequestSends.length).toBe(2);
 
-    // Receives votes
+    // Receives votes (parallel composition creates diamond pattern)
+    // Diamond: receive from P1 then P2, OR receive from P2 then P1
     const voteRecvs = findTransitionsWithAction(coordCFSM, 'receive').filter(
       t => t.action && (t.action as ReceiveAction).label === 'Vote'
     );
-    expect(voteRecvs.length).toBe(2);
+    expect(voteRecvs.length).toBe(4); // 2 paths, each with 2 receives
 
     // Makes decision
     expect(hasSendAction(coordCFSM, 'Commit')).toBe(true);

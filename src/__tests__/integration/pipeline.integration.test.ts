@@ -278,7 +278,8 @@ describe('Integration - Full Pipeline', () => {
       // Role A is in both branches
       const { cfsm } = createDebugCFSM(PARALLEL_MULTIPLE_BRANCHES, 'A');
       const sends = cfsm.transitions.filter(t => t.action?.type === 'send');
-      expect(sends.length).toBe(2); // One send per branch
+      // Diamond pattern: 2 paths (M1 then M2, OR M2 then M1) = 4 send transitions total
+      expect(sends.length).toBe(4); // Two paths, each with 2 sends
     });
 
     it('[Choice with Continuation] should handle post-choice sequencing', () => {
