@@ -1,0 +1,24 @@
+/**
+ * E-Commerce Protocol: Buyer-Seller-Shipper
+ *
+ * A three-party protocol demonstrating:
+ * - Multi-party coordination
+ * - Message passing between 3 roles
+ * - Sequential workflow
+ *
+ * Flow:
+ * 1. Buyer sends order to Seller
+ * 2. Seller forwards shipping request to Shipper
+ * 3. Shipper sends delivery confirmation to Buyer
+ */
+
+protocol ECommerce(role Buyer, role Seller, role Shipper) {
+  // Step 1: Buyer places order with Seller
+  Buyer -> Seller: Order(String);
+
+  // Step 2: Seller requests shipping from Shipper
+  Seller -> Shipper: ShipRequest(String);
+
+  // Step 3: Shipper confirms delivery to Buyer
+  Shipper -> Buyer: DeliveryConfirmation(Int);
+}

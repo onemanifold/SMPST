@@ -1,0 +1,30 @@
+/**
+ * Authentication Protocol
+ *
+ * A two-party protocol demonstrating:
+ * - Login with credentials
+ * - Choice (success vs failure)
+ * - Subsequent actions based on authentication result
+ *
+ * Flow:
+ * 1. User sends login credentials to Server
+ * 2. Server authenticates and chooses:
+ *    - Success: Send token, User can request data
+ *    - Failure: Send error, protocol ends
+ */
+
+protocol Authentication(role User, role Server) {
+  // User sends login request
+  User -> Server: LoginRequest(String);
+
+  // Server authenticates
+  choice at Server {
+    // Authentication successful
+    Server -> User: AuthToken(String);
+    User -> Server: DataRequest(String);
+    Server -> User: DataResponse(String);
+  } or {
+    // Authentication failed
+    Server -> User: AuthError(String);
+  }
+}
