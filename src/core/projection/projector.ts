@@ -22,6 +22,7 @@ import type {
   Edge,
   ActionNode,
   MessageAction,
+  SubProtocolAction,
   BranchNode,
   MergeNode,
   ForkNode,
@@ -33,6 +34,7 @@ import {
   isTerminalNode,
   isActionNode,
   isMessageAction,
+  isSubProtocolAction,
   isBranchNode,
   isMergeNode,
   isForkNode,
@@ -212,6 +214,15 @@ export function project(cfg: CFG, role: string): CFSM {
           queue.push({
             cfgNodeId: targetNode.id,
             lastStateId: newState.id,
+          });
+        } else if (isSubProtocolAction(action)) {
+          // RULE 3: Sub-protocol invocation (tau-elimination)
+          // Sub-protocols are transparent at CFSM level - they get expanded during execution
+          // Treat as epsilon transition: skip over and continue with same last state
+
+          queue.push({
+            cfgNodeId: targetNode.id,
+            lastStateId, // Keep same last state
           });
         } else {
           // RULE 2: Role NOT involved in message (tau-elimination)
