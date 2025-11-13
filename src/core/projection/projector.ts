@@ -100,6 +100,8 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
   /**
    * Create a transition with an action
    * Actions live HERE, on transitions, following LTS semantics
+   *
+   * If no action is provided, creates a tau (epsilon/silent) transition
    */
   const createTransition = (
     from: string,
@@ -110,7 +112,8 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
       id: `t${transitionCounter++}`,
       from,
       to,
-      action: action!,
+      // If no action provided, use tau (epsilon transition)
+      action: action || { type: 'tau' },
     };
     transitions.push(transition);
     return transition;
@@ -313,7 +316,10 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
     if (visited.has(visitKey)) continue;
     visited.add(visitKey);
 
-    const cfgNode = cfg.nodes.find(n => n.id === cfgNodeId)!;
+    const cfgNode = cfg.nodes.find(n => n.id === cfgNodeId);
+    if (!cfgNode) {
+      throw new Error(`CFG node not found: ${cfgNodeId}. Available nodes: ${cfg.nodes.map(n => n.id).join(', ')}`);
+    }
 
     // Get outgoing edges (EXCLUDE continue edges - handle separately)
     let outgoingEdges = getOutgoingEdges(cfgNodeId).filter(
@@ -334,7 +340,10 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
     }
 
     for (const edge of outgoingEdges) {
-      const targetNode = cfg.nodes.find(n => n.id === edge.to)!;
+      const targetNode = cfg.nodes.find(n => n.id === edge.to);
+      if (!targetNode) {
+        throw new Error(`Target node not found for edge ${edge.id}: ${edge.from} -> ${edge.to}. Available nodes: ${cfg.nodes.map(n => n.id).join(', ')}`);
+      }
 
       // ========================================================================
       // Projection Rules (by node type)
@@ -664,10 +673,24 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
 }
 
 /**
- * Project a CFG to all roles' CFSMs
+ * Project a global CFG to all roles' CFSMs
  *
- * @param cfg - Global CFG
- * @returns Map of role → CFSM for all roles
+ * FORMAL OPERATION (Deniélou & Yoshida 2012):
+ *
+ * For a global type G with roles R = {r₁, r₂, ..., rₙ}:
+ *   projectAll(G) = {r ↦ (G ↾ r) | r ∈ R}
+ *
+ * where G ↾ r is the projection of G onto role r, producing a CFSM.
+ *
+ * PROJECTION CORRECTNESS (Theorem 3.1):
+ *   If G is well-formed, then:
+ *   1. G ↾ r is well-formed for all r ∈ R
+ *   2. The composition ⊕(G ↾ r₁, ..., G ↾ rₙ) is trace-equivalent to G
+ *
+ * @param cfg - Global CFG representation of multiparty protocol
+ * @returns Map of role → CFSM (pure LTS) for all roles
+ *
+ * @reference Section 4.2: "Projection Algorithm", Deniélou & Yoshida (2012)
  */
 export function projectAll(cfg: CFG): ProjectionResult {
   const cfsms = new Map<string, CFSM>();
@@ -676,6 +699,7 @@ export function projectAll(cfg: CFG): ProjectionResult {
   for (const role of cfg.roles) {
     try {
       const cfsm = project(cfg, role);
+      // CFSM is now pure LTS - no CFG pollution
       cfsms.set(role, cfsm);
     } catch (error) {
       errors.push({

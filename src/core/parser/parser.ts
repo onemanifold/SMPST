@@ -36,7 +36,12 @@ export class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.importDeclaration) },
       { ALT: () => this.SUBRULE(this.typeDeclaration) },
       { ALT: () => this.SUBRULE(this.globalProtocolDeclaration) },
-      // REMOVED: protocolExtension - causes ambiguity, add in Phase 4
+      // TODO: Re-enable Protocol Subtyping (Phase 5)
+      // DISABLED: Grammar ambiguity with globalProtocolDeclaration
+      // Both rules start with: Protocol Identifier LAngle?
+      // Resolution: Add lookahead for 'extends' keyword or refactor grammar
+      // See: docs/FUTURE_FEATURES.md for disambiguation strategy
+      // { ALT: () => this.SUBRULE(this.protocolExtension) },
       { ALT: () => this.SUBRULE(this.localProtocolDeclaration) },
     ]);
   });
@@ -77,11 +82,16 @@ export class ScribbleParser extends CstParser {
   // ==========================================================================
 
   private globalProtocolDeclaration = this.RULE('globalProtocolDeclaration', () => {
+    // Optional 'global' keyword for standard Scribble compatibility
+    // Both "protocol Name(...)" and "global protocol Name(...)" are accepted
+    this.OPTION1(() => {
+      this.CONSUME(tokens.Global);
+    });
     this.CONSUME(tokens.Protocol);
     this.CONSUME(tokens.Identifier);
 
     // Type parameters
-    this.OPTION(() => {
+    this.OPTION2(() => {
       this.SUBRULE(this.typeParameters);
     });
 
@@ -133,24 +143,65 @@ export class ScribbleParser extends CstParser {
   // ==========================================================================
   // Protocol Extension (Subtyping - Future Feature)
   // Based on docs/theory/asynchronous-subtyping.md
-  // COMMENTED OUT: Causes grammar ambiguity, will be added in Phase 4
+  // TEMPORARILY DISABLED: Causes grammar ambiguity
   // ==========================================================================
 
+  // ==========================================================================
+  // Protocol Subtyping (Phase 5 - Future Feature)
+  // ==========================================================================
+
+  /**
+   * TODO: Protocol extension for behavioral subtyping
+   *
+   * DISABLED: Grammar ambiguity with globalProtocolDeclaration
+   *
+   * ISSUE:
+   *   Both protocolExtension and globalProtocolDeclaration start with:
+   *   Protocol Identifier TypeParameters? LParen RoleDeclarationList RParen
+   *   Parser cannot distinguish until it sees 'extends' keyword.
+   *
+   * RESOLUTION STRATEGIES:
+   *   1. Lookahead: Use GATE to check for 'extends' after role parameters
+   *   2. Unified Rule: Parse as globalProtocolDeclaration, then check for extends
+   *   3. Keyword First: Require 'protocol extends' vs 'protocol' syntax
+   *
+   * DEPENDENCIES:
+   *   - Subtyping theory implementation (docs/theory/subtyping.md)
+   *   - Well-formedness checks for refinement correctness
+   *   - Projection preserves subtyping relationships
+   *
+   * TESTING REQUIREMENTS:
+   *   - Grammar disambiguation tests
+   *   - Subtyping relation verification
+   *   - Liskov substitution property
+   *
+   * Syntax: protocol Enhanced(role A, role B) extends Basic(A, B) { ... }
+   */
   /*
   private protocolExtension = this.RULE('protocolExtension', () => {
     this.CONSUME(tokens.Protocol);
     this.CONSUME(tokens.Identifier, { LABEL: 'name' });
+
+    // Type parameters (optional)
     this.OPTION(() => {
       this.SUBRULE(this.typeParameters);
     });
+
+    // Role parameters
     this.CONSUME(tokens.LParen);
     this.SUBRULE(this.roleDeclarationList);
     this.CONSUME(tokens.RParen);
+
+    // Extends clause
     this.CONSUME(tokens.Extends);
     this.CONSUME2(tokens.Identifier, { LABEL: 'baseProtocol' });
+
+    // Type arguments for base protocol (optional)
     this.OPTION2(() => {
       this.SUBRULE(this.typeArguments);
     });
+
+    // Role arguments for base protocol
     this.CONSUME2(tokens.LParen);
     this.AT_LEAST_ONE_SEP({
       SEP: tokens.Comma,
@@ -159,6 +210,8 @@ export class ScribbleParser extends CstParser {
       },
     });
     this.CONSUME2(tokens.RParen);
+
+    // Refinement body
     this.CONSUME(tokens.LCurly);
     this.SUBRULE(this.globalProtocolBody, { LABEL: 'refinements' });
     this.CONSUME(tokens.RCurly);
@@ -201,14 +254,28 @@ export class ScribbleParser extends CstParser {
   private globalInteraction = this.RULE('globalInteraction', () => {
     this.OR([
       { ALT: () => this.SUBRULE(this.messageTransfer) },
-      // REMOVED: timedMessage - causes ambiguity, add in Phase 6
+      // TODO: Re-enable Timed Session Types (Phase 6)
+      // DISABLED: Grammar ambiguity with messageTransfer
+      // Both rules start with: Identifier Arrow Identifier Colon Message
+      // Parser cannot distinguish until it sees 'within' keyword
+      // Resolution: Use lookahead or parse as messageTransfer then check for timing
+      // See: docs/FUTURE_FEATURES.md
+      // { ALT: () => this.SUBRULE(this.timedMessage) },
       { ALT: () => this.SUBRULE(this.choice) },
       { ALT: () => this.SUBRULE(this.parallel) },
       { ALT: () => this.SUBRULE(this.recursion) },
       { ALT: () => this.SUBRULE(this.continueStatement) },
       { ALT: () => this.SUBRULE(this.doStatement) },
-      // REMOVED: tryStatement, throwStatement - causes issues, add in Phase 5
-      // REMOVED: timeoutStatement - causes issues, add in Phase 6
+      // TODO: Re-enable Exception Handling (Phase 4)
+      // DISABLED: Not yet needed; enable after core projection complete
+      // Requires: Exception propagation semantics, projection rules
+      // See: docs/FUTURE_FEATURES.md
+      // { ALT: () => this.SUBRULE(this.tryStatement) },
+      // { ALT: () => this.SUBRULE(this.throwStatement) },
+      // TODO: Re-enable Timeout Handlers (Phase 6)
+      // DISABLED: Part of timed session types feature
+      // Requires: Timed automata semantics, timeout projection
+      // { ALT: () => this.SUBRULE(this.timeoutStatement) },
     ]);
   });
 
@@ -301,17 +368,45 @@ export class ScribbleParser extends CstParser {
   });
 
   // ==========================================================================
-  // Exception Handling (Future Feature - DISABLED)
+  // Exception Handling (Future Feature)
   // Based on docs/theory/exception-handling.md
-  // COMMENTED OUT: Will be added in Phase 5
+  // TEMPORARILY DISABLED: Not yet needed
   // ==========================================================================
 
+  // ==========================================================================
+  // Exception Handling (Phase 4 - Future Feature)
+  // ==========================================================================
+
+  /**
+   * TODO: Try-catch blocks for protocol exceptions
+   *
+   * DISABLED: Not yet needed; enable after core projection complete
+   *
+   * REQUIREMENTS:
+   *   - Exception propagation semantics across roles
+   *   - Projection rules for try/catch/throw
+   *   - Well-formedness: All roles must handle or propagate exceptions
+   *   - Safety: Exceptions don't break session integrity
+   *
+   * THEORY:
+   *   Based on "Exception Handling in Session Types" (Capecchi et al., 2010)
+   *   Exceptions must be coordinated across all participants
+   *
+   * TESTING:
+   *   - Exception propagation correctness
+   *   - Handler reachability
+   *   - Session cleanup on exception
+   *
+   * Syntax: try { ... } catch Label { ... }
+   */
   /*
   private tryStatement = this.RULE('tryStatement', () => {
     this.CONSUME(tokens.Try);
     this.CONSUME(tokens.LCurly);
     this.SUBRULE(this.globalProtocolBody, { LABEL: 'body' });
     this.CONSUME(tokens.RCurly);
+
+    // One or more catch handlers
     this.AT_LEAST_ONE(() => {
       this.CONSUME(tokens.Catch);
       this.CONSUME(tokens.Identifier, { LABEL: 'exceptionLabel' });
@@ -321,6 +416,14 @@ export class ScribbleParser extends CstParser {
     });
   });
 
+  /**
+   * TODO: Throw statement for raising exceptions
+   *
+   * DISABLED: Part of exception handling feature (Phase 4)
+   *
+   * Syntax: throw Label;
+   */
+  /*
   private throwStatement = this.RULE('throwStatement', () => {
     this.CONSUME(tokens.Throw);
     this.CONSUME(tokens.Identifier, { LABEL: 'exceptionLabel' });
@@ -329,11 +432,38 @@ export class ScribbleParser extends CstParser {
   */
 
   // ==========================================================================
-  // Timed Session Types (Future Feature - DISABLED)
+  // Timed Session Types (Phase 6 - Future Feature)
   // Based on docs/theory/timed-session-types.md
-  // COMMENTED OUT: Causes ambiguity, will be added in Phase 6
   // ==========================================================================
 
+  /**
+   * TODO: Timed messages with deadlines
+   *
+   * DISABLED: Grammar ambiguity with messageTransfer
+   *
+   * ISSUE:
+   *   Both timedMessage and messageTransfer share prefix:
+   *   Identifier Arrow Identifier Colon Message
+   *   Parser cannot distinguish until 'within' keyword
+   *
+   * RESOLUTION:
+   *   1. Parse as messageTransfer, then check for 'within' modifier
+   *   2. Add GATE with lookahead for 'within'
+   *   3. Post-parse transformation
+   *
+   * REQUIREMENTS:
+   *   - Timed automata semantics (docs/theory/timed-session-types.md)
+   *   - Clock constraints and zones
+   *   - Timeout projection rules
+   *   - Model checking for timing properties
+   *
+   * TESTING:
+   *   - Timing constraint satisfaction
+   *   - Deadline reachability
+   *   - Timeout handler coverage
+   *
+   * Syntax: A -> B: Msg() within 5s;
+   */
   /*
   private timedMessage = this.RULE('timedMessage', () => {
     this.CONSUME(tokens.Identifier, { LABEL: 'from' });
@@ -346,11 +476,29 @@ export class ScribbleParser extends CstParser {
     this.CONSUME(tokens.Semicolon);
   });
 
+  /**
+   * Time constraint: value + unit
+   * Syntax: 5s, 100ms, 2min
+   */
+  /*
   private timeConstraint = this.RULE('timeConstraint', () => {
     this.CONSUME(tokens.NumberLiteral, { LABEL: 'value' });
-    this.CONSUME(tokens.Identifier, { LABEL: 'unit' });
+    this.CONSUME(tokens.Identifier, { LABEL: 'unit' }); // 's', 'ms', 'min'
   });
 
+  /**
+   * TODO: Timeout handlers for time-bounded protocols
+   *
+   * DISABLED: Part of timed session types feature (Phase 6)
+   *
+   * REQUIREMENTS:
+   *   - Integration with timed automata
+   *   - Timeout projection and handling
+   *   - Interaction with exception handling
+   *
+   * Syntax: timeout(5s) { ... }
+   */
+  /*
   private timeoutStatement = this.RULE('timeoutStatement', () => {
     this.CONSUME(tokens.Timeout);
     this.CONSUME(tokens.LParen);
@@ -379,7 +527,10 @@ export class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.recursion) },
       { ALT: () => this.SUBRULE(this.continueStatement) },
       { ALT: () => this.SUBRULE(this.doStatement) },
-      // REMOVED: Future features to avoid grammar issues
+      // TODO: Re-enable exception handling for local protocols (Phase 4)
+      // { ALT: () => this.SUBRULE(this.tryStatement) },
+      // { ALT: () => this.SUBRULE(this.throwStatement) },
+      // { ALT: () => this.SUBRULE(this.timeoutStatement) },   // Future: Timed types
     ]);
   });
 
