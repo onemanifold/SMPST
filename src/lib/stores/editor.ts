@@ -116,26 +116,37 @@ export async function parseProtocol(content: string) {
   parseError.set(null);
 
   try {
+    console.log('[Editor] Starting protocol parse...');
+
     // Dynamic imports
+    console.log('[Editor] Importing modules...');
     const { ScribbleParser } = await import('../../core/parser/parser');
     const { CFGBuilder } = await import('../../core/cfg/builder');
     const { verifyProtocol } = await import('../../core/verification/verifier');
     const { projectAll } = await import('../../core/projection/projector');
+    console.log('[Editor] Modules imported successfully');
 
     // 1. Parse Scribble
+    console.log('[Editor] Parsing Scribble...');
     const parser = new ScribbleParser();
     const ast = parser.parse(content);
 
     if (!ast || ast.type !== 'GlobalProtocol') {
       throw new Error('Expected global protocol');
     }
+    console.log('[Editor] Scribble parsed successfully');
 
     // 2. Build CFG
+    console.log('[Editor] Building CFG...');
     const builder = new CFGBuilder();
     const cfg = builder.build(ast as any);
+    console.log('[Editor] CFG built successfully');
 
     // 3. Verify protocol
+    console.log('[Editor] Verifying protocol...');
+    console.log('[Editor] verifyProtocol type:', typeof verifyProtocol);
     const result = verifyProtocol(cfg);
+    console.log('[Editor] Verification completed:', result);
 
     // 4. Project to CFSMs
     const projectionResult = projectAll(cfg);
@@ -235,8 +246,11 @@ export async function parseProtocol(content: string) {
     );
 
     // 6. Initialize simulation with CFG
+    console.log('[Editor] Initializing simulation...');
     const { initializeSimulation } = await import('./simulation');
+    console.log('[Editor] initializeSimulation imported:', typeof initializeSimulation);
     await initializeSimulation(cfg);
+    console.log('[Editor] Simulation initialized successfully');
 
     // TODO: 7. Generate TypeScript (future)
 

@@ -57,7 +57,7 @@
     position: absolute;
     top: 0;
     right: 0;
-    padding: 4px 12px;
+    padding: 2px 6px;
     background: rgba(45, 45, 45, 0.5);
     border-bottom-left-radius: 4px;
     font-weight: 500;

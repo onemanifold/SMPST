@@ -74,7 +74,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 16px;
+    padding: 4px 8px;
     background: #2d2d2d;
     border-bottom: 1px solid #333;
   }
@@ -90,13 +90,13 @@
     border: none;
     color: #ccc;
     cursor: pointer;
-    padding: 4px;
+    padding: 2px;
   }
 
   .panel-content {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    padding: 8px;
   }
 
   .result-section {
@@ -132,7 +132,7 @@
   }
 
   .error-item {
-    padding: 6px 12px;
+    padding: 3px 6px;
     margin-bottom: 4px;
     background: #5f2d2d;
     color: #ff6b6b;
@@ -141,7 +141,7 @@
   }
 
   .warning-item {
-    padding: 6px 12px;
+    padding: 3px 6px;
     margin-bottom: 4px;
     background: #5f5f2d;
     color: #ffeb3b;
@@ -157,7 +157,7 @@
   .error-message {
     color: #ff6b6b;
     background: #2d1e1e;
-    padding: 12px;
+    padding: 6px;
     border-radius: 4px;
     overflow-x: auto;
     font-size: 13px;

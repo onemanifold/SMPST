@@ -38,7 +38,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 24px;
+    padding: 6px 12px;
     background: #1e1e1e;
     border-bottom: 1px solid #333;
     color: #fff;
@@ -47,7 +47,7 @@
   .logo {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     font-size: 18px;
     font-weight: 600;
   }
@@ -58,12 +58,12 @@
 
   .status {
     display: flex;
-    gap: 16px;
+    gap: 8px;
     align-items: center;
   }
 
   .status-indicator {
-    padding: 6px 12px;
+    padding: 3px 6px;
     border-radius: 4px;
     font-size: 14px;
     background: #333;
@@ -81,7 +81,7 @@
 
   .verification-status {
     display: flex;
-    gap: 12px;
+    gap: 6px;
     font-size: 13px;
   }
 

@@ -28,19 +28,47 @@ export async function initializeSimulation(cfg: CFG) {
   // Clean up existing simulator
   stopSimulation();
 
-  // Dynamic import to avoid bundling issues
-  const { CFGSimulator } = await import('../../core/simulation/cfg-simulator');
+  try {
+    console.log('[Simulation] Importing CFGSimulator...');
 
-  // Create new simulator with random choice strategy for play mode
-  simulator = new CFGSimulator(cfg, {
-    choiceStrategy: 'random',
-    maxSteps: 1000,
-    recordTrace: true
-  });
+    // Dynamic import to avoid bundling issues
+    const module = await import('../../core/simulation/cfg-simulator');
+    console.log('[Simulation] Module imported:', module);
+    console.log('[Simulation] Module keys:', Object.keys(module));
 
-  currentCFG.set(cfg);
-  executionState.set(simulator.getState());
-  simulationMode.set('idle');
+    const { CFGSimulator } = module;
+    console.log('[Simulation] CFGSimulator:', CFGSimulator);
+    console.log('[Simulation] CFGSimulator type:', typeof CFGSimulator);
+    console.log('[Simulation] Is function?', typeof CFGSimulator === 'function');
+    console.log('[Simulation] Is constructor?', CFGSimulator?.prototype?.constructor === CFGSimulator);
+
+    if (!CFGSimulator || typeof CFGSimulator !== 'function') {
+      throw new Error(`CFGSimulator is not a valid constructor: ${typeof CFGSimulator}`);
+    }
+
+    console.log('[Simulation] Creating simulator instance...');
+
+    // Create new simulator with random choice strategy for play mode
+    simulator = new CFGSimulator(cfg, {
+      choiceStrategy: 'random',
+      maxSteps: 1000,
+      recordTrace: true
+    });
+
+    console.log('[Simulation] Simulator created successfully:', simulator);
+
+    currentCFG.set(cfg);
+    executionState.set(simulator.getState());
+    simulationMode.set('idle');
+
+    console.log('[Simulation] Initialization complete');
+  } catch (error) {
+    console.error('[Simulation] Initialization failed:', error);
+    console.error('[Simulation] Error type:', error?.constructor?.name);
+    console.error('[Simulation] Error message:', error?.message);
+    console.error('[Simulation] Error stack:', error?.stack);
+    throw error;
+  }
 }
 
 /**
