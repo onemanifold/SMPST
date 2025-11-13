@@ -79,7 +79,7 @@ describe('Protocol Simulator - Basic Protocols', () => {
     const result = await simulator.run();
 
     expect(result.completed).toBe(true);
-    expect(state.roles.size).toBe(3);
+    expect(result.state.roles.size).toBe(3);
   });
 });
 
