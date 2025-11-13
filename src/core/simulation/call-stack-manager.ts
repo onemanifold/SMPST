@@ -109,7 +109,7 @@ export class CallStackManager implements ICallStackManager {
     // Check iteration limit for recursion
     if (frameData.type === 'recursion') {
       const iterations = frameData.iterations ?? 0;
-      if (iterations >= this.config.maxIterations) {
+      if (iterations > this.config.maxIterations) {
         throw new MaxIterationsExceededError(frameData.name, this.config.maxIterations);
       }
     }
@@ -185,7 +185,7 @@ export class CallStackManager implements ICallStackManager {
       frame.iterations = (frame.iterations ?? 0) + 1;
 
       // Check iteration limit
-      if (frame.iterations >= this.config.maxIterations) {
+      if (frame.iterations > this.config.maxIterations) {
         throw new MaxIterationsExceededError(frame.name, this.config.maxIterations);
       }
     }
