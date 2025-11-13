@@ -5,6 +5,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
+- [⚠️ FORMAL CORRECTNESS PRINCIPLES](#️-formal-correctness-principles)
 - [Getting Started](#getting-started)
 - [Development Workflow](#development-workflow)
 - [Pull Request Process](#pull-request-process)
@@ -17,6 +18,148 @@ Thank you for your interest in contributing! This document provides guidelines f
 ## Code of Conduct
 
 This project follows the [Contributor Covenant Code of Conduct](./CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
+
+---
+
+## ⚠️ FORMAL CORRECTNESS PRINCIPLES
+
+**THIS IS NON-NEGOTIABLE. READ CAREFULLY.**
+
+This project implements formal multiparty session types (MPST) based on rigorous academic research. **Formal correctness is the highest priority** - above convenience, above backward compatibility, above making tests pass easily.
+
+### Core Principle: Implementation Defines Truth
+
+**The formal model drives the implementation. The implementation drives the tests.**
+
+```
+Academic Papers → Formal Semantics → Implementation → Tests
+              (TRUTH flows this direction →)
+```
+
+**NEVER flow backwards.** Tests must adapt to the implementation, not vice versa.
+
+### ❌ FORBIDDEN: Backward Compatibility Hacks
+
+**NEVER compromise formal semantics to make old code/tests work.**
+
+**Examples of FORBIDDEN changes:**
+
+```typescript
+// ❌ WRONG: Adding CFG properties to CFSM just to make tests pass
+export interface CFSM {
+  states: CFSMState[];        // ✅ Correct LTS semantics
+  transitions: CFSMTransition[];  // ✅ Correct LTS semantics
+
+  nodes?: any[];  // ❌ FORBIDDEN! This is CFG, not CFSM!
+  edges?: any[];  // ❌ FORBIDDEN! Breaks formal model!
+}
+
+// ❌ WRONG: Converting back to old semantics for "compatibility"
+function project(cfg: CFG): CFSM {
+  const cfsm = projectToLTS(cfg);  // ✅ Correct
+  const nodes = convertToNodes(cfsm);  // ❌ FORBIDDEN!
+  return { ...cfsm, nodes };  // ❌ FORBIDDEN!
+}
+```
+
+**Why this is forbidden:**
+- Violates formal LTS semantics where actions live on transitions
+- Mixes incompatible semantic models (CFG vs CFSM)
+- Creates technical debt and confusion
+- Compromises correctness for convenience
+
+### ✅ REQUIRED: Fix Tests, Not Implementation
+
+**When tests fail because they expect wrong semantics:**
+
+```typescript
+// ❌ WRONG: Change implementation to match test
+function project(cfg: CFG): CFSM {
+  return { ...cfsm, nodes: hackForTests };  // NO!
+}
+
+// ✅ CORRECT: Change test to match implementation
+// Old test (wrong):
+const actions = cfsm.nodes.filter(isActionNode);  // ❌ Wrong semantics
+
+// Fixed test (correct):
+const actions = cfsm.transitions.filter(t => t.action.type !== 'tau');  // ✅ Right semantics
+```
+
+### CFSM = LTS Semantics (Non-Negotiable)
+
+**CFSM follows LTS (Labelled Transition System) semantics from formal MPST theory:**
+
+```typescript
+// ✅ CORRECT CFSM structure:
+interface CFSM {
+  role: string;
+  states: CFSMState[];           // Control locations
+  transitions: CFSMTransition[]; // Actions live HERE on transitions!
+  initialState: string;
+  terminalStates: string[];
+}
+
+interface CFSMTransition {
+  from: string;  // Source state
+  to: string;    // Target state
+  action: CFSMAction;  // ← Actions live on TRANSITIONS, not states!
+}
+```
+
+**Key principles:**
+- **States are control locations** - they have NO actions, NO types
+- **Actions live on transitions** - this is LTS semantics
+- **Tau (τ) represents epsilon** - silent/internal transitions
+- **Every transition MUST have an action** - use tau for epsilon
+
+**References:**
+- Brand & Zafiropulo (1983): "On Communicating Finite-State Machines"
+- Deniélou & Yoshida (2012): "Multiparty Session Types Meet Communicating Automata"
+- Honda, Yoshida, Carbone (2016): "Structured Communication-Centered Programming"
+
+### When You Want to "Make Tests Pass"
+
+**STOP. Ask yourself:**
+
+1. **Does the test expect the wrong semantic model?**
+   - Fix the test, not the implementation
+
+2. **Does the test expect CFG structure from a CFSM?**
+   - Fix the test to use CFSM semantics
+
+3. **Would this change add a "backward compatibility layer"?**
+   - Don't do it. Fix what's calling it instead.
+
+4. **Would this change violate formal semantics?**
+   - Absolutely not. Fix the caller.
+
+### Exception: Genuine Bugs
+
+**Fix implementation only if it violates formal semantics:**
+
+```typescript
+// ✅ CORRECT: Fix real bug (actions were undefined)
+const transition: CFSMTransition = {
+  from, to,
+  action: action || { type: 'tau' }  // Use tau for epsilon transitions
+};
+```
+
+This is correct because:
+- Formal LTS requires every transition to have an action
+- Tau (τ) is the formal representation of epsilon transitions
+- This MAINTAINS formal correctness
+
+### Enforcement
+
+**Pull requests will be rejected if they:**
+- Add "compatibility" properties that violate formal semantics
+- Change correct implementations to match incorrect tests
+- Add conversion layers between incompatible semantic models
+- Compromise formal correctness for any reason
+
+**When in doubt: Preserve formal correctness. Always.**
 
 ---
 
