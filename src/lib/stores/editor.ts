@@ -137,7 +137,16 @@ export async function parseProtocol(content: string) {
     const verifier = new Verifier();
     const result = verifier.verify(cfg);
 
-    // 4. Update stores
+    // 4. Project to CFSMs (Phase 2)
+    const { Projector } = await import('../../core/projection/projector');
+    const projector = new Projector();
+    const cfsms = projector.project(cfg);
+
+    // Extract roles from AST
+    const globalProtocol = ast as any;
+    const roles = globalProtocol.roles?.map((r: any) => r.name) || [];
+
+    // 5. Update stores
     parseStatus.set('success');
     verificationResult.set({
       deadlockFree: !result.errors.some(e => e.includes('deadlock')),
@@ -147,10 +156,35 @@ export async function parseProtocol(content: string) {
       errors: result.errors
     });
 
-    // TODO: 5. Project to CFSMs (Phase 2)
+    // Update projection data
+    projectionData.set(
+      roles.map((role: string) => {
+        const cfsm = cfsms[role];
+        if (!cfsm) {
+          return {
+            role,
+            states: [],
+            transitions: []
+          };
+        }
+
+        return {
+          role,
+          states: Object.keys(cfsm.states),
+          transitions: Object.entries(cfsm.states).flatMap(([from, state]) =>
+            state.transitions.map((t: any) => ({
+              from,
+              to: t.target,
+              label: t.action?.label || t.action?.kind || 'τ'
+            }))
+          )
+        };
+      })
+    );
+
     // TODO: 6. Generate TypeScript (future)
 
-    return { success: true, cfg, ast };
+    return { success: true, cfg, ast, cfsms };
   } catch (error) {
     parseStatus.set('error');
     const message = error instanceof Error ? error.message : String(error);
