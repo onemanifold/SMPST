@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - claude/ide-next-stage-011CV2o1fgiThHhcUqfyfQJi
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages

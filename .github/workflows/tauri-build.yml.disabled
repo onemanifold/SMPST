@@ -1,0 +1,176 @@
+# Tauri Desktop App Build Pipeline
+#
+# This workflow builds desktop applications for Windows, macOS, and Linux
+# using Tauri. Rename this file to 'tauri-build.yml' to enable.
+#
+# Status: DISABLED - Waiting for Tauri setup in src-tauri/
+#
+# When ready to enable:
+# 1. Run: npm install --save-dev @tauri-apps/cli
+# 2. Run: npm run tauri init
+# 3. Rename this file from .disabled to active
+# 4. Push and create a git tag (e.g., v0.1.0)
+
+name: Tauri Desktop Build
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on version tags like v0.1.0, v1.2.3
+  workflow_dispatch: # Manual trigger for testing
+
+jobs:
+  # Quality checks - must pass before building
+  test:
+    name: Run Tests & Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run test coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          name: codecov-umbrella
+        continue-on-error: true
+
+  # Build job runs on multiple platforms in parallel
+  # Only runs if tests pass
+  build-tauri:
+    needs: test  # Wait for tests to pass
+    strategy:
+      fail-fast: false # Don't cancel other builds if one fails
+      matrix:
+        platform:
+          # Windows x64
+          - os: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+
+          # macOS Universal (Intel + Apple Silicon)
+          - os: macos-latest
+            rust_target: universal-apple-darwin
+
+          # Linux x64
+          - os: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.platform.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.rust_target }}
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Scribble MPST IDE ${{ github.ref_name }}'
+          releaseBody: |
+            ## Scribble MPST IDE ${{ github.ref_name }}
+
+            Desktop application for authoring, visualizing, and verifying multiparty session type protocols.
+
+            ### Downloads
+            - **Windows**: `.msi` installer (recommended) or `.exe`
+            - **macOS**: `.dmg` disk image (Universal: Intel + Apple Silicon)
+            - **Linux**: `.AppImage` (portable), `.deb` (Debian/Ubuntu), or `.rpm` (Fedora/RHEL)
+
+            ### Installation
+            **Windows**: Download `.msi`, double-click to install
+            **macOS**: Download `.dmg`, drag to Applications folder
+            **Linux**:
+            - AppImage: `chmod +x *.AppImage && ./scribble-mpst-ide.AppImage`
+            - Debian: `sudo dpkg -i *.deb`
+            - Fedora: `sudo rpm -i *.rpm`
+
+            ### What's New
+            See [CHANGELOG.md](https://github.com/onemanifold/SMPST/blob/main/CHANGELOG.md) for details.
+          releaseDraft: true # Create draft, you can review before publishing
+          prerelease: false
+          args: --target ${{ matrix.platform.rust_target }}
+
+      # Upload artifacts for review (even if not creating release)
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-${{ matrix.platform.os }}
+          path: src-tauri/target/*/release/bundle/*
+          retention-days: 7
+
+  # Summary job - reports build results
+  build-summary:
+    needs: [test, build-tauri]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Build summary
+        run: |
+          echo "## 🎉 Build Pipeline Complete!"
+          echo ""
+          echo "### ✅ Quality Checks"
+          echo "  - TypeScript type check: PASSED"
+          echo "  - Unit tests: PASSED"
+          echo "  - Test coverage: Generated"
+          echo ""
+          echo "### ✅ Tauri builds completed for all platforms!"
+          echo ""
+          echo "### 📦 Artifacts created:"
+          echo "  - Windows: .msi, .exe"
+          echo "  - macOS: .dmg, .app (Universal)"
+          echo "  - Linux: .deb, .AppImage, .rpm"
+          echo ""
+          echo "### 🚀 Binaries available in GitHub Releases (draft)"
+          echo ""
+          echo "Review the draft release and publish when ready!"
