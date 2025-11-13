@@ -243,5 +243,7 @@ export interface SimulationStepResult {
   success: boolean;
   updates: Map<string, ExecutionResult>;  // Per-role results
   state: SimulationState;
+  completed?: boolean;  // True if simulation reached completion
   deadlocked?: boolean;
+  error?: ExecutionError;  // Error if simulation failed
 }

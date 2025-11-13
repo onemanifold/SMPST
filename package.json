@@ -30,7 +30,9 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "parse": "tsx src/core/parser/cli.ts"
+    "parse": "tsx src/core/parser/cli.ts",
+    "project": "tsx src/core/projection/cli.ts",
+    "project:help": "tsx src/core/projection/cli.ts --help"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.0",
@@ -53,6 +55,8 @@
     "chevrotain": "^11.0.0",
     "d3": "^7.9.0",
     "dexie": "^4.0.0",
-    "ts-morph": "^24.0.0"
+    "monaco-editor": "^0.54.0",
+    "ts-morph": "^24.0.0",
+    "vite-plugin-monaco-editor": "^1.1.0"
   }
 }

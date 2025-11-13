@@ -300,6 +300,14 @@ export class Executor {
   private transitionTo(newState: string): void {
     const oldState = this.currentState;
     this.currentState = newState;
+
+    // Limit visitedStates array size to prevent memory issues
+    // Keep only last 10000 states
+    const MAX_VISITED_STATES = 10000;
+    if (this.visitedStates.length >= MAX_VISITED_STATES) {
+      // Remove oldest half when limit reached
+      this.visitedStates = this.visitedStates.slice(MAX_VISITED_STATES / 2);
+    }
     this.visitedStates.push(newState);
 
     // Check if reached terminal

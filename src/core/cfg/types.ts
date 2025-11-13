@@ -50,7 +50,13 @@ export interface ParallelAction {
   branchLabel: string;
 }
 
-export type Action = MessageAction | ParallelAction;
+export interface SubProtocolAction {
+  kind: 'subprotocol';
+  protocol: string;
+  roleArguments: string[];
+}
+
+export type Action = MessageAction | ParallelAction | SubProtocolAction;
 
 // ============================================================================
 // Nodes
@@ -172,4 +178,8 @@ export function isMessageAction(action: Action): action is MessageAction {
 
 export function isParallelAction(action: Action): action is ParallelAction {
   return action.kind === 'parallel';
+}
+
+export function isSubProtocolAction(action: Action): action is SubProtocolAction {
+  return action.kind === 'subprotocol';
 }

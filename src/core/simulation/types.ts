@@ -25,6 +25,24 @@ export interface CFGSimulatorConfig {
    * Choice strategy: 'manual' (user picks), 'random', or 'first'
    */
   choiceStrategy?: 'manual' | 'random' | 'first';
+
+  /**
+   * Maximum number of actions to preview in each choice branch
+   * Default: 5
+   */
+  previewLimit?: number;
+
+  /**
+   * Protocol registry for resolving sub-protocols
+   * Required for sub-protocol execution support
+   */
+  protocolRegistry?: any; // Will be typed as IProtocolRegistry when imported
+
+  /**
+   * Call stack manager for tracking sub-protocol invocations
+   * Required for sub-protocol execution support
+   */
+  callStackManager?: any; // Will be typed as ICallStackManager when imported
 }
 
 /**
@@ -60,7 +78,7 @@ export interface CFGExecutionState {
   /**
    * Available choices at current choice point
    */
-  availableChoices?: ChoiceOption[];
+  availableChoices?: EnhancedChoiceOption[];
 
   /**
    * Whether currently in parallel composition
@@ -186,6 +204,7 @@ export type CFGExecutionEvent =
   | ChoiceEvent
   | RecursionEvent
   | ParallelEvent
+  | SubProtocolEvent
   | StateChangeEvent;
 
 /**
@@ -233,6 +252,18 @@ export interface ParallelEvent {
   timestamp: number;
   action: 'fork' | 'join';
   branches?: number;
+  nodeId: string;
+}
+
+/**
+ * Sub-protocol invocation event (enter or exit)
+ */
+export interface SubProtocolEvent {
+  type: 'subprotocol';
+  timestamp: number;
+  action: 'enter' | 'exit';
+  protocol: string;
+  roleArguments: string[];
   nodeId: string;
 }
 
@@ -310,3 +341,62 @@ export type CFGExecutionErrorType =
   | 'invalid-node'         // Node not found in CFG
   | 'recursion-not-found'  // Continue with unknown label
   | 'parallel-error';      // Error in parallel execution
+
+// ============================================================================
+// Event Subscription System
+// ============================================================================
+
+/**
+ * Event types that simulator can emit for visualization/debugging
+ */
+export type SimulatorEventType =
+  | 'step-start'           // Before executing step
+  | 'step-end'             // After executing step
+  | 'node-enter'           // Entering a node
+  | 'node-exit'            // Leaving a node
+  | 'message'              // Message action executed
+  | 'choice-point'         // At choice, waiting for decision
+  | 'choice-selected'      // Choice made
+  | 'fork'                 // Parallel fork
+  | 'join'                 // Parallel join
+  | 'recursion-enter'      // Entering rec
+  | 'recursion-continue'   // Continue executed
+  | 'recursion-exit'       // Exiting rec
+  | 'complete'             // Reached terminal
+  | 'error';               // Error occurred
+
+/**
+ * Event callback function signature
+ */
+export type EventCallback = (data: any) => void;
+
+/**
+ * Enhanced choice option with full branch preview
+ */
+export interface EnhancedChoiceOption extends ChoiceOption {
+  /**
+   * Preview of all actions in this branch (up to a limit)
+   */
+  preview: ActionPreview[];
+
+  /**
+   * Roles participating in this branch
+   */
+  participatingRoles: string[];
+
+  /**
+   * Estimated number of steps in this branch
+   */
+  estimatedSteps: number;
+}
+
+/**
+ * Preview of an action in a branch
+ */
+export interface ActionPreview {
+  type: 'message' | 'choice' | 'parallel' | 'recursion';
+  from?: string;
+  to?: string;
+  label: string;
+  description: string;
+}
