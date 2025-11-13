@@ -61,6 +61,81 @@ describe('Scribble Parser - Basic Protocol Structure', () => {
   });
 });
 
+describe('Scribble Parser - Protocol Declaration Syntax', () => {
+  it('should accept: protocol Name(...)', () => {
+    const source = `
+      protocol Test(role A, role B) {
+        A -> B: Hello();
+      }
+    `;
+
+    const ast = parse(source);
+    expect(ast.type).toBe('Module');
+    expect(ast.declarations).toHaveLength(1);
+
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    expect(protocol.type).toBe('GlobalProtocolDeclaration');
+    expect(protocol.name).toBe('Test');
+  });
+
+  it('should accept: global protocol Name(...)', () => {
+    const source = `
+      global protocol Test(role A, role B) {
+        A -> B: Hello();
+      }
+    `;
+
+    const ast = parse(source);
+    expect(ast.type).toBe('Module');
+    expect(ast.declarations).toHaveLength(1);
+
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    expect(protocol.type).toBe('GlobalProtocolDeclaration');
+    expect(protocol.name).toBe('Test');
+  });
+
+  it('should parse both syntaxes identically', () => {
+    const source1 = `
+      protocol Test(role A, role B) {
+        A -> B: Hello();
+      }
+    `;
+
+    const source2 = `
+      global protocol Test(role A, role B) {
+        A -> B: Hello();
+      }
+    `;
+
+    const ast1 = parse(source1);
+    const ast2 = parse(source2);
+
+    const protocol1 = ast1.declarations[0] as GlobalProtocolDeclaration;
+    const protocol2 = ast2.declarations[0] as GlobalProtocolDeclaration;
+
+    // Compare structure (not locations, which will differ due to 'global' keyword)
+    expect(protocol1.type).toBe(protocol2.type);
+    expect(protocol1.name).toBe(protocol2.name);
+    expect(protocol1.roles.map(r => r.name)).toEqual(protocol2.roles.map(r => r.name));
+    expect(protocol1.body.length).toBe(protocol2.body.length);
+  });
+
+  it('should accept: local protocol Name(...)', () => {
+    const source = `
+      local protocol Test(role A) {
+        A -> A: Hello();
+      }
+    `;
+
+    const ast = parse(source);
+    expect(ast.type).toBe('Module');
+    expect(ast.declarations).toHaveLength(1);
+
+    const protocol = ast.declarations[0];
+    expect(protocol.type).toBe('LocalProtocolDeclaration');
+  });
+});
+
 describe('Scribble Parser - Message Transfer', () => {
   it('should parse simple message without payload', () => {
     const source = `

@@ -1,0 +1,28 @@
+/**
+ * Banking Transaction Protocol
+ *
+ * A two-party protocol demonstrating:
+ * - Request-response pattern
+ * - Choice (success vs failure)
+ * - Error handling
+ *
+ * Flow:
+ * 1. Client sends transfer request to Bank
+ * 2. Bank processes and chooses:
+ *    - Success: Send confirmation
+ *    - Failure: Send error message
+ */
+
+protocol BankingTransaction(role Client, role Bank) {
+  // Client initiates transfer
+  Client -> Bank: TransferRequest(Int);
+
+  // Bank decides outcome
+  choice at Bank {
+    // Success case
+    Bank -> Client: TransferSuccess(String);
+  } or {
+    // Failure case
+    Bank -> Client: TransferFailure(String);
+  }
+}

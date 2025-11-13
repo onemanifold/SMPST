@@ -82,11 +82,16 @@ export class ScribbleParser extends CstParser {
   // ==========================================================================
 
   private globalProtocolDeclaration = this.RULE('globalProtocolDeclaration', () => {
+    // Optional 'global' keyword for standard Scribble compatibility
+    // Both "protocol Name(...)" and "global protocol Name(...)" are accepted
+    this.OPTION1(() => {
+      this.CONSUME(tokens.Global);
+    });
     this.CONSUME(tokens.Protocol);
     this.CONSUME(tokens.Identifier);
 
     // Type parameters
-    this.OPTION(() => {
+    this.OPTION2(() => {
       this.SUBRULE(this.typeParameters);
     });
 
