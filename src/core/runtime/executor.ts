@@ -15,6 +15,7 @@ import type {
   MessageSentEvent,
   MessageReceivedEvent,
   ErrorEvent,
+  CallStackFrame,
 } from './types';
 import type {
   CFSM,
@@ -22,17 +23,20 @@ import type {
   CFSMTransition,
   SendAction,
   ReceiveAction,
+  SubProtocolCallAction,
 } from '../projection/types';
 import type { MessageTransport } from './types';
 
 /**
  * CFSM Executor
  * Manages execution of a single role's state machine
+ * Now with call stack support for sub-protocol execution
  */
 export class Executor {
   private role: string;
-  private cfsm: CFSM;
+  private cfsm: CFSM;  // Root CFSM
   private transport: MessageTransport;
+  private cfsmRegistry: Map<string, Map<string, CFSM>>;
   private observers: ExecutionObserver[];
   private options: ExecutorConfig['options'];
 
@@ -42,14 +46,27 @@ export class Executor {
   private completed: boolean = false;
   private stepCount: number = 0;
 
+  // Call stack for sub-protocol execution
+  // Empty = executing root protocol
+  // Non-empty = executing sub-protocol(s)
+  // Each frame represents a PARENT context to return to
+  private callStack: CallStackFrame[] = [];
+
+  // Current CFSM being executed
+  // If callStack empty: this is this.cfsm (root)
+  // If callStack non-empty: this is the sub-protocol's CFSM
+  private currentCFSM: CFSM;
+
   constructor(config: ExecutorConfig) {
     this.role = config.role;
     this.cfsm = config.cfsm;
     this.transport = config.transport;
+    this.cfsmRegistry = config.cfsmRegistry || new Map();
     this.observers = config.observers || [];
     this.options = config.options || {};
 
-    // Initialize at initial state
+    // Initialize at initial state of root CFSM
+    this.currentCFSM = this.cfsm;
     this.currentState = this.cfsm.initialState;
     this.visitedStates.push(this.currentState);
   }
@@ -65,7 +82,22 @@ export class Executor {
       pendingMessages: this.transport.getPendingMessages(this.role),
       blocked: this.blocked,
       completed: this.completed,
+      callStack: [...this.callStack],  // Return copy of call stack
     };
+  }
+
+  /**
+   * Get the current CFSM being executed
+   */
+  private getCurrentCFSM(): CFSM {
+    return this.currentCFSM;
+  }
+
+  /**
+   * Get terminal states for current execution context
+   */
+  private getCurrentTerminalStates(): string[] {
+    return this.currentCFSM.terminalStates;
   }
 
   /**
@@ -102,8 +134,22 @@ export class Executor {
 
     // Auto-advance through epsilon transitions until we hit an action or terminal
     while (true) {
+      const currentCFSM = this.getCurrentCFSM();
+      const terminalStates = this.getCurrentTerminalStates();
+
       // Check if terminal (terminal states are explicitly listed in CFSM)
-      if (this.cfsm.terminalStates.includes(this.currentState)) {
+      if (terminalStates.includes(this.currentState)) {
+        // If in sub-protocol, pop from call stack and return to parent
+        if (this.callStack.length > 0) {
+          const frame = this.callStack.pop()!;
+          // Return to parent CFSM and state
+          this.currentCFSM = frame.parentCFSM;
+          this.currentState = frame.returnState;
+          // Continue loop to execute in parent context
+          continue;
+        }
+
+        // Root protocol completed
         this.completed = true;
         return {
           success: true,
@@ -113,8 +159,8 @@ export class Executor {
         };
       }
 
-      // Get outgoing transitions
-      const transitions = this.cfsm.transitions.filter(t => t.from === this.currentState);
+      // Get outgoing transitions from current CFSM
+      const transitions = currentCFSM.transitions.filter(t => t.from === this.currentState);
 
       if (transitions.length === 0) {
         const error: ExecutionError = {
@@ -176,6 +222,14 @@ export class Executor {
       } else if (action.type === 'tau') {
         // Explicit tau action - treat as epsilon
         this.transitionTo(firstTransition.to);
+        continue;
+      } else if (action.type === 'subprotocol') {
+        // Sub-protocol invocation - push onto call stack
+        const result = await this.executeSubProtocol(firstTransition);
+        if (!result.success) {
+          return result;
+        }
+        // Sub-protocol has been pushed onto stack, continue to execute it
         continue;
       } else {
         // Choice or other complex action - handle multiple transitions
@@ -343,6 +397,70 @@ export class Executor {
   }
 
   /**
+   * Execute sub-protocol invocation
+   * Pushes new frame onto call stack and transitions to sub-protocol's initial state
+   */
+  private async executeSubProtocol(transition: CFSMTransition): Promise<ExecutionResult> {
+    const action = transition.action;
+    if (!action || action.type !== 'subprotocol') {
+      const error: ExecutionError = {
+        type: 'no-transition',
+        message: 'Transition has no sub-protocol action',
+        state: this.currentState,
+      };
+      return { success: false, error };
+    }
+
+    // Type narrowing - action is now SubProtocolCallAction
+    const subProtocolAction = action as SubProtocolCallAction;
+
+    // Look up sub-protocol CFSM from registry
+    const protocolCFSMs = this.cfsmRegistry.get(subProtocolAction.protocol);
+    if (!protocolCFSMs) {
+      const error: ExecutionError = {
+        type: 'protocol-violation',
+        message: `Sub-protocol '${subProtocolAction.protocol}' not found in registry`,
+        state: this.currentState,
+        details: { protocol: subProtocolAction.protocol },
+      };
+      return { success: false, error };
+    }
+
+    // Get this role's CFSM for the sub-protocol
+    const subProtocolCFSM = protocolCFSMs.get(this.role);
+    if (!subProtocolCFSM) {
+      const error: ExecutionError = {
+        type: 'protocol-violation',
+        message: `Role '${this.role}' not found in sub-protocol '${subProtocolAction.protocol}'`,
+        state: this.currentState,
+        details: { protocol: subProtocolAction.protocol, role: this.role },
+      };
+      return { success: false, error };
+    }
+
+    // Create call stack frame for parent context
+    const frame: CallStackFrame = {
+      parentCFSM: this.currentCFSM,        // Current CFSM becomes parent
+      returnState: subProtocolAction.returnState,  // Where to return after sub-protocol completes
+      roleMapping: subProtocolAction.roleMapping,
+      protocol: subProtocolAction.protocol,
+    };
+
+    // Push parent frame onto call stack
+    this.callStack.push(frame);
+
+    // Switch to sub-protocol execution context
+    this.currentCFSM = subProtocolCFSM;
+    this.currentState = subProtocolCFSM.initialState;
+    this.visitedStates.push(this.currentState);
+
+    return {
+      success: true,
+      newState: this.currentState,
+    };
+  }
+
+  /**
    * Transition to new state
    */
   private transitionTo(newState: string): void {
@@ -435,8 +553,10 @@ export class Executor {
    * Reset to initial state
    */
   reset(): void {
+    this.currentCFSM = this.cfsm;  // Reset to root CFSM
     this.currentState = this.cfsm.initialState;
     this.visitedStates = [this.currentState];
+    this.callStack = [];  // Clear call stack
     this.blocked = false;
     this.completed = false;
     this.stepCount = 0;

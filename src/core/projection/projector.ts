@@ -48,6 +48,7 @@ import type {
   CFSMAction,
   SendAction,
   ReceiveAction,
+  SubProtocolCallAction,
   ProjectionResult,
   ProjectionError,
 } from './types';
@@ -375,14 +376,45 @@ export function project(cfg: CFG, role: string): CFSM {
             lastStateId: newState.id,
           });
         } else if (isSubProtocolAction(action)) {
-          // RULE 3: Sub-protocol invocation (tau-elimination)
-          // Sub-protocols are transparent at CFSM level - they get expanded during execution
-          // Treat as epsilon transition: skip over and continue with same last state
+          // RULE 3: Sub-protocol invocation
+          // Check if role is involved in sub-protocol
+          const isInvolved = action.roleArguments.includes(role);
 
-          queue.push({
-            cfgNodeId: targetNode.id,
-            lastStateId, // Keep same last state
-          });
+          if (isInvolved) {
+            // Role is involved - emit sub-protocol call action with call stack semantics
+            // Create state for after sub-protocol returns
+            const returnState = createState(`after_${action.protocol}`);
+
+            // Build role mapping (for now, simplified: role → role)
+            // TODO: Proper role mapping from formal parameters to actual arguments
+            const roleMapping: Record<string, string> = {};
+            action.roleArguments.forEach((r, idx) => {
+              roleMapping[`role${idx}`] = r;
+            });
+
+            // Create sub-protocol call action
+            const subProtocolAction: SubProtocolCallAction = {
+              type: 'subprotocol',
+              protocol: action.protocol,
+              roleMapping,
+              returnState: returnState.id,
+            };
+
+            // Create transition with sub-protocol action
+            createTransition(lastStateId, returnState.id, subProtocolAction);
+
+            // Continue from return state
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId: returnState.id,
+            });
+          } else {
+            // Role NOT involved - tau-elimination (epsilon transition)
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId, // Keep same last state (epsilon)
+            });
+          }
         } else {
           // RULE 2: Role NOT involved in message (tau-elimination)
           // (p→q:⟨U⟩.G) ↾ r = G↾r if r≠p, r≠q

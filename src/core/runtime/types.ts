@@ -16,15 +16,29 @@ import type { MessageAction } from '../cfg/types';
 // ============================================================================
 
 /**
+ * Call stack frame for sub-protocol execution
+ * Follows formal MPST semantics: sub-protocols are invoked with push/pop stack semantics
+ *
+ * Each frame represents a PARENT context to return to after sub-protocol completes
+ */
+export interface CallStackFrame {
+  parentCFSM: CFSM;        // Parent CFSM to return to after sub-protocol completes
+  returnState: string;     // State in parent CFSM to return to after completion
+  roleMapping: Record<string, string>;  // Formal parameter → actual role mapping
+  protocol: string;        // Sub-protocol name being executed (for debugging)
+}
+
+/**
  * State of a single role's execution
  */
 export interface ExecutionState {
   role: string;
-  currentState: string;  // Current CFSM state ID
+  currentState: string;  // Current CFSM state ID (in current stack frame)
   visitedStates: string[];  // History of states
   pendingMessages: Message[];  // Incoming message queue
   blocked: boolean;  // Waiting for message?
   completed: boolean;  // Reached terminal state?
+  callStack: CallStackFrame[];  // Sub-protocol call stack (bottom = root protocol)
 }
 
 /**
@@ -182,6 +196,10 @@ export interface ExecutorConfig {
   role: string;
   cfsm: CFSM;
   transport: MessageTransport;
+
+  // Optional CFSM registry for sub-protocol execution
+  // Maps protocol name → role → CFSM
+  cfsmRegistry?: Map<string, Map<string, CFSM>>;
 
   // Optional observers
   observers?: ExecutionObserver[];
