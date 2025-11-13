@@ -81,7 +81,7 @@
  * That is the job of the CFSM-based distributed simulator (Layer 5).
  */
 
-import type { CFG, Node as CFGNode, Edge as CFGEdge, ActionNode, BranchNode, RecursiveNode, ForkNode, JoinNode, MergeNode } from '../cfg/types';
+import type { CFG, Node as CFGNode, Edge as CFGEdge, ActionNode, BranchNode, RecursiveNode, ForkNode, JoinNode, MergeNode, SubProtocolAction } from '../cfg/types';
 import type {
   CFGSimulatorConfig,
   CFGExecutionState,
@@ -96,12 +96,16 @@ import type {
   ChoiceEvent,
   RecursionEvent,
   ParallelEvent,
+  SubProtocolEvent,
   StateChangeEvent,
   SimulatorEventType,
   EventCallback,
   EnhancedChoiceOption,
   ActionPreview,
 } from './types';
+import type { IProtocolRegistry } from '../protocol-registry/registry';
+import type { ICallStackManager } from './call-stack-types';
+import { buildCFG } from '../cfg/builder';
 
 /**
  * CFG Simulator - Orchestrated execution
@@ -111,7 +115,11 @@ import type {
  */
 export class CFGSimulator {
   private cfg: CFG;
-  private config: Required<CFGSimulatorConfig>;
+  private config: Required<Omit<CFGSimulatorConfig, 'protocolRegistry' | 'callStackManager'>>;
+
+  // Sub-protocol support (optional)
+  private protocolRegistry?: IProtocolRegistry;
+  private callStackManager?: ICallStackManager;
 
   // Execution state
   private currentNode: string;
@@ -148,6 +156,10 @@ export class CFGSimulator {
       choiceStrategy: config.choiceStrategy ?? 'manual',
       previewLimit: config.previewLimit ?? 5,
     };
+
+    // Store optional sub-protocol support
+    this.protocolRegistry = config.protocolRegistry;
+    this.callStackManager = config.callStackManager;
 
     // Find initial node
     const initialNode = cfg.nodes.find(n => n.type === 'initial');
@@ -527,23 +539,149 @@ export class CFGSimulator {
   }
 
   /**
-   * Execute action node (emit message event)
+   * Execute action node (emit message event or handle sub-protocol)
    */
   private executeAction(node: ActionNode): CFGStepResult {
     const action = node.action;
-    if (action.kind !== 'message') {
-      throw new Error(`Expected message action, got ${action.kind}`);
+
+    // Handle sub-protocol invocation
+    if (action.kind === 'subprotocol') {
+      return this.executeSubProtocol(node, action as SubProtocolAction);
     }
 
-    const event: MessageEvent = {
-      type: 'message',
-      timestamp: Date.now(),
-      from: action.from,
-      to: action.to,
-      label: action.label,
-      payloadType: action.payloadType,
-      nodeId: node.id,
-    };
+    // Handle message action
+    if (action.kind === 'message') {
+      const event: MessageEvent = {
+        type: 'message',
+        timestamp: Date.now(),
+        from: action.from,
+        to: action.to,
+        label: action.label,
+        payloadType: action.payloadType,
+        nodeId: node.id,
+      };
+
+      // Transition to next node
+      const result = this.transitionToNext();
+
+      return {
+        ...result,
+        event,
+      };
+    }
+
+    throw new Error(`Unknown action kind: ${(action as any).kind}`);
+  }
+
+  /**
+   * Execute sub-protocol invocation
+   *
+   * Implements formal sub-protocol semantics:
+   * 1. Resolve protocol from registry
+   * 2. Create role mapping (formal → actual)
+   * 3. Build CFG for sub-protocol
+   * 4. Push call stack frame
+   * 5. Execute sub-protocol to completion
+   * 6. Pop call stack frame
+   * 7. Continue with parent protocol
+   */
+  private executeSubProtocol(node: ActionNode, action: SubProtocolAction): CFGStepResult {
+    // Check if sub-protocol support is enabled
+    if (!this.protocolRegistry || !this.callStackManager) {
+      throw new Error(
+        'Sub-protocol execution requires protocolRegistry and callStackManager in config'
+      );
+    }
+
+    // Resolve sub-protocol
+    const subProtocol = this.protocolRegistry.resolve(action.protocol);
+
+    // Create role mapping
+    const roleMapping = this.protocolRegistry.createRoleMapping(
+      action.protocol,
+      action.roleArguments
+    );
+
+    // Build CFG for sub-protocol
+    const subCFG = buildCFG(subProtocol);
+
+    // Push frame onto call stack
+    const frame = this.callStackManager.push({
+      type: 'subprotocol',
+      name: action.protocol,
+      entryNodeId: node.id,
+      exitNodeId: this.getOutgoingEdges(node.id)[0]?.to || node.id,
+      currentNode: subCFG.entryNodeId,
+      subCFG,
+      roleMapping,
+    });
+
+    // Emit enter event
+    if (this.config.recordTrace) {
+      const enterEvent: SubProtocolEvent = {
+        type: 'subprotocol',
+        timestamp: Date.now(),
+        action: 'enter',
+        protocol: action.protocol,
+        roleArguments: action.roleArguments,
+        nodeId: node.id,
+      };
+      this.trace.events.push(enterEvent);
+    }
+
+    // Execute sub-protocol to completion
+    // Create a nested simulator for the sub-protocol
+    const subSimulator = new CFGSimulator(subCFG, {
+      maxSteps: this.config.maxSteps - this.stepCount, // Remaining steps
+      recordTrace: this.config.recordTrace, // Propagate trace recording
+      choiceStrategy: this.config.choiceStrategy,
+      protocolRegistry: this.protocolRegistry,
+      callStackManager: this.callStackManager,
+    });
+
+    // Run sub-protocol to completion
+    const subResult = subSimulator.run();
+
+    // Update step count based on sub-protocol execution
+    this.stepCount += subSimulator.getState().stepCount;
+
+    // Check if sub-protocol completed successfully
+    if (!subResult.success || !subSimulator.isComplete()) {
+      // Sub-protocol didn't complete - propagate error
+      this.callStackManager.pop();
+
+      return {
+        success: false,
+        error: subResult.error || {
+          type: 'invalid-node',
+          message: `Sub-protocol "${action.protocol}" did not complete successfully`,
+          nodeId: node.id,
+        },
+        state: this.getState(),
+      };
+    }
+
+    // Merge sub-protocol trace events into parent trace
+    if (this.config.recordTrace) {
+      const subTrace = subSimulator.getTrace();
+      this.trace.events.push(...subTrace.events);
+    }
+
+    // Pop frame from call stack
+    this.callStackManager.pop();
+
+    // Emit exit event
+    if (this.config.recordTrace) {
+      const exitEvent: SubProtocolEvent = {
+        type: 'subprotocol',
+        timestamp: Date.now(),
+        action: 'exit',
+        protocol: action.protocol,
+        roleArguments: action.roleArguments,
+        nodeId: node.id,
+      };
+      this.trace.events.push(exitEvent);
+    }
 
     // Emit message event for subscribers
     this.emit('message', {
@@ -559,7 +697,7 @@ export class CFGSimulator {
 
     return {
       ...result,
-      event,
+      event: undefined, // Sub-protocol events already recorded
     };
   }
 

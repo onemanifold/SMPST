@@ -31,6 +31,18 @@ export interface CFGSimulatorConfig {
    * Default: 5
    */
   previewLimit?: number;
+
+  /**
+   * Protocol registry for resolving sub-protocols
+   * Required for sub-protocol execution support
+   */
+  protocolRegistry?: any; // Will be typed as IProtocolRegistry when imported
+
+  /**
+   * Call stack manager for tracking sub-protocol invocations
+   * Required for sub-protocol execution support
+   */
+  callStackManager?: any; // Will be typed as ICallStackManager when imported
 }
 
 /**
@@ -192,6 +204,7 @@ export type CFGExecutionEvent =
   | ChoiceEvent
   | RecursionEvent
   | ParallelEvent
+  | SubProtocolEvent
   | StateChangeEvent;
 
 /**
@@ -239,6 +252,18 @@ export interface ParallelEvent {
   timestamp: number;
   action: 'fork' | 'join';
   branches?: number;
+  nodeId: string;
+}
+
+/**
+ * Sub-protocol invocation event (enter or exit)
+ */
+export interface SubProtocolEvent {
+  type: 'subprotocol';
+  timestamp: number;
+  action: 'enter' | 'exit';
+  protocol: string;
+  roleArguments: string[];
   nodeId: string;
 }
 

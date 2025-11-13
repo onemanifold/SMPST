@@ -10,7 +10,9 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "parse": "tsx src/core/parser/cli.ts"
+    "parse": "tsx src/core/parser/cli.ts",
+    "project": "tsx src/core/projection/cli.ts",
+    "project:help": "tsx src/core/projection/cli.ts --help"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.0",
