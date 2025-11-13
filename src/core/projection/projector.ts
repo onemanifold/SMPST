@@ -673,189 +673,24 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
 }
 
 /**
- * Add CFG-compatible view to CFSM for theorem testing
+ * Project a global CFG to all roles' CFSMs
  *
- * Converts LTS representation (states + transitions with actions)
- * to CFG representation (nodes + edges).
+ * FORMAL OPERATION (Deniélou & Yoshida 2012):
  *
- * Transformation:
- * - LTS states → CFG state nodes
- * - LTS transitions with actions → CFG action nodes + edges
- * - Tau transitions → direct CFG edges
- * - Multiple outgoing transitions from same state → branch node
- * - Multiple incoming transitions to same state → merge node
+ * For a global type G with roles R = {r₁, r₂, ..., rₙ}:
+ *   projectAll(G) = {r ↦ (G ↾ r) | r ∈ R}
  *
- * NOTE: This is a derived view for testing/visualization.
- * The canonical representation is the LTS (states/transitions).
- */
-function addCFGView(cfsm: CFSM): void {
-  const nodes: any[] = [];
-  const edges: any[] = [];
-  let actionNodeCounter = 0;
-  let branchNodeCounter = 0;
-  let mergeNodeCounter = 0;
-
-  // Analyze transition structure to find branches and merges
-  const outgoingTransitions = new Map<string, CFSMTransition[]>();
-  const incomingTransitions = new Map<string, CFSMTransition[]>();
-
-  for (const transition of cfsm.transitions) {
-    // Track outgoing transitions
-    if (!outgoingTransitions.has(transition.from)) {
-      outgoingTransitions.set(transition.from, []);
-    }
-    outgoingTransitions.get(transition.from)!.push(transition);
-
-    // Track incoming transitions
-    if (!incomingTransitions.has(transition.to)) {
-      incomingTransitions.set(transition.to, []);
-    }
-    incomingTransitions.get(transition.to)!.push(transition);
-  }
-
-  // Find branch points: states with multiple outgoing transitions
-  const branchStates = new Set<string>();
-  for (const [stateId, transitions] of outgoingTransitions.entries()) {
-    // Filter out tau transitions for branch detection
-    const nonTauTransitions = transitions.filter(t => t.action.type !== 'tau');
-    if (nonTauTransitions.length > 1) {
-      branchStates.add(stateId);
-    }
-  }
-
-  // Find merge points: states with multiple incoming transitions
-  const mergeStates = new Set<string>();
-  for (const [stateId, transitions] of incomingTransitions.entries()) {
-    // Filter out tau transitions for merge detection
-    const nonTauTransitions = transitions.filter(t => t.action.type !== 'tau');
-    if (nonTauTransitions.length > 1) {
-      mergeStates.add(stateId);
-    }
-  }
-
-  // Find recursive points: states with back-edges (cycles)
-  // A back-edge is a transition to a state that appears earlier in traversal order
-  // or to a state we've already processed (creating a cycle)
-  const recursiveStates = new Set<string>();
-  const stateOrder = new Map<string, number>();
-  cfsm.states.forEach((state, index) => {
-    stateOrder.set(state.id, index);
-  });
-
-  for (const transition of cfsm.transitions) {
-    const fromOrder = stateOrder.get(transition.from) ?? Infinity;
-    const toOrder = stateOrder.get(transition.to) ?? Infinity;
-
-    // Back-edge: points to earlier state (or initial state for recursion)
-    if (toOrder <= fromOrder && transition.to === cfsm.initialState) {
-      // This is a back-edge to initial state - marks recursion entry
-      recursiveStates.add(transition.to);
-    }
-  }
-
-  // Convert states to nodes (including branch/merge markers)
-  for (const state of cfsm.states) {
-    const nodeType = state.id === cfsm.initialState ? 'initial'
-      : cfsm.terminalStates.includes(state.id) ? 'terminal'
-      : 'state';
-
-    nodes.push({
-      id: state.id,
-      type: nodeType,
-      label: state.label,
-    });
-
-    // Add branch node after states that branch
-    if (branchStates.has(state.id)) {
-      const branchNodeId = `branch_${branchNodeCounter++}`;
-      nodes.push({
-        id: branchNodeId,
-        type: 'branch',
-        from_state: state.id,
-      });
-    }
-
-    // Add merge node before states that merge
-    if (mergeStates.has(state.id)) {
-      const mergeNodeId = `merge_${mergeNodeCounter++}`;
-      nodes.push({
-        id: mergeNodeId,
-        type: 'merge',
-        to_state: state.id,
-      });
-    }
-
-    // Add recursive node for states that are recursion entry points
-    if (recursiveStates.has(state.id)) {
-      const recursiveNodeId = `rec_${state.id}`;
-      nodes.push({
-        id: recursiveNodeId,
-        type: 'recursive',
-        entry_state: state.id,
-        label: state.label || `rec_${state.id}`,
-      });
-    }
-  }
-
-  // Convert transitions to nodes/edges
-  for (const transition of cfsm.transitions) {
-    const action = transition.action;
-
-    if (action.type === 'tau') {
-      // Tau transitions become direct edges
-      // Determine edge type: continue for back-edges, sequence otherwise
-      const fromOrder = stateOrder.get(transition.from) ?? Infinity;
-      const toOrder = stateOrder.get(transition.to) ?? Infinity;
-      const isContinueEdge = toOrder <= fromOrder && transition.to === cfsm.initialState;
-
-      edges.push({
-        id: transition.id,
-        from: transition.from,
-        to: transition.to,
-        edgeType: isContinueEdge ? 'continue' : 'sequence',
-      });
-    } else {
-      // Non-tau transitions become action node + 2 edges
-      const actionNodeId = `action_${actionNodeCounter++}`;
-
-      // Create action node
-      nodes.push({
-        id: actionNodeId,
-        type: 'action',
-        action: action,
-      });
-
-      // Determine edge type for source → action edge
-      // If source state has multiple outgoing transitions, this is a branch edge
-      const isBranchEdge = branchStates.has(transition.from);
-
-      // Edge from source state to action node
-      edges.push({
-        id: `${transition.id}_in`,
-        from: transition.from,
-        to: actionNodeId,
-        edgeType: isBranchEdge ? 'branch' : 'sequence',
-      });
-
-      // Edge from action node to target state
-      edges.push({
-        id: `${transition.id}_out`,
-        from: actionNodeId,
-        to: transition.to,
-        edgeType: 'sequence',
-      });
-    }
-  }
-
-  cfsm.nodes = nodes;
-  cfsm.edges = edges;
-}
-
-/**
- * Project a CFG to all roles' CFSMs
+ * where G ↾ r is the projection of G onto role r, producing a CFSM.
  *
- * @param cfg - Global CFG
- * @returns Map of role → CFSM for all roles
+ * PROJECTION CORRECTNESS (Theorem 3.1):
+ *   If G is well-formed, then:
+ *   1. G ↾ r is well-formed for all r ∈ R
+ *   2. The composition ⊕(G ↾ r₁, ..., G ↾ rₙ) is trace-equivalent to G
+ *
+ * @param cfg - Global CFG representation of multiparty protocol
+ * @returns Map of role → CFSM (pure LTS) for all roles
+ *
+ * @reference Section 4.2: "Projection Algorithm", Deniélou & Yoshida (2012)
  */
 export function projectAll(cfg: CFG): ProjectionResult {
   const cfsms = new Map<string, CFSM>();
@@ -864,8 +699,7 @@ export function projectAll(cfg: CFG): ProjectionResult {
   for (const role of cfg.roles) {
     try {
       const cfsm = project(cfg, role);
-      // Add CFG-compatible view for theorem testing
-      addCFGView(cfsm);
+      // CFSM is now pure LTS - no CFG pollution
       cfsms.set(role, cfsm);
     } catch (error) {
       errors.push({
