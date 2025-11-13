@@ -34,6 +34,12 @@ export interface CFSMSimulatorConfig {
    * Transition selection strategy when multiple enabled
    */
   transitionStrategy?: 'first' | 'random' | 'manual';
+
+  /**
+   * Enable FIFO ordering verification (Theorem 5.3, Honda 2016)
+   * When enabled, verifies messages received in send order
+   */
+  verifyFIFO?: boolean;
 }
 
 /**
@@ -128,9 +134,21 @@ export interface CFSMRunResult {
  * Execution error
  */
 export interface CFSMExecutionError {
-  type: 'no-enabled-transitions' | 'buffer-overflow' | 'max-steps' | 'invalid-state' | 'transition-required';
+  type: 'no-enabled-transitions' | 'buffer-overflow' | 'max-steps' | 'invalid-state' | 'transition-required' | 'fifo-violation';
   message: string;
   stateId?: string;
+  details?: FIFOViolation;
+}
+
+/**
+ * FIFO ordering violation detected
+ * Theorem 5.3 (Honda et al. 2016): Messages must be received in send order
+ */
+export interface FIFOViolation {
+  channel: string;  // Sender role
+  expectedMessage: Message;
+  actualMessage: Message;
+  queueState: Message[];
 }
 
 /**

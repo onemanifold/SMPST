@@ -26,7 +26,8 @@ export type ModuleDeclaration =
   | ImportDeclaration
   | TypeDeclaration
   | GlobalProtocolDeclaration
-  | LocalProtocolDeclaration;
+  | LocalProtocolDeclaration
+  | ProtocolExtension;  // Subtyping (future feature)
 
 export interface ImportDeclaration {
   type: 'ImportDeclaration';
@@ -76,7 +77,11 @@ export type GlobalInteraction =
   | Parallel
   | Recursion
   | Continue
-  | Do;
+  | Do
+  | Try          // Exception handling
+  | Throw        // Exception handling
+  | TimedMessage // Timed types
+  | Timeout;     // Timed types
 
 // ============================================================================
 // Local Protocol
@@ -101,7 +106,10 @@ export type LocalInteraction =
   | LocalParallel
   | Recursion
   | Continue
-  | Do;
+  | Do
+  | Try      // Exception handling
+  | Throw    // Exception handling
+  | Timeout; // Timed types
 
 // ============================================================================
 // Message Transfer (Global)
@@ -276,7 +284,11 @@ export function isGlobalInteraction(node: any): node is GlobalInteraction {
     node.type === 'Parallel' ||
     node.type === 'Recursion' ||
     node.type === 'Continue' ||
-    node.type === 'Do'
+    node.type === 'Do' ||
+    node.type === 'Try' ||
+    node.type === 'Throw' ||
+    node.type === 'TimedMessage' ||
+    node.type === 'Timeout'
   );
 }
 
@@ -288,7 +300,10 @@ export function isLocalInteraction(node: any): node is LocalInteraction {
     node.type === 'LocalParallel' ||
     node.type === 'Recursion' ||
     node.type === 'Continue' ||
-    node.type === 'Do'
+    node.type === 'Do' ||
+    node.type === 'Try' ||
+    node.type === 'Throw' ||
+    node.type === 'Timeout'
   );
 }
 
@@ -314,4 +329,139 @@ export function isContinue(node: any): node is Continue {
 
 export function isDo(node: any): node is Do {
   return node?.type === 'Do';
+}
+
+// ============================================================================
+// Exception Handling (Future Feature)
+// Based on docs/theory/exception-handling.md
+// ============================================================================
+
+/**
+ * Try-Catch block for exception handling
+ *
+ * Example:
+ *   try {
+ *     Client -> Server: Request();
+ *     Server -> Client: Response();
+ *   } catch Error {
+ *     Server -> Client: ErrorMsg();
+ *   }
+ */
+export interface Try {
+  type: 'Try';
+  body: GlobalProtocolBody | LocalProtocolBody;
+  catchHandlers: CatchHandler[];
+  location?: SourceLocation;
+}
+
+export interface CatchHandler {
+  type: 'CatchHandler';
+  exceptionLabel: string;  // Exception label to catch
+  body: GlobalProtocolBody | LocalProtocolBody;
+  location?: SourceLocation;
+}
+
+/**
+ * Throw exception
+ *
+ * Example:
+ *   throw Error;
+ */
+export interface Throw {
+  type: 'Throw';
+  exceptionLabel: string;
+  from?: string;  // Optional: role throwing (for global protocols)
+  location?: SourceLocation;
+}
+
+// ============================================================================
+// Timed Session Types (Future Feature)
+// Based on docs/theory/timed-session-types.md
+// ============================================================================
+
+/**
+ * Timed message with deadline constraint
+ *
+ * Example:
+ *   Client -> Server: Request() within 5s;
+ */
+export interface TimedMessage {
+  type: 'TimedMessage';
+  message: Message;
+  from: string;
+  to: string | string[];
+  deadline: TimeConstraint;
+  location?: SourceLocation;
+}
+
+/**
+ * Time constraint specification
+ */
+export interface TimeConstraint {
+  type: 'TimeConstraint';
+  value: number;      // Deadline value
+  unit: 'ms' | 's' | 'min';  // Time unit
+  location?: SourceLocation;
+}
+
+/**
+ * Timeout handler
+ *
+ * Example:
+ *   timeout(5s) {
+ *     // Handler if message not received within 5s
+ *   }
+ */
+export interface Timeout {
+  type: 'Timeout';
+  constraint: TimeConstraint;
+  body: GlobalProtocolBody | LocalProtocolBody;
+  location?: SourceLocation;
+}
+
+// ============================================================================
+// Asynchronous Subtyping (Future Feature)
+// Based on docs/theory/asynchronous-subtyping.md
+// ============================================================================
+
+/**
+ * Protocol extension for subtyping
+ *
+ * Example:
+ *   protocol Enhanced(role A, role B) extends Basic(A, B) {
+ *     // Additional or refined behavior
+ *   }
+ */
+export interface ProtocolExtension {
+  type: 'ProtocolExtension';
+  name: string;
+  extends: string;  // Base protocol name
+  typeArguments?: Type[];
+  roleArguments: string[];
+  refinements: GlobalProtocolBody;
+  location?: SourceLocation;
+}
+
+// ============================================================================
+// Type Guards for New Features
+// ============================================================================
+
+export function isTry(node: any): node is Try {
+  return node?.type === 'Try';
+}
+
+export function isThrow(node: any): node is Throw {
+  return node?.type === 'Throw';
+}
+
+export function isTimedMessage(node: any): node is TimedMessage {
+  return node?.type === 'TimedMessage';
+}
+
+export function isTimeout(node: any): node is Timeout {
+  return node?.type === 'Timeout';
+}
+
+export function isProtocolExtension(node: any): node is ProtocolExtension {
+  return node?.type === 'ProtocolExtension';
 }
