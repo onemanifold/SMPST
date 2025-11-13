@@ -59,13 +59,12 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
 
       // Check well-formedness
       const wf = verifyProtocol(cfg);
-      expect(wf.connected).toBe(true);
-      expect(wf.deterministic).toBe(true);
-      expect(wf.raceFree).toBe(true);
+      expect(wf.connectedness.isConnected).toBe(true);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false);
 
       // Theorem 5.10: Well-formed → Progress
-      const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(wf.progress.canProgress).toBe(true);
 
       const deadlock = detectDeadlock(cfg);
       expect(deadlock.hasDeadlock).toBe(false);
@@ -93,11 +92,10 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
 
       const wf = verifyProtocol(cfg);
-      expect(wf.connected).toBe(true);
+      expect(wf.connectedness.isConnected).toBe(true);
 
       // Theorem 5.10: Well-formed → No deadlocks
-      const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(wf.progress.canProgress).toBe(true);
     });
   });
 
@@ -117,7 +115,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
 
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
 
       const deadlock = detectDeadlock(cfg);
       expect(deadlock.hasDeadlock).toBe(false);
@@ -138,7 +136,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
 
       // No circular wait: messages flow sequentially
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
 
     it('proves: ping-pong has progress', () => {
@@ -153,7 +151,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
 
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
   });
 
@@ -179,7 +177,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
 
       // Both branches must progress
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
 
     it('proves: nested choice has progress', () => {
@@ -203,7 +201,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
 
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
   });
 
@@ -229,7 +227,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
 
       // No circular wait: branches independent
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
 
     it('proves: parallel with different roles has progress', () => {
@@ -248,7 +246,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
 
       // B appears in both, but no circular dependency
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
   });
 
@@ -277,7 +275,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
 
       // Recursion is guarded by choice → progress
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
 
       // Note: continue edges don't create deadlock cycles
       const deadlock = detectDeadlock(cfg);
@@ -300,7 +298,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
 
       // Infinite loop ≠ deadlock (protocol can make progress)
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
   });
 
@@ -334,7 +332,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
 
       // May or may not detect depending on analysis sophistication
       // At minimum, race condition should be detected
-      expect(deadlock.hasDeadlock || !checkProgress(cfg).hasProgress).toBe(true);
+      expect(deadlock.hasDeadlock || !checkProgress(cfg).canProgress).toBe(true);
     });
 
     it('counterexample: manual CFG deadlock cycle', () => {
@@ -389,7 +387,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
 
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
 
     it('handles: empty protocol (immediate termination)', () => {
@@ -404,7 +402,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
 
       const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(progress.canProgress).toBe(true);
     });
 
     it('handles: complex real-world protocol', () => {
@@ -432,10 +430,9 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
 
       const wf = verifyProtocol(cfg);
-      expect(wf.connected).toBe(true);
+      expect(wf.connectedness.isConnected).toBe(true);
 
-      const progress = checkProgress(cfg);
-      expect(progress.hasProgress).toBe(true);
+      expect(wf.progress.canProgress).toBe(true);
     });
   });
 
@@ -448,7 +445,7 @@ describe('Theorem 5.10: Progress (Honda et al. 2016)', () => {
       const path = require('path');
       const docPath = path.join(
         __dirname,
-        '../../../docs/theory/well-formedness-properties.md'
+        '../../../../docs/theory/well-formedness-properties.md'
       );
 
       expect(fs.existsSync(docPath)).toBe(true);

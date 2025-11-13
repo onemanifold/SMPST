@@ -44,9 +44,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const result = checkConnectedness(cfg);
 
       // Theorem: All roles participate
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
-      expect(result.unreachableRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
 
     it('proves: chain protocol connects all roles', () => {
@@ -63,8 +62,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const result = checkConnectedness(cfg);
 
       // All roles connected through chain
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
 
     it('proves: hub-and-spoke topology is connected', () => {
@@ -84,8 +83,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const result = checkConnectedness(cfg);
 
       // Hub topology: all workers connected through coordinator
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
   });
 
@@ -107,8 +106,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const result = checkConnectedness(cfg);
 
       // Theorem violation: Role C isolated
-      expect(result.connected).toBe(false);
-      expect(result.isolatedRoles).toContain('C');
+      expect(result.isConnected).toBe(false);
+      expect(result.orphanedRoles).toContain('C');
     });
 
     it('counterexample: multiple unused roles', () => {
@@ -123,11 +122,11 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkConnectedness(cfg);
 
-      expect(result.connected).toBe(false);
-      expect(result.isolatedRoles.length).toBeGreaterThanOrEqual(2);
-      expect(result.isolatedRoles).toContain('C');
-      expect(result.isolatedRoles).toContain('D');
-      expect(result.isolatedRoles).toContain('E');
+      expect(result.isConnected).toBe(false);
+      expect(result.orphanedRoles.length).toBeGreaterThanOrEqual(2);
+      expect(result.orphanedRoles).toContain('C');
+      expect(result.orphanedRoles).toContain('D');
+      expect(result.orphanedRoles).toContain('E');
     });
 
     it('counterexample: disconnected subgraph', () => {
@@ -145,7 +144,7 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
 
       // All roles participate, but graph not fully connected
       // This might be OK in some definitions, but ideally we want single connected component
-      expect(result.connected).toBe(true); // Each role participates
+      expect(result.isConnected).toBe(true); // Each role participates
       // Note: More sophisticated check would detect separate connected components
     });
   });
@@ -176,8 +175,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const result = checkConnectedness(cfg);
 
       // All roles participate in both branches
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
 
     it('proves: parallel branches maintain connectedness', () => {
@@ -198,8 +197,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const result = checkConnectedness(cfg);
 
       // All roles participate (even in separate branches)
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
 
     it('proves: recursion maintains connectedness', () => {
@@ -222,8 +221,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkConnectedness(cfg);
 
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
   });
 
@@ -243,8 +242,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkConnectedness(cfg);
 
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
 
     it('handles: single message protocol', () => {
@@ -258,8 +257,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkConnectedness(cfg);
 
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
 
     it('handles: many roles (N > 10)', () => {
@@ -285,8 +284,8 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkConnectedness(cfg);
 
-      expect(result.connected).toBe(true);
-      expect(result.isolatedRoles).toHaveLength(0);
+      expect(result.isConnected).toBe(true);
+      expect(result.orphanedRoles).toHaveLength(0);
     });
   });
 
@@ -299,7 +298,7 @@ describe('Definition 2.5: Connectedness (Honda et al. 2016)', () => {
       const path = require('path');
       const docPath = path.join(
         __dirname,
-        '../../../docs/theory/well-formedness-properties.md'
+        '../../../../docs/theory/well-formedness-properties.md'
       );
 
       expect(fs.existsSync(docPath)).toBe(true);

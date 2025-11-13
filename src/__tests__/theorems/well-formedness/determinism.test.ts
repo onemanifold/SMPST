@@ -50,7 +50,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const result = checkChoiceDeterminism(cfg);
 
       // Theorem: Labels are unique (Login ≠ Register)
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
 
@@ -71,7 +71,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkChoiceDeterminism(cfg);
 
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
 
@@ -93,7 +93,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       // Note: Same label but different payload types
       // In Scribble, this is typically ambiguous (receiver can't distinguish)
       // The verifier should catch this
-      expect(result.deterministic).toBe(false);
+      expect(result.isDeterministic).toBe(false);
       expect(result.violations.length).toBeGreaterThan(0);
     });
   });
@@ -118,7 +118,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const result = checkChoiceDeterminism(cfg);
 
       // Theorem violation: Ambiguous - B cannot distinguish branches
-      expect(result.deterministic).toBe(false);
+      expect(result.isDeterministic).toBe(false);
       expect(result.violations.length).toBeGreaterThan(0);
     });
 
@@ -139,7 +139,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkChoiceDeterminism(cfg);
 
-      expect(result.deterministic).toBe(false);
+      expect(result.isDeterministic).toBe(false);
       expect(result.violations.length).toBeGreaterThan(0);
     });
   });
@@ -166,7 +166,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const result = checkChoiceDeterminism(cfg);
 
       // Responder can distinguish by first message: OptionA vs OptionB
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
 
@@ -188,7 +188,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const result = checkChoiceDeterminism(cfg);
 
       // Each receiver can distinguish: R1 sees Msg1 vs Msg3, R2 sees Msg2 vs Msg4
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
   });
@@ -220,7 +220,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
 
       // Outer choice: Login vs Register (unique)
       // Inner choice: Success vs Failure (unique)
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
 
@@ -249,7 +249,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkChoiceDeterminism(cfg);
 
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
   });
@@ -277,7 +277,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkChoiceDeterminism(cfg);
 
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
 
@@ -305,7 +305,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const result = checkChoiceDeterminism(cfg);
 
       // Each parallel branch has independent deterministic choices
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
   });
@@ -329,7 +329,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkChoiceDeterminism(cfg);
 
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
 
@@ -358,7 +358,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkChoiceDeterminism(cfg);
 
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
 
@@ -377,7 +377,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const cfg = buildCFG(ast.declarations[0]);
       const result = checkChoiceDeterminism(cfg);
 
-      expect(result.deterministic).toBe(true);
+      expect(result.isDeterministic).toBe(true);
       expect(result.violations).toHaveLength(0);
     });
   });
@@ -391,7 +391,7 @@ describe('Determinism Property (Honda et al. 2016)', () => {
       const path = require('path');
       const docPath = path.join(
         __dirname,
-        '../../../docs/theory/well-formedness-properties.md'
+        '../../../../docs/theory/well-formedness-properties.md'
       );
 
       expect(fs.existsSync(docPath)).toBe(true);

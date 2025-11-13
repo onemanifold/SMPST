@@ -429,7 +429,7 @@ describe('Theorem 4.5: No Races (Deniélou & Yoshida 2012)', () => {
       const path = require('path');
       const docPath = path.join(
         __dirname,
-        '../../../docs/theory/well-formedness-properties.md'
+        '../../../../docs/theory/well-formedness-properties.md'
       );
 
       expect(fs.existsSync(docPath)).toBe(true);
