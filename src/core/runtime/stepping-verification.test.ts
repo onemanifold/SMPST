@@ -181,13 +181,36 @@ describe('Stepping Verification - Message Queue Semantics', () => {
     const cfg = buildCFG(parse(source).declarations[0]);
     const { cfsms } = projectAll(cfg);
 
+    console.log('\n=== Role CFSMs ===');
+    for (const [role, cfsm] of cfsms.entries()) {
+      console.log(`\nRole ${role}:`);
+      console.log('  Initial:', cfsm.initialState);
+      console.log('  Terminal:', cfsm.terminalStates);
+      console.log('  Transitions:');
+      cfsm.transitions.forEach((t, i) => {
+        const actionStr = t.action ?
+          `[${t.action.type} ${(t.action as any).to || (t.action as any).from} ${t.action.label}]` :
+          '[epsilon]';
+        console.log(`    T${i}: ${t.from} -> ${t.to} ${actionStr}`);
+      });
+    }
+
     const simulator = new Simulator({ roles: cfsms });
 
     console.log('\n=== Per-Pair Queue Verification ===');
 
     // Step execution
+    console.log('\nBefore step:');
+    console.log('A state:', simulator.getState().roles.get('A')?.currentState);
+    console.log('B state:', simulator.getState().roles.get('B')?.currentState);
+    console.log('C state:', simulator.getState().roles.get('C')?.currentState);
+
     await simulator.step();  // A and B send
+    console.log('\nAfter step:');
     const state = simulator.getState();
+    console.log('A state:', state.roles.get('A')?.currentState, 'completed:', state.roles.get('A')?.completed);
+    console.log('B state:', state.roles.get('B')?.currentState, 'completed:', state.roles.get('B')?.completed);
+    console.log('C state:', state.roles.get('C')?.currentState, 'completed:', state.roles.get('C')?.completed);
 
     console.log('C pending messages:', state.roles.get('C')?.pendingMessages);
 

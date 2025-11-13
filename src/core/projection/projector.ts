@@ -314,9 +314,22 @@ export function project(cfg: CFG, role: string): CFSM {
     const cfgNode = cfg.nodes.find(n => n.id === cfgNodeId)!;
 
     // Get outgoing edges (EXCLUDE continue edges - handle separately)
-    const outgoingEdges = getOutgoingEdges(cfgNodeId).filter(
+    let outgoingEdges = getOutgoingEdges(cfgNodeId).filter(
       e => e.edgeType !== 'continue'
     );
+
+    // Special handling for fork nodes: filter fork edges based on role participation
+    if (isForkNode(cfgNode)) {
+      const forkEdges = outgoingEdges.filter(e => e.edgeType === 'fork');
+      const otherEdges = outgoingEdges.filter(e => e.edgeType !== 'fork');
+
+      // For fork edges, only include branches where role participates
+      const relevantForkEdges = forkEdges.filter(edge =>
+        roleParticipatesInBranch(edge.to, (cfgNode as any).parallel_id)
+      );
+
+      outgoingEdges = [...relevantForkEdges, ...otherEdges];
+    }
 
     for (const edge of outgoingEdges) {
       const targetNode = cfg.nodes.find(n => n.id === edge.to)!;
@@ -444,10 +457,36 @@ export function project(cfg: CFG, role: string): CFSM {
             cfgNodeId: joinNode.id,
             lastStateId: joinStateId,
           });
-        } else {
-          // Role participates in 0 or 1 branch - pass through
+        } else if (branchesWithRole.length === 1) {
+          // Role participates in exactly 1 branch - follow that branch only
+          // Don't push anything - let this iteration's edge loop handle the fork edge
+          // But we need to skip this fork node handling and let normal edge traversal work
+          // Actually, we need to continue from the fork node but only process the relevant branch
+          //
+          // The issue: we're inside the edge processing loop, and targetNode is the fork.
+          // We can't control which edges get followed from here.
+          //
+          // Solution: Pass through the fork node, but the normal edge traversal will
+          // follow ALL fork edges. We need to prevent the other fork edges from being followed.
+          //
+          // Better solution: Don't use a special case. Let normal traversal happen.
+          // The tau-elimination will handle non-participating actions.
+
+          // Just pass through - let normal edge traversal happen
           queue.push({
             cfgNodeId: targetNode.id,
+            lastStateId,
+          });
+        } else {
+          // Role participates in 0 branches - epsilon to join
+          const joinNode = cfg.nodes.find(
+            n => isJoinNode(n) && n.parallel_id === targetNode.parallel_id
+          );
+          if (!joinNode) {
+            throw new Error(`No join node found for parallel block ${targetNode.parallel_id}`);
+          }
+          queue.push({
+            cfgNodeId: joinNode.id,
             lastStateId,
           });
         }
