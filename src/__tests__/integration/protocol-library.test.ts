@@ -41,16 +41,19 @@ describe('Protocol Library Integration Tests', () => {
     it('should parse OAuth protocol successfully', () => {
       const ast = parse(oauthProtocol);
       expect(ast).toBeDefined();
-      expect(ast.protocols).toHaveLength(1);
-      expect(ast.protocols[0].name).toBe('OAuth');
-      expect(ast.protocols[0].roles).toHaveLength(3);
-      expect(ast.protocols[0].roles.map(r => r.name)).toEqual(['s', 'c', 'a']);
+      expect(ast.declarations).toHaveLength(1);
+      expect(ast.declarations[0].type).toBe('GlobalProtocolDeclaration');
+
+      const protocol = ast.declarations[0] as any;
+      expect(protocol.name).toBe('OAuth');
+      expect(protocol.roles).toHaveLength(3);
+      expect(protocol.roles.map((r: any) => r.name)).toEqual(['s', 'c', 'a']);
     });
 
     it('should project OAuth to all roles without errors', () => {
       const ast = parse(oauthProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
 
       expect(cfsms.size).toBe(3);
       expect(cfsms.has('s')).toBe(true);
@@ -60,8 +63,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should accept OAuth as SAFE (BasicSafety)', () => {
       const ast = parse(oauthProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'oauth');
 
       const checker = new BasicSafety();
@@ -73,8 +76,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should have expected CFSM structure for role s', () => {
       const ast = parse(oauthProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const cfsmS = cfsms.get('s')!;
 
       // s should have:
@@ -111,8 +114,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should have expected CFSM structure for role a (external choice)', () => {
       const ast = parse(oauthProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const cfsmA = cfsms.get('a')!;
 
       // a should have external choice at initial state:
@@ -147,8 +150,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should execute OAuth successfully via login branch', () => {
       const ast = parse(oauthProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'oauth');
 
       const reducer = new ContextReducer();
@@ -192,8 +195,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should execute OAuth successfully via cancel branch', () => {
       const ast = parse(oauthProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'oauth');
 
       const reducer = new ContextReducer();
@@ -226,8 +229,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should explore all reachable states and find them all safe', () => {
       const ast = parse(oauthProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'oauth');
 
       const checker = new BasicSafety();
@@ -250,8 +253,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should complete safety check in reasonable time', () => {
       const ast = parse(oauthProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'oauth');
 
       const checker = new BasicSafety();
@@ -286,14 +289,16 @@ describe('Protocol Library Integration Tests', () => {
     it('should parse Travel Agency protocol', () => {
       const ast = parse(travelProtocol);
       expect(ast).toBeDefined();
-      expect(ast.protocols).toHaveLength(1);
-      expect(ast.protocols[0].name).toBe('TravelAgency');
+      expect(ast.declarations).toHaveLength(1);
+
+      const protocol = ast.declarations[0] as any;
+      expect(protocol.name).toBe('TravelAgency');
     });
 
     it('should accept Travel Agency as safe', () => {
       const ast = parse(travelProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'travel');
 
       const checker = new BasicSafety();
@@ -305,8 +310,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should handle nested choices correctly', () => {
       const ast = parse(travelProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
 
       // All three roles should project successfully
       expect(cfsms.size).toBe(3);
@@ -335,8 +340,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should accept simple request-response as safe', () => {
       const ast = parse(simpleProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'simple');
 
       const checker = new BasicSafety();
@@ -347,8 +352,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should execute simple protocol to completion', () => {
       const ast = parse(simpleProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'simple');
 
       const reducer = new ContextReducer();
@@ -387,14 +392,16 @@ describe('Protocol Library Integration Tests', () => {
     it('should parse Three Buyer protocol', () => {
       const ast = parse(threeBuyerProtocol);
       expect(ast).toBeDefined();
-      expect(ast.protocols).toHaveLength(1);
-      expect(ast.protocols[0].roles.map(r => r.name)).toEqual(['S', 'B1', 'B2', 'B3']);
+      expect(ast.declarations).toHaveLength(1);
+
+      const protocol = ast.declarations[0] as any;
+      expect(protocol.roles.map((r: any) => r.name)).toEqual(['S', 'B1', 'B2', 'B3']);
     });
 
     it('should accept Three Buyer as safe', () => {
       const ast = parse(threeBuyerProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'threebuyer');
 
       const checker = new BasicSafety();
@@ -405,8 +412,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should handle multicast messages correctly', () => {
       const ast = parse(threeBuyerProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
 
       // B1 multicasts to B2 and B3
       const cfsmB1 = cfsms.get('B1')!;
@@ -440,13 +447,16 @@ describe('Protocol Library Integration Tests', () => {
     it('should parse recursive protocol', () => {
       const ast = parse(recursiveProtocol);
       expect(ast).toBeDefined();
-      expect(ast.protocols[0].name).toBe('Ping');
+      expect(ast.declarations).toHaveLength(1);
+
+      const protocol = ast.declarations[0] as any;
+      expect(protocol.name).toBe('Ping');
     });
 
     it('should accept recursive protocol as safe', () => {
       const ast = parse(recursiveProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'ping');
 
       const checker = new BasicSafety();
@@ -457,8 +467,8 @@ describe('Protocol Library Integration Tests', () => {
 
     it('should detect cycles in reachability without infinite loop', () => {
       const ast = parse(recursiveProtocol);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'ping');
 
       const checker = new BasicSafety();

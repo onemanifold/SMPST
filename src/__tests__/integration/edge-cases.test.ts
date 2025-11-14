@@ -31,8 +31,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(empty);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'empty');
 
       const checker = new BasicSafety();
@@ -55,8 +55,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(single);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'single');
 
       const checker = new BasicSafety();
@@ -80,8 +80,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(ping);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'ping');
 
       const checker = new BasicSafety();
@@ -108,8 +108,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(solo);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
 
       expect(cfsms.size).toBe(1);
       expect(cfsms.has('A')).toBe(true);
@@ -133,8 +133,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(observer);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'observer');
 
       const checker = new BasicSafety();
@@ -162,8 +162,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(partialObserver);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'partial');
 
       const checker = new BasicSafety();
@@ -197,8 +197,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(nested);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'nested');
 
       const checker = new BasicSafety();
@@ -224,8 +224,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(sequential);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'seq');
 
       const checker = new BasicSafety();
@@ -252,8 +252,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(fourRoles);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'four');
 
       const checker = new BasicSafety();
@@ -275,8 +275,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(ring);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'ring');
 
       const checker = new BasicSafety();
@@ -299,8 +299,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(immediate);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'immediate');
 
       const checker = new BasicSafety();
@@ -324,8 +324,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(recChoice);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'recchoice');
 
       const checker = new BasicSafety();
@@ -357,8 +357,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(nested);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'nestedrec');
 
       const checker = new BasicSafety();
@@ -382,8 +382,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(emptyBranch);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'empty-branch');
 
       const checker = new BasicSafety();
@@ -410,8 +410,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(manyBranches);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'many-branches');
 
       const checker = new BasicSafety();
@@ -442,8 +442,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(asymmetric);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'asymmetric');
 
       const checker = new BasicSafety();
@@ -469,8 +469,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(oauth);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'oauth');
 
       const checker = new BasicSafety();
@@ -506,8 +506,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(exponential);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'exp');
 
       const checker = new BasicSafety();
@@ -529,8 +529,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(simple);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       const context = createInitialContext(cfsms, 'simple');
 
       const reducer = new ContextReducer();
@@ -552,8 +552,8 @@ describe('Edge Case Tests', () => {
       `;
 
       const ast = parse(threeRoles);
-      const cfg = buildCFG(ast);
-      const cfsms = projectAll(cfg);
+      const cfg = buildCFG(ast.declarations[0]);
+      const cfsms = projectAll(cfg).cfsms;
       let context = createInitialContext(cfsms, 'three');
 
       const reducer = new ContextReducer();

@@ -147,10 +147,104 @@ export const protocolExamples: ProtocolExample[] = [
     }
   }
 }`
+  },
+
+  // "Less is More" Examples - Protocols that demonstrate bottom-up MPST
+  {
+    id: 'oauth',
+    name: 'OAuth Protocol ⭐',
+    description: 'The breakthrough example! Safe but not consistent with classic MPST. Demonstrates why bottom-up MPST is more general.',
+    category: 'Less is More',
+    code: `protocol OAuth(role s, role c, role a) {
+  choice at s {
+    s -> c: login();
+    c -> a: passwd(String);
+    a -> s: auth(Boolean);
+  } or {
+    s -> c: cancel();
+    c -> a: quit();
+  }
+}`
+  },
+  {
+    id: 'travel-agency',
+    name: 'Travel Agency',
+    description: 'Nested choices with asymmetric participation (from "Less is More" paper Fig 4.2)',
+    category: 'Less is More',
+    code: `protocol TravelAgency(role c, role a, role s) {
+  choice at c {
+    c -> a: query();
+    a -> c: quote(Int);
+    choice at c {
+      c -> a: accept();
+      a -> c: invoice(Int);
+      c -> a: pay();
+      a -> s: confirm();
+    } or {
+      c -> a: reject();
+    }
+  } or {
+    c -> a: cancel();
+  }
+}`
+  },
+  {
+    id: 'three-buyer-extended',
+    name: 'Three-Buyer (Extended)',
+    description: 'Extended three-buyer with multicast messages (classic MPST example)',
+    category: 'Less is More',
+    code: `protocol ThreeBuyer(role S, role B1, role B2, role B3) {
+  S -> B1: title(String);
+  B1 -> B2: title(String);
+  B1 -> B3: title(String);
+  S -> B1: price(Int);
+  B1 -> B2: price(Int);
+  B1 -> B3: price(Int);
+  B2 -> B1: share(Int);
+  B3 -> B1: share(Int);
+  choice at B1 {
+    B1 -> S: ok();
+    B1 -> B2: ok();
+    B1 -> B3: ok();
+    B2 -> S: addr(String);
+  } or {
+    B1 -> S: quit();
+    B1 -> B2: quit();
+    B1 -> B3: quit();
+  }
+}`
+  },
+  {
+    id: 'tcp-handshake',
+    name: 'TCP Handshake',
+    description: 'Simplified TCP connection establishment',
+    category: 'Less is More',
+    code: `protocol TCPHandshake(role Client, role Server) {
+  Client -> Server: SYN();
+  Server -> Client: SYNACK();
+  Client -> Server: ACK();
+}`
+  },
+  {
+    id: 'http-request',
+    name: 'HTTP Request-Response',
+    description: 'HTTP protocol with optional keep-alive',
+    category: 'Less is More',
+    code: `protocol HTTPRequest(role Client, role Server) {
+  Client -> Server: Request(String);
+  Server -> Client: Response(Int);
+  choice at Client {
+    Client -> Server: KeepAlive();
+    Client -> Server: Request(String);
+    Server -> Client: Response(Int);
+  } or {
+    Client -> Server: Close();
+  }
+}`
   }
 ];
 
-export const categories = ['All', 'Basic', 'Classic', 'Advanced'];
+export const categories = ['All', 'Basic', 'Classic', 'Advanced', 'Less is More'];
 
 export function getExampleById(id: string): ProtocolExample | undefined {
   return protocolExamples.find(ex => ex.id === id);
