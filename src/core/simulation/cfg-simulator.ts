@@ -561,6 +561,15 @@ export class CFGSimulator {
         nodeId: node.id,
       };
 
+      // Emit message event for subscribers
+      this.emit('message', {
+        from: action.from,
+        to: action.to,
+        label: action.label,
+        payloadType: action.payloadType,
+        nodeId: node.id,
+      });
+
       // Transition to next node
       const result = this.transitionToNext();
 
