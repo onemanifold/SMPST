@@ -13,6 +13,12 @@ import type {
   Recursion,
   Continue,
   Do,
+  // DMst (Castro-Perez & Yoshida, ECOOP 2023)
+  DynamicRoleDeclaration,
+  ProtocolCall,
+  CreateParticipants,
+  Invitation,
+  UpdatableRecursion,
 } from '../ast/types';
 import type {
   CFG,
@@ -28,6 +34,13 @@ import type {
   RecursiveNode,
   MessageAction,
   SubProtocolAction,
+  // DMst action types
+  DynamicRoleDeclarationAction,
+  ProtocolCallAction,
+  CreateParticipantsAction,
+  InvitationAction,
+  UpdatableRecursionAction,
+  Action,
 } from './types';
 
 // ============================================================================
@@ -117,7 +130,7 @@ function createTerminalNode(): TerminalNode {
   };
 }
 
-function createActionNode(action: MessageAction): ActionNode {
+function createActionNode(action: Action): ActionNode {
   return {
     id: generateNodeId(),
     type: 'action',
@@ -449,6 +462,22 @@ function buildInteraction(
     case 'Do':
       return buildDo(ctx, interaction, exitNodeId);
 
+    // DMst (Castro-Perez & Yoshida, ECOOP 2023)
+    case 'DynamicRoleDeclaration':
+      return buildDynamicRoleDeclaration(ctx, interaction, exitNodeId);
+
+    case 'ProtocolCall':
+      return buildProtocolCall(ctx, interaction, exitNodeId);
+
+    case 'CreateParticipants':
+      return buildCreateParticipants(ctx, interaction, exitNodeId);
+
+    case 'Invitation':
+      return buildInvitation(ctx, interaction, exitNodeId);
+
+    case 'UpdatableRecursion':
+      return buildUpdatableRecursion(ctx, interaction, exitNodeId);
+
     default:
       throw new Error(`Unknown interaction type: ${(interaction as any).type}`);
   }
@@ -640,6 +669,171 @@ function buildDo(
 
   const actionNode = addNode(ctx, createActionNode(action));
   addEdge(ctx, actionNode.id, exitNodeId, 'sequence');
+
+  return actionNode.id;
+}
+
+// ============================================================================
+// DMst Transformation Rules (Castro-Perez & Yoshida, ECOOP 2023)
+// ============================================================================
+
+/**
+ * Dynamic Role Declaration: new role Worker;
+ *
+ * Creates an action node that declares a dynamic role type.
+ * This role can be instantiated multiple times via CreateParticipants.
+ *
+ * From ECOOP 2023: Declares role types created at runtime.
+ */
+function buildDynamicRoleDeclaration(
+  ctx: BuilderContext,
+  decl: DynamicRoleDeclaration,
+  exitNodeId: string
+): string {
+  const action: DynamicRoleDeclarationAction = {
+    kind: 'dynamic-role-declaration',
+    roleName: decl.roleName,
+    location: decl.location,
+  };
+
+  const actionNode = addNode(ctx, createActionNode(action));
+  addEdge(ctx, actionNode.id, exitNodeId, 'sequence');
+
+  return actionNode.id;
+}
+
+/**
+ * Protocol Call: Coordinator calls SubTask(Worker);
+ *
+ * Creates an action node for protocol call.
+ * The combining operator ♢ semantics are handled during verification/execution.
+ *
+ * From ECOOP 2023 Definition 1: p ↪→ x⟨q⟩
+ */
+function buildProtocolCall(
+  ctx: BuilderContext,
+  call: ProtocolCall,
+  exitNodeId: string
+): string {
+  const action: ProtocolCallAction = {
+    kind: 'protocol-call',
+    caller: call.caller,
+    protocol: call.protocol,
+    roleArguments: call.roleArguments,
+    location: call.location,
+  };
+
+  const actionNode = addNode(ctx, createActionNode(action));
+  addEdge(ctx, actionNode.id, exitNodeId, 'sequence');
+
+  return actionNode.id;
+}
+
+/**
+ * Create Participants: Manager creates Worker as w1;
+ *
+ * Creates an action node that instantiates a dynamic role at runtime.
+ *
+ * From ECOOP 2023: Creates fresh participant instance.
+ */
+function buildCreateParticipants(
+  ctx: BuilderContext,
+  create: CreateParticipants,
+  exitNodeId: string
+): string {
+  const action: CreateParticipantsAction = {
+    kind: 'create-participants',
+    creator: create.creator,
+    roleName: create.roleName,
+    instanceName: create.instanceName,
+    location: create.location,
+  };
+
+  const actionNode = addNode(ctx, createActionNode(action));
+  addEdge(ctx, actionNode.id, exitNodeId, 'sequence');
+
+  return actionNode.id;
+}
+
+/**
+ * Invitation: Manager invites Worker;
+ *
+ * Creates an action node for invitation synchronization.
+ * Ensures created participant is ready before messages are sent.
+ *
+ * From ECOOP 2023: Prevents orphaned messages, ensures initialization.
+ */
+function buildInvitation(
+  ctx: BuilderContext,
+  invite: Invitation,
+  exitNodeId: string
+): string {
+  const action: InvitationAction = {
+    kind: 'invitation',
+    inviter: invite.inviter,
+    invitee: invite.invitee,
+    location: invite.location,
+  };
+
+  const actionNode = addNode(ctx, createActionNode(action));
+  addEdge(ctx, actionNode.id, exitNodeId, 'sequence');
+
+  return actionNode.id;
+}
+
+/**
+ * Updatable Recursion: continue Loop with { G_update }
+ *
+ * Creates a special recursion structure that allows dynamic behavior updates.
+ * The update body is built as a separate subgraph that gets combined with
+ * the recursion body via the combining operator ♢.
+ *
+ * From ECOOP 2023 Definition 13:
+ * rec X { G; continue X with { G_update } }
+ *
+ * Safety requirement: Must satisfy Definition 14 (Safe Protocol Update).
+ * The 1-unfolding G[X ↦ G ♢ G_update] must be well-formed.
+ *
+ * CFG Structure:
+ *   - Creates action node marking the updatable recursion point
+ *   - Build update body separately (will be combined during verification)
+ *   - Connect update to recursive node to create dynamic back edge
+ */
+function buildUpdatableRecursion(
+  ctx: BuilderContext,
+  updatable: UpdatableRecursion,
+  exitNodeId: string
+): string {
+  // Find the recursive node for this label
+  const recNodeId = ctx.recursionLabels.get(updatable.label);
+
+  if (!recNodeId) {
+    throw new Error(
+      `Updatable recursion references undefined recursion label: ${updatable.label}`
+    );
+  }
+
+  // Create action node marking this updatable recursion point
+  const action: UpdatableRecursionAction = {
+    kind: 'updatable-recursion',
+    label: updatable.label,
+    location: updatable.location,
+  };
+
+  const actionNode = addNode(ctx, createActionNode(action));
+
+  // Build the update body
+  // This creates a separate subgraph that will be combined with the main body
+  // during verification (via combining operator ♢ semantics)
+  const updateEntry = buildProtocolBody(ctx, updatable.updateBody, recNodeId);
+
+  // Connect action node to update body
+  addEdge(ctx, actionNode.id, updateEntry, 'sequence');
+
+  // Note: The combining operator ♢ semantics are handled during:
+  // 1. Verification (Definition 14: Safe Protocol Update via 1-unfolding)
+  // 2. Projection (Definition 13: Projection of updatable recursion)
+  // 3. Execution (runtime combining of protocols)
 
   return actionNode.id;
 }
