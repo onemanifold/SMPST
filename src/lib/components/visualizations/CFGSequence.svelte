@@ -7,6 +7,8 @@
 
   let svgElement: SVGSVGElement;
   let containerElement: HTMLDivElement;
+  let zoomBehavior: any = null;
+  let currentTransform = d3.zoomIdentity;
 
   // Visualization dimensions
   const LANE_WIDTH = 150;
@@ -64,6 +66,22 @@
 
     svg.attr('width', width).attr('height', height);
 
+    // Create a container group for pan/zoom
+    const container = svg.append('g').attr('class', 'zoom-container');
+
+    // Set up zoom behavior
+    zoomBehavior = d3.zoom()
+      .scaleExtent([0.1, 4]) // Allow zoom from 10% to 400%
+      .on('zoom', (event) => {
+        currentTransform = event.transform;
+        container.attr('transform', event.transform);
+      });
+
+    svg.call(zoomBehavior);
+
+    // Apply current transform (preserves zoom/pan between re-renders)
+    container.attr('transform', currentTransform);
+
     const roles = $currentCFG.roles;
     const messages = extractMessages();
 
@@ -80,7 +98,7 @@
     const diagramHeight = LANE_TOP_MARGIN + messages.length * MESSAGE_SPACING + 40;
 
     // Title
-    svg
+    container
       .append('text')
       .attr('x', width / 2)
       .attr('y', 30)
@@ -95,7 +113,7 @@
       const x = laneX.get(role)!;
 
       // Role label at top
-      svg
+      container
         .append('text')
         .attr('x', x)
         .attr('y', LANE_TOP_MARGIN - 20)
@@ -106,7 +124,7 @@
         .text(role);
 
       // Lifeline
-      svg
+      container
         .append('line')
         .attr('x1', x)
         .attr('y1', LANE_TOP_MARGIN)
@@ -158,7 +176,7 @@
         const toX = laneX.get(recipient)!;
 
         // Message arrow
-        const line = svg
+        const line = container
           .append('line')
           .attr('x1', fromX)
           .attr('y1', y)
@@ -186,7 +204,7 @@
       const labelX = (fromX + toX) / 2;
       const labelY = y - 8;
 
-      const label = svg
+      const label = container
         .append('text')
         .attr('x', labelX)
         .attr('y', labelY)
@@ -250,6 +268,16 @@
       .attr('fill', '#FFA500');
   }
 
+  // Reset zoom to identity
+  function resetZoom() {
+    if (svgElement && zoomBehavior) {
+      d3.select(svgElement)
+        .transition()
+        .duration(750)
+        .call(zoomBehavior.transform, d3.zoomIdentity);
+    }
+  }
+
   // Re-render on CFG or execution state change
   $: if ($currentCFG || $executionState) {
     renderSequenceDiagram();
@@ -274,6 +302,9 @@
       <p class="note">🟠 Orange: Current message | 🟢 Green: Executed | 🔵 Blue: Pending</p>
     </div>
   {:else}
+    <button class="reset-zoom-btn" on:click={resetZoom} title="Reset zoom">
+      ⟲
+    </button>
     <svg bind:this={svgElement}></svg>
   {/if}
 </div>
@@ -283,7 +314,8 @@
     width: 100%;
     height: 100%;
     background: #1e1e1e;
-    overflow: auto;
+    overflow: hidden;
+    position: relative;
   }
 
   .placeholder {
@@ -308,7 +340,37 @@
     font-style: italic;
   }
 
+  .reset-zoom-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    width: 32px;
+    height: 32px;
+    background: #3d3d3d;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .reset-zoom-btn:hover {
+    background: #4d4d4d;
+    border-color: #007acc;
+    color: #fff;
+  }
+
   svg {
     display: block;
+    cursor: grab;
+  }
+
+  svg:active {
+    cursor: grabbing;
   }
 </style>

@@ -7,6 +7,8 @@
 
   let svgElement: SVGSVGElement;
   let containerElement: HTMLDivElement;
+  let zoomBehavior: any = null;
+  let currentTransform = d3.zoomIdentity;
 
   // Visualization dimensions
   const CFSM_WIDTH = 250;
@@ -88,27 +90,57 @@
 
     svg.attr('width', width).attr('height', height);
 
+    // Create a container group for pan/zoom
+    const container = svg.append('g').attr('class', 'zoom-container');
+
+    // Set up zoom behavior
+    zoomBehavior = d3.zoom()
+      .scaleExtent([0.1, 4]) // Allow zoom from 10% to 400%
+      .on('zoom', (event) => {
+        currentTransform = event.transform;
+        container.attr('transform', event.transform);
+      });
+
+    svg.call(zoomBehavior);
+
+    // Apply current transform (preserves zoom/pan between re-renders)
+    container.attr('transform', currentTransform);
+
     // Calculate layout
     const numCFSMs = $projectionData.length;
     const totalWidth = numCFSMs * (CFSM_WIDTH + CFSM_MARGIN);
     const startX = Math.max(CFSM_MARGIN, (width - totalWidth) / 2);
+
+    // Define arrowhead marker (once for all CFSMs)
+    svg
+      .append('defs')
+      .append('marker')
+      .attr('id', 'arrowhead')
+      .attr('markerWidth', 10)
+      .attr('markerHeight', 10)
+      .attr('refX', 8)
+      .attr('refY', 3)
+      .attr('orient', 'auto')
+      .append('polygon')
+      .attr('points', '0 0, 10 3, 0 6')
+      .attr('fill', '#666');
 
     // Render each CFSM
     $projectionData.forEach((projection, index) => {
       const cfsmX = startX + index * (CFSM_WIDTH + CFSM_MARGIN);
       const cfsmY = 60;
 
-      renderCFSM(svg, projection, cfsmX, cfsmY);
+      renderCFSM(container, projection, cfsmX, cfsmY);
     });
   }
 
   function renderCFSM(
-    svg: d3.Selection<SVGSVGElement, unknown, null, undefined>,
+    container: d3.Selection<SVGGElement, unknown, null, undefined>,
     projection: typeof $projectionData[0],
     x: number,
     y: number
   ) {
-    const g = svg.append('g').attr('transform', `translate(${x}, ${y})`);
+    const g = container.append('g').attr('transform', `translate(${x}, ${y})`);
 
     // Title
     g.append('text')
@@ -282,25 +314,21 @@
         .attr('font-weight', isCurrent ? 'bold' : 'normal')
         .text(state);
     });
-
-    // Define arrowhead marker
-    svg
-      .append('defs')
-      .append('marker')
-      .attr('id', 'arrowhead')
-      .attr('markerWidth', 10)
-      .attr('markerHeight', 10)
-      .attr('refX', 8)
-      .attr('refY', 3)
-      .attr('orient', 'auto')
-      .append('polygon')
-      .attr('points', '0 0, 10 3, 0 6')
-      .attr('fill', '#666');
   }
 
   function truncateLabel(label: string, maxLength = 15): string {
     if (label.length <= maxLength) return label;
     return label.substring(0, maxLength - 3) + '...';
+  }
+
+  // Reset zoom to identity
+  function resetZoom() {
+    if (svgElement && zoomBehavior) {
+      d3.select(svgElement)
+        .transition()
+        .duration(750)
+        .call(zoomBehavior.transform, d3.zoomIdentity);
+    }
   }
 
   // Re-render on data change, execution state change, or window resize
@@ -325,6 +353,9 @@
       <p>Parse a protocol to see the network of Communicating Finite State Machines</p>
     </div>
   {:else}
+    <button class="reset-zoom-btn" on:click={resetZoom} title="Reset zoom">
+      ⟲
+    </button>
     <svg bind:this={svgElement}></svg>
   {/if}
 </div>
@@ -334,7 +365,8 @@
     width: 100%;
     height: 100%;
     background: #1e1e1e;
-    overflow: auto;
+    overflow: hidden;
+    position: relative;
   }
 
   .placeholder {
@@ -353,7 +385,37 @@
     margin-bottom: 16px;
   }
 
+  .reset-zoom-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    width: 32px;
+    height: 32px;
+    background: #3d3d3d;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .reset-zoom-btn:hover {
+    background: #4d4d4d;
+    border-color: #007acc;
+    color: #fff;
+  }
+
   svg {
     display: block;
+    cursor: grab;
+  }
+
+  svg:active {
+    cursor: grabbing;
   }
 </style>
