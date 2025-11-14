@@ -11,8 +11,8 @@
  * This module implements trace extraction and equivalence checking for DMst protocols.
  */
 
-import type { CFG } from '../../cfg/types';
-import type { CFSM } from '../../projection/types';
+import type { CFG, ActionNode } from '../../cfg/types';
+import type { CFSM, CFSMTransition } from '../../projection/types';
 
 // ============================================================================
 // Trace Extraction
@@ -35,11 +35,93 @@ import type { CFSM } from '../../projection/types';
  * @returns Sequence of trace events
  */
 export function extractGlobalTrace(cfg: CFG): TraceEvent[] {
-  // TODO: Implement global trace extraction
-  // Walk CFG from initial node, collecting actions in execution order
-  // Handle choices (multiple possible traces), recursion, parallel branches
+  // Extract trace by walking CFG from initial node
+  //
+  // SIMPLIFIED IMPLEMENTATION:
+  // - Walk graph from initial to terminal
+  // - Collect all action nodes encountered
+  // - Convert to trace events
+  // - Handle only sequential flow (no branching/recursion for now)
+  //
+  // Full implementation would need:
+  // - Handle all possible execution paths (choices)
+  // - Handle recursion (potentially infinite traces)
+  // - Handle parallel branches (interleaving)
 
-  return [];
+  const trace: TraceEvent[] = [];
+  const visited = new Set<string>();
+
+  // BFS traversal from initial node
+  const queue: string[] = [cfg.initialNode];
+
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+
+    if (visited.has(nodeId)) continue;
+    visited.add(nodeId);
+
+    const node = cfg.nodes.find(n => n.id === nodeId);
+    if (!node) continue;
+
+    // Extract action from this node
+    if (node.type === 'action') {
+      const actionNode = node as ActionNode;
+      const action = actionNode.action;
+
+      // Convert CFG action to trace event
+      switch (action.kind) {
+        case 'message':
+          trace.push({
+            type: 'message',
+            from: action.from,
+            to: action.to,
+            label: action.message.label,
+          });
+          break;
+
+        case 'protocol-call':
+          trace.push({
+            type: 'protocol-call',
+            caller: action.caller,
+            protocol: action.protocol,
+            participants: action.roleArguments,
+          });
+          break;
+
+        case 'create-participants':
+          trace.push({
+            type: 'participant-creation',
+            creator: action.creator,
+            roleName: action.roleName,
+            instanceId: action.instanceName || action.roleName,
+          });
+          break;
+
+        case 'invitation':
+          trace.push({
+            type: 'invitation',
+            inviter: action.inviter,
+            invitee: action.invitee,
+          });
+          break;
+
+        case 'updatable-recursion':
+          trace.push({
+            type: 'update',
+            label: action.label,
+          });
+          break;
+      }
+    }
+
+    // Add outgoing edges to queue (sequential only)
+    const outgoing = cfg.edges.filter(e => e.from === nodeId && e.type === 'sequence');
+    for (const edge of outgoing) {
+      queue.push(edge.to);
+    }
+  }
+
+  return trace;
 }
 
 /**
@@ -57,10 +139,77 @@ export function extractGlobalTrace(cfg: CFG): TraceEvent[] {
  * @returns Sequence of local trace events
  */
 export function extractLocalTrace(cfsm: CFSM): TraceEvent[] {
-  // TODO: Implement local trace extraction
-  // Walk CFSM from initial state, collecting actions
+  // Extract trace from CFSM transitions
+  //
+  // SIMPLIFIED IMPLEMENTATION:
+  // - Walk CFSM from initial state
+  // - Collect all transition actions
+  // - Convert send/receive to message events
+  //
+  // Full implementation would handle:
+  // - All execution paths (choices)
+  // - Recursion (cycles in CFSM)
+  // - Complex control flow
 
-  return [];
+  const trace: TraceEvent[] = [];
+  const visited = new Set<string>();
+
+  // BFS from initial state
+  const queue: string[] = [cfsm.initialState];
+
+  while (queue.length > 0) {
+    const stateId = queue.shift()!;
+
+    if (visited.has(stateId)) continue;
+    visited.add(stateId);
+
+    // Find all transitions from this state
+    const transitions = cfsm.transitions.filter(t => t.from === stateId);
+
+    for (const transition of transitions) {
+      const action = transition.action;
+
+      // Convert CFSM action to trace event
+      switch (action.type) {
+        case 'send':
+          trace.push({
+            type: 'message',
+            from: cfsm.role,
+            to: action.to,
+            label: action.message.label,
+          });
+          break;
+
+        case 'receive':
+          trace.push({
+            type: 'message',
+            from: action.from,
+            to: cfsm.role,
+            label: action.message.label,
+          });
+          break;
+
+        case 'subprotocol-call':
+          trace.push({
+            type: 'protocol-call',
+            caller: cfsm.role,
+            protocol: action.protocol,
+            participants: action.participants,
+          });
+          break;
+
+        // Tau (epsilon) transitions don't contribute to trace
+        case 'tau':
+        case 'choice':
+          break;
+      }
+
+      // Add target state to queue
+      queue.push(transition.to);
+    }
+  }
+
+  return trace;
 }
 
 /**
@@ -103,11 +252,42 @@ export function extractDynamicParticipantTraces(
  * @returns Composed global trace
  */
 export function composeTraces(localTraces: TraceEvent[][]): TraceEvent[] {
-  // TODO: Implement trace composition
-  // Match send/receive pairs
-  // Interleave actions respecting causality
+  // Compose local traces into global trace
+  //
+  // ALGORITHM:
+  // - Merge all local traces
+  // - Match send/receive pairs
+  // - Order actions respecting causality
+  //
+  // SIMPLIFIED IMPLEMENTATION:
+  // - Concatenate all traces
+  // - Remove duplicate message events (send+receive → single message)
+  // - Full implementation would properly order concurrent actions
 
-  return [];
+  const composed: TraceEvent[] = [];
+  const seenMessages = new Set<string>();
+
+  // Collect all events from all traces
+  for (const trace of localTraces) {
+    for (const event of trace) {
+      if (event.type === 'message') {
+        // Create unique key for this message
+        const toStr = Array.isArray(event.to) ? event.to.join(',') : event.to;
+        const key = `${event.from}:${toStr}:${event.label}`;
+
+        // Add only once (either send or receive, not both)
+        if (!seenMessages.has(key)) {
+          seenMessages.add(key);
+          composed.push(event);
+        }
+      } else {
+        // Non-message events (protocol calls, creation, etc.)
+        composed.push(event);
+      }
+    }
+  }
+
+  return composed;
 }
 
 /**
@@ -146,16 +326,56 @@ export function verifyTraceEquivalence(
   cfg: CFG,
   projections: Map<string, CFSM>
 ): TraceEquivalenceResult {
-  // TODO: Implement Theorem 20 verification
-  // 1. Extract global trace
-  // 2. Extract all local traces (including dynamic participants)
+  // Theorem 20: Verify trace equivalence
+  //
+  // ALGORITHM:
+  // 1. Extract global trace from CFG
+  // 2. Extract local traces from all CFSMs
   // 3. Compose local traces
   // 4. Compare global vs composed
+  //
+  // SIMPLIFIED IMPLEMENTATION:
+  // - Extracts traces (may be incomplete for complex protocols)
+  // - Compares based on message count and participants
+  // - Full implementation would check action-by-action equivalence
 
-  return {
-    isEquivalent: false,
-    reason: 'Trace equivalence verification not yet implemented (Phase 6)',
-  };
+  try {
+    // Step 1: Extract global trace
+    const globalTrace = extractGlobalTrace(cfg);
+
+    // Step 2: Extract local traces
+    const localTraces: TraceEvent[][] = [];
+    for (const cfsm of projections.values()) {
+      const trace = extractLocalTrace(cfsm);
+      if (trace.length > 0) {
+        localTraces.push(trace);
+      }
+    }
+
+    // Step 3: Compose local traces
+    const composedTrace = composeTraces(localTraces);
+
+    // Step 4: Compare
+    // Simplified check: same number of message events
+    const globalMessages = globalTrace.filter(e => e.type === 'message').length;
+    const composedMessages = composedTrace.filter(e => e.type === 'message').length;
+
+    const isEquivalent = globalMessages === composedMessages;
+
+    return {
+      isEquivalent,
+      reason: isEquivalent
+        ? 'Trace equivalence verified (simplified check)'
+        : `Message count mismatch: global=${globalMessages}, composed=${composedMessages}`,
+      globalTrace,
+      composedTrace,
+    };
+  } catch (error) {
+    return {
+      isEquivalent: false,
+      reason: `Trace equivalence check failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }
 
 // ============================================================================
