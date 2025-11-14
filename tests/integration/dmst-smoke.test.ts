@@ -38,12 +38,20 @@ describe('DMst Examples Smoke Test', () => {
 
       it('should build CFG without errors', () => {
         const module = parse(source);
-        expect(() => buildCFG(module)).not.toThrow();
+        const protocol = module.declarations.find(
+          d => d.type === 'GlobalProtocolDeclaration'
+        );
+        expect(protocol).toBeDefined();
+        expect(() => buildCFG(protocol as any)).not.toThrow();
       });
 
       it('should pass verification', () => {
         const module = parse(source);
-        const cfg = buildCFG(module);
+        const protocol = module.declarations.find(
+          d => d.type === 'GlobalProtocolDeclaration'
+        );
+        expect(protocol).toBeDefined();
+        const cfg = buildCFG(protocol as any);
         const result = verifyProtocol(cfg);
 
         if (!result.isValid) {

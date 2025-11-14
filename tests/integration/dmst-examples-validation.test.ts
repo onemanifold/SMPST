@@ -79,7 +79,8 @@ describe('DMst Examples Validation', () => {
     describe(name, () => {
       const filePath = join(examplesDir, file);
       let source: string;
-      let ast: any;
+      let module: any;
+      let protocol: any;
       let cfg: any;
 
       it('should exist and be readable', () => {
@@ -93,17 +94,27 @@ describe('DMst Examples Validation', () => {
       it('should parse successfully', () => {
         source = readFileSync(filePath, 'utf-8');
         expect(() => {
-          ast = parse(source);
+          module = parse(source);
         }).not.toThrow();
-        expect(ast).toBeTruthy();
-        expect(ast.protocols).toBeDefined();
-        expect(ast.protocols.length).toBeGreaterThan(0);
+        expect(module).toBeTruthy();
+        expect(module.declarations).toBeDefined();
+        expect(module.declarations.length).toBeGreaterThan(0);
+
+        protocol = module.declarations.find(
+          (d: any) => d.type === 'GlobalProtocolDeclaration'
+        );
+        expect(protocol).toBeDefined();
       });
 
       it('should build valid CFG', () => {
-        if (!ast) ast = parse(readFileSync(filePath, 'utf-8'));
+        if (!protocol) {
+          module = parse(readFileSync(filePath, 'utf-8'));
+          protocol = module.declarations.find(
+            (d: any) => d.type === 'GlobalProtocolDeclaration'
+          );
+        }
         expect(() => {
-          cfg = buildCFG(ast);
+          cfg = buildCFG(protocol);
         }).not.toThrow();
         expect(cfg).toBeTruthy();
         expect(cfg.nodes).toBeDefined();
@@ -112,7 +123,6 @@ describe('DMst Examples Validation', () => {
       });
 
       it('should have all declared features', () => {
-        if (!ast) ast = parse(readFileSync(filePath, 'utf-8'));
         const sourceText = readFileSync(filePath, 'utf-8');
 
         features.forEach(feature => {
@@ -133,8 +143,11 @@ describe('DMst Examples Validation', () => {
 
       it('should pass verification', () => {
         if (!cfg) {
-          ast = parse(readFileSync(filePath, 'utf-8'));
-          cfg = buildCFG(ast);
+          module = parse(readFileSync(filePath, 'utf-8'));
+          protocol = module.declarations.find(
+            (d: any) => d.type === 'GlobalProtocolDeclaration'
+          );
+          cfg = buildCFG(protocol);
         }
 
         const result = verifyProtocol(cfg);
@@ -144,8 +157,11 @@ describe('DMst Examples Validation', () => {
 
       it('should project to valid CFSMs', () => {
         if (!cfg) {
-          ast = parse(readFileSync(filePath, 'utf-8'));
-          cfg = buildCFG(ast);
+          module = parse(readFileSync(filePath, 'utf-8'));
+          protocol = module.declarations.find(
+            (d: any) => d.type === 'GlobalProtocolDeclaration'
+          );
+          cfg = buildCFG(protocol);
         }
 
         const projections = new Map();
@@ -169,8 +185,11 @@ describe('DMst Examples Validation', () => {
 
       it('should verify trace equivalence', () => {
         if (!cfg) {
-          ast = parse(readFileSync(filePath, 'utf-8'));
-          cfg = buildCFG(ast);
+          module = parse(readFileSync(filePath, 'utf-8'));
+          protocol = module.declarations.find(
+            (d: any) => d.type === 'GlobalProtocolDeclaration'
+          );
+          cfg = buildCFG(protocol);
         }
 
         const projections = new Map();
@@ -187,8 +206,11 @@ describe('DMst Examples Validation', () => {
       if (features.includes('updatable recursion')) {
         it('should verify safe protocol update (Definition 14)', () => {
           if (!cfg) {
-            ast = parse(readFileSync(filePath, 'utf-8'));
-            cfg = buildCFG(ast);
+            module = parse(readFileSync(filePath, 'utf-8'));
+            protocol = module.declarations.find(
+              (d: any) => d.type === 'GlobalProtocolDeclaration'
+            );
+            cfg = buildCFG(protocol);
           }
 
           const safeUpdateResult = checkSafeProtocolUpdate(cfg);
@@ -235,8 +257,11 @@ describe('DMst Examples Validation', () => {
         try {
           const filePath = join(examplesDir, file);
           const source = readFileSync(filePath, 'utf-8');
-          const ast = parse(source);
-          const cfg = buildCFG(ast);
+          const module = parse(source);
+          const protocol = module.declarations.find(
+            (d: any) => d.type === 'GlobalProtocolDeclaration'
+          );
+          const cfg = buildCFG(protocol);
           const result = verifyProtocol(cfg);
 
           if (result.isValid) {
