@@ -30,8 +30,14 @@ export class Simulator {
   private observers: Set<ExecutionObserver> = new Set();
 
   private stepCount: number = 0;
-  private paused: boolean = false;
   private trace: ExecutionTrace;
+
+  // Fair scheduling: round-robin role selection
+  private nextRoleIndex: number = 0;
+  private roleNames: string[] = [];
+
+  // Pause/resume: run-specific closure (null when no run() active)
+  private currentRunPause: (() => void) | null = null;
 
   constructor(config: SimulatorConfig) {
     this.transport = config.transport || createInMemoryTransport();
@@ -51,6 +57,9 @@ export class Simulator {
 
       this.executors.set(role, executor);
     }
+
+    // Initialize role names for fair scheduling
+    this.roleNames = Array.from(config.roles.keys());
 
     // Initialize trace
     this.trace = {
@@ -102,18 +111,24 @@ export class Simulator {
   }
 
   /**
-   * Execute one step (for one role or all roles)
+   * Execute one step - ONE role executes ONE transition
    *
-   * Step counting semantics:
-   * - One call to step() = one simulation step (increments counter by 1)
-   * - May execute multiple role transitions per step (interleaving)
-   * - This matches user expectation: step() called N times → step counter = N
+   * FORMAL SEMANTICS (Honda, Yoshida, Carbone 2008):
+   * - One step = ONE role executes ONE action (send, receive, or epsilon)
+   * - Fair scheduling: All ready roles eventually scheduled
+   *
+   * Implementation:
+   * - If role specified: Step that specific role
+   * - If no role: Use round-robin fair scheduling to select next ready role
+   *
+   * Step counting: One step() call = one CFSM transition = increment by 1
    */
   async step(role?: string): Promise<SimulationStepResult> {
     const updates = new Map();
+    let selectedRole: string | null = null;
 
     if (role) {
-      // Step single role
+      // Step specific role
       const executor = this.executors.get(role);
       if (!executor) {
         return {
@@ -125,9 +140,22 @@ export class Simulator {
 
       const result = await executor.step();
       updates.set(role, result);
+      selectedRole = role;
     } else {
-      // Step all roles (one iteration of interleaving)
-      for (const [roleName, executor] of this.executors.entries()) {
+      // Fair scheduling: Find next ready role using round-robin
+      const startIndex = this.nextRoleIndex;
+      let attempts = 0;
+
+      while (attempts < this.roleNames.length) {
+        const candidateRole = this.roleNames[this.nextRoleIndex];
+        const executor = this.executors.get(candidateRole);
+
+        // Move to next role for next time (round-robin)
+        this.nextRoleIndex = (this.nextRoleIndex + 1) % this.roleNames.length;
+        attempts++;
+
+        if (!executor) continue;
+
         // Skip completed roles
         if (executor.getState().completed) {
           continue;
@@ -135,11 +163,22 @@ export class Simulator {
 
         // Try to step this role
         const result = await executor.step();
-        updates.set(roleName, result);
+        updates.set(candidateRole, result);
+        selectedRole = candidateRole;
+        break;  // Stepped ONE role - done
+      }
+
+      // If no role could step, all are completed or blocked
+      if (!selectedRole) {
+        return {
+          success: false,
+          updates,
+          state: this.getState(),
+        };
       }
     }
 
-    // Increment step counter once per step() call
+    // Increment step counter: one step = one transition
     this.stepCount++;
 
     const state = this.getState();
@@ -153,76 +192,126 @@ export class Simulator {
   }
 
   /**
-   * Run simulation to completion (or until error/maxSteps)
+   * Run simulation to completion (or until error/maxSteps/pause)
+   *
+   * FORMAL SEMANTICS:
+   * - Calls step() repeatedly until completion or interruption
+   * - Each step() is one CFSM transition (one role, one action)
+   * - Fair scheduling ensures all ready roles eventually execute
+   *
+   * Pause/Resume:
+   * - Uses run-specific closure variable for pause signal
+   * - Calling pause() sets signal for current run() only
+   * - Signal auto-cleared when run() exits
+   * - Internal state (stepCount, executor positions) preserved between runs
    */
   async run(): Promise<SimulationStepResult> {
     const maxSteps = this.options.maxSteps || 1000;
 
-    while (this.stepCount < maxSteps && !this.paused) {
-      const state = this.getState();
+    // Run-specific pause signal (closure variable)
+    let pauseRequested = false;
 
-      // Check if completed
-      if (state.completed) {
-        this.trace.completed = true;
-        this.trace.endTime = Date.now();
-        return {
-          success: true,
-          updates: new Map(),
-          state,
-          completed: true,
-        };
-      }
+    // Expose pause setter for this specific run() invocation
+    this.currentRunPause = () => { pauseRequested = true; };
 
-      // Check for deadlock
-      if (state.deadlocked) {
-        return {
-          success: false,
-          updates: new Map(),
-          state,
-          completed: false, // Not completed if deadlocked
-          deadlocked: true,
-        };
-      }
+    try {
+      while (this.stepCount < maxSteps && !pauseRequested) {
+        const state = this.getState();
 
-      // Execute one step for all roles
-      const result = await this.step();
+        // Check if completed
+        if (state.completed) {
+          this.trace.completed = true;
+          this.trace.endTime = Date.now();
+          return {
+            success: true,
+            updates: new Map(),
+            state,
+            completed: true,
+          };
+        }
 
-      // Check if any role made progress
-      const anySuccess = Array.from(result.updates.values()).some(r => r.success);
-      if (!anySuccess) {
-        // Check if all roles are just blocked waiting for messages (not a deadlock, just need to retry)
-        const allBlocked = Array.from(result.updates.values()).every(
-          r => !r.success && r.error?.type === 'message-not-ready'
+        // Check for deadlock
+        if (state.deadlocked) {
+          return {
+            success: false,
+            updates: new Map(),
+            state,
+            completed: false,
+            deadlocked: true,
+          };
+        }
+
+        // Execute ONE step (one role, one transition)
+        const result = await this.step();
+
+        // Check for protocol violations (strictMode errors)
+        const protocolViolation = Array.from(result.updates.values()).find(
+          r => r.error?.type === 'protocol-violation'
         );
-        if (!allBlocked) {
-          // No progress and not all blocked on messages - likely deadlock
+        if (protocolViolation) {
           return {
             success: false,
             updates: result.updates,
             state: this.getState(),
-            completed: false, // Not completed if deadlocked
-            deadlocked: true,
+            error: protocolViolation.error,
+            completed: false,
           };
         }
-        // All roles blocked on messages - continue loop, they may make progress next iteration
-      }
-    }
 
-    // Reached max steps
-    const finalState = this.getState();
-    return {
-      success: false,
-      updates: new Map(),
-      state: finalState,
-      completed: finalState.completed, // Include completion status
-    };
+        // Check if step made progress (role advanced or was blocked)
+        if (!result.success) {
+          // No role could step - all completed or deadlocked
+          const finalState = this.getState();
+          return {
+            success: false,
+            updates: result.updates,
+            state: finalState,
+            completed: finalState.completed,
+            deadlocked: finalState.deadlocked,
+          };
+        }
+
+        // Yield to event loop to allow pause() and other async operations
+        // Use setImmediate to yield to macrotask queue (where setTimeout/setImmediate callbacks run)
+        await new Promise(resolve => setImmediate(resolve));
+      }
+
+      // Exited loop - check why
+      const finalState = this.getState();
+
+      if (pauseRequested) {
+        // Paused - return current state (not completed)
+        return {
+          success: true,
+          updates: new Map(),
+          state: finalState,
+          completed: false,
+        };
+      }
+
+      // Reached max steps
+      return {
+        success: false,
+        updates: new Map(),
+        state: finalState,
+        completed: finalState.completed,
+      };
+    } finally {
+      // Clear run-specific pause handler (auto-cleanup)
+      this.currentRunPause = null;
+    }
   }
 
   /**
-   * Pause execution
+   * Pause current run() execution
+   *
+   * Sets pause signal for current run() invocation only.
+   * If no run() is active, this has no effect.
    */
   pause(): void {
-    this.paused = true;
+    if (this.currentRunPause) {
+      this.currentRunPause();  // Set current run's pause signal
+    }
   }
 
   /**
@@ -230,7 +319,7 @@ export class Simulator {
    */
   reset(): void {
     this.stepCount = 0;
-    this.paused = false;
+    this.nextRoleIndex = 0;  // Reset fair scheduling
 
     // Reset all executors
     for (const executor of this.executors.values()) {
@@ -243,6 +332,9 @@ export class Simulator {
       startTime: Date.now(),
       completed: false,
     };
+
+    // Clear any active pause handler
+    this.currentRunPause = null;
   }
 
   /**

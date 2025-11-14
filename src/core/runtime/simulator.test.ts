@@ -53,14 +53,11 @@ describe('Protocol Simulator - Basic Protocols', () => {
 
     const simulator = new Simulator({ roles: cfsms });
 
-    // Step through manually
-    await simulator.step();  // A sends Ping
-    await simulator.step();  // B receives Ping
-    await simulator.step();  // B sends Pong
-    await simulator.step();  // A receives Pong
+    // Run to completion (formal semantics: fair scheduling ensures both roles progress)
+    const result = await simulator.run();
 
-    const state = simulator.getState();
-    expect(state.completed).toBe(true);
+    expect(result.completed).toBe(true);
+    expect(simulator.getState().completed).toBe(true);
   });
 
   it('[Three-Party] should coordinate three roles', async () => {
@@ -397,15 +394,15 @@ describe('Protocol Simulator - Interactive Control', () => {
     // Start running
     const runPromise = simulator.run();
 
-    // Pause after a bit
-    setTimeout(() => simulator.pause(), 10);
+    // Pause immediately (setImmediate runs after run() starts but before step completes)
+    setImmediate(() => simulator.pause());
 
     await runPromise;
 
-    // Should not have completed
+    // Should have paused (not completed)
     expect(simulator.getState().completed).toBe(false);
 
-    // Resume
+    // Resume by calling run() again
     const result = await simulator.run();
     expect(result.completed).toBe(true);
   });

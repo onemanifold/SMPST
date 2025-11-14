@@ -574,23 +574,22 @@ function getActionsInBranch(cfg: CFG, branchNodes: string[]): ActionNode[] {
 }
 
 /**
- * Check if two actions have a conflict (race condition)
+ * Check if two actions have a conflict (use same channel)
  *
- * Formal MPST race definition (Honda et al. 2008):
- * A race occurs when the SAME ROLE is involved in concurrent operations
- * across parallel branches, causing non-deterministic behavior.
+ * THEOREM 4.5 (Deniélou & Yoshida 2012): No Races
+ * Race condition occurs when: channels(G₁) ∩ channels(G₂) ≠ ∅
  *
- * Cases that constitute races:
- * 1. Same role RECEIVES from different senders concurrently
- *    - Non-deterministic receive order
- *    - Example: par { A -> C: M1() } and { B -> C: M2() }
- *    - Role C doesn't know which message arrives first
+ * A channel is a pair (sender, receiver). Two actions race if they use
+ * the exact same channel (same sender and same receiver).
  *
- * 2. Same role performs any concurrent operations (conservative)
- *    - Multiple sends from same role
- *    - Send and receive on same role
+ * Examples:
+ *   Hub -> A: Msg1  uses channel (Hub, A)
+ *   Hub -> B: Msg2  uses channel (Hub, B)
+ *   These channels are DISJOINT → NO RACE
  *
- * This implementation checks for role overlap between concurrent actions.
+ *   A -> B: Msg1    uses channel (A, B)
+ *   A -> B: Msg2    uses channel (A, B)
+ *   These channels OVERLAP → RACE
  */
 function hasConflict(action1: ActionNode, action2: ActionNode): boolean {
   if (!isMessageAction(action1.action) || !isMessageAction(action2.action)) {
@@ -600,24 +599,17 @@ function hasConflict(action1: ActionNode, action2: ActionNode): boolean {
   const msg1 = action1.action;
   const msg2 = action2.action;
 
-  // Get all roles involved in each action
-  const roles1 = new Set<string>();
-  const roles2 = new Set<string>();
-
-  // Add senders
-  roles1.add(msg1.from);
-  roles2.add(msg2.from);
-
-  // Add receivers (handle multicast)
+  // Build channels for msg1: (from, to) pairs
   const receivers1 = typeof msg1.to === 'string' ? [msg1.to] : msg1.to;
+  const channels1 = receivers1.map(r => `${msg1.from}->${r}`);
+
+  // Build channels for msg2: (from, to) pairs
   const receivers2 = typeof msg2.to === 'string' ? [msg2.to] : msg2.to;
+  const channels2 = receivers2.map(r => `${msg2.from}->${r}`);
 
-  receivers1.forEach(r => roles1.add(r));
-  receivers2.forEach(r => roles2.add(r));
-
-  // Check for role overlap - any shared role means potential race
-  for (const role of roles1) {
-    if (roles2.has(role)) {
+  // Check if any channels overlap
+  for (const ch1 of channels1) {
+    if (channels2.includes(ch1)) {
       return true;
     }
   }
