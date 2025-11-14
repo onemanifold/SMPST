@@ -38,18 +38,8 @@
     ]
   },
   "raceConditions": {
-    "hasRaces": true,
-    "races": [
-      {
-        "parallelId": "par0",
-        "conflictingActions": [
-          "n82",
-          "n83"
-        ],
-        "resource": "A",
-        "description": "Race condition: Role \"A\" involved in concurrent operations across parallel branches. Branch 1: [A → B: M1], Branch 2: [A → C: M2]. This may cause non-deterministic behavior."
-      }
-    ]
+    "hasRaces": false,
+    "races": []
   },
   "progress": {
     "canProgress": true,

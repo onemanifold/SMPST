@@ -235,7 +235,7 @@
         "C"
       ],
       "hasDeadlock": false,
-      "hasRaces": true,
+      "hasRaces": false,
       "messageCount": 2
     },
     "performance": {
@@ -254,7 +254,7 @@
         "W2"
       ],
       "hasDeadlock": false,
-      "hasRaces": true,
+      "hasRaces": false,
       "messageCount": 3
     },
     "performance": {
@@ -312,7 +312,7 @@
         "P2"
       ],
       "hasDeadlock": false,
-      "hasRaces": true,
+      "hasRaces": false,
       "messageCount": 5
     },
     "performance": {

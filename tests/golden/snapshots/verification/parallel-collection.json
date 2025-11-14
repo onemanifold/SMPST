@@ -17,18 +17,8 @@
     "conflicts": []
   },
   "raceConditions": {
-    "hasRaces": true,
-    "races": [
-      {
-        "parallelId": "par1",
-        "conflictingActions": [
-          "n88",
-          "n89"
-        ],
-        "resource": "Coordinator",
-        "description": "Race condition: Role \"Coordinator\" involved in concurrent operations across parallel branches. Branch 1: [W1 → Coordinator: Result1], Branch 2: [W2 → Coordinator: Result2]. This may cause non-deterministic behavior."
-      }
-    ]
+    "hasRaces": false,
+    "races": []
   },
   "progress": {
     "canProgress": true,
