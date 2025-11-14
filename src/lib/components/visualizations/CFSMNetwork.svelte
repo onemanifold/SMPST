@@ -303,10 +303,10 @@
       .attr('rx', 4);
 
     // Compute hierarchical layout
-    const statePositions = computeHierarchicalLayout(projection);
+    const localStatePositions = computeHierarchicalLayout(projection);
 
     // Store global positions for channel rendering
-    statePositions.forEach((pos, state) => {
+    localStatePositions.forEach((pos, state) => {
       statePositions.set(`${projection.role}:${state}`, {
         x: x + pos.x,
         y: y + pos.y,
@@ -318,8 +318,8 @@
     const transitionsGroup = g.append('g').attr('class', 'transitions');
 
     projection.transitions.forEach(t => {
-      const from = statePositions.get(t.from);
-      const to = statePositions.get(t.to);
+      const from = localStatePositions.get(t.from);
+      const to = localStatePositions.get(t.to);
       if (!from || !to) return;
 
       const isActive = isTransitionActive(projection, t);
@@ -400,7 +400,7 @@
     const statesGroup = g.append('g').attr('class', 'states');
 
     projection.states.forEach((state, i) => {
-      const pos = statePositions.get(state);
+      const pos = localStatePositions.get(state);
       if (!pos) return;
 
       const isInitial = i === 0;
