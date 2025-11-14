@@ -210,15 +210,25 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
             actions.push({
               type: 'send',
               to: action.to,
+              // ENRICHED: Pass full Message object
+              message: action.message,
+              // DEPRECATED: Keep for backward compatibility
               label: action.label,
               payloadType: action.payloadType,
+              // NEW: Preserve location
+              location: action.location,
             } as SendAction);
           } else {
             actions.push({
               type: 'receive',
               from: action.from,
+              // ENRICHED: Pass full Message object
+              message: action.message,
+              // DEPRECATED: Keep for backward compatibility
               label: action.label,
               payloadType: action.payloadType,
+              // NEW: Preserve location
+              location: action.location,
             } as ReceiveAction);
           }
         }
@@ -392,19 +402,34 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
           // Determine action type based on formal rules:
           // (p→q:⟨U⟩.G) ↾ r = !⟨q,U⟩.(G↾p) if r=p (sender)
           //              = ?⟨p,U⟩.(G↾q) if r=q (receiver)
+          //
+          // ENRICHED PROJECTION: Preserve full Message object with type information
+          // WHY: TypeScript codegen needs full Type AST (e.g., List<Int>, Map<String, User>)
+          //      Scribble serialization needs to reconstruct exact syntax
+          //      Future features (refinements, security annotations) attach to types
           const cfsmAction: CFSMAction =
             action.from === role
               ? ({
                   type: 'send',
                   to: action.to,
+                  // NEW: Full message with Type AST (not flattened string)
+                  message: action.message,
+                  // KEEP: Backward compatibility during migration
                   label: action.label,
                   payloadType: action.payloadType,
+                  // NEW: Source location for error messages
+                  location: action.location,
                 } as SendAction)
               : ({
                   type: 'receive',
                   from: action.from,
+                  // NEW: Full message with Type AST
+                  message: action.message,
+                  // KEEP: Backward compatibility
                   label: action.label,
                   payloadType: action.payloadType,
+                  // NEW: Source location
+                  location: action.location,
                 } as ReceiveAction);
 
           // Create transition from last relevant state to new state
@@ -693,8 +718,11 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
     .filter(s => s.label === 'terminal')
     .map(s => s.id);
 
+  // ENRICHED: Include protocol metadata for code generation and serialization
   return {
     role,
+    protocolName: cfg.protocolName,
+    parameters: cfg.parameters,
     states,
     transitions,
     initialState: initialState.id,

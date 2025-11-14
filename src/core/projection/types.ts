@@ -34,6 +34,9 @@ export interface CFSMState {
   metadata?: Record<string, any>;
 }
 
+// Import types from AST for rich type preservation
+import type { Message, SourceLocation, ProtocolParameter } from '../ast/types';
+
 /**
  * Action types in CFSM
  * Based on LTS semantics for communicating automata
@@ -48,23 +51,52 @@ export type CFSMAction =
 /**
  * Send action: ! ⟨p, l⟨U⟩⟩
  * Corresponds to message send in session types
+ *
+ * ENRICHED: Preserves full Message object with type information
+ * for TypeScript code generation and Scribble serialization
  */
 export interface SendAction {
   type: 'send';
   to: string | string[];  // Recipient role(s)
-  label: string;          // Message label
-  payloadType?: string;   // Message payload type
+
+  // ENRICHED: Full message with type information
+  message: Message;
+
+  // DEPRECATED: Use message.label instead
+  /** @deprecated Use message.label */
+  label?: string;
+
+  // DEPRECATED: Use message.payload.payloadType instead
+  /** @deprecated Use message.payload?.payloadType */
+  payloadType?: string;
+
+  // NEW: Source location for error reporting
+  location?: SourceLocation;
 }
 
 /**
  * Receive action: ? ⟨p, l⟨U⟩⟩
  * Corresponds to message receive in session types
+ *
+ * ENRICHED: Preserves full Message object with type information
  */
 export interface ReceiveAction {
   type: 'receive';
   from: string;      // Sender role
-  label: string;     // Message label
+
+  // ENRICHED: Full message with type information
+  message: Message;
+
+  // DEPRECATED: Use message.label instead
+  /** @deprecated Use message.label */
+  label?: string;
+
+  // DEPRECATED: Use message.payload.payloadType instead
+  /** @deprecated Use message.payload?.payloadType */
   payloadType?: string;
+
+  // NEW: Source location for error reporting
+  location?: SourceLocation;
 }
 
 /**
@@ -141,6 +173,9 @@ export interface CFSMTransition {
  * - States are control locations, not computation steps
  * - This differs from CFG where actions are nodes
  *
+ * ENRICHED: Now includes protocol metadata for code generation
+ * and type information preservation.
+ *
  * THEOREM TESTING: All session type theorems (projection soundness,
  * completeness, composability) can be expressed using only LTS properties:
  * - Traces: sequences of actions from initial to terminal states
@@ -159,6 +194,12 @@ export interface CFSM {
   /** The role this CFSM represents (participant name) */
   role: string;
 
+  /** ENRICHED: Protocol name for code generation */
+  protocolName: string;
+
+  /** ENRICHED: Protocol parameters (type and sig parameters) */
+  parameters: ProtocolParameter[];
+
   /** Q: Finite set of control states */
   states: CFSMState[];
 
@@ -175,6 +216,8 @@ export interface CFSM {
   metadata?: {
     sourceProtocol?: string;
     projectionTime?: Date;
+    // Extensible for future features
+    [key: string]: any;
   };
 }
 

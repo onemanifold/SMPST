@@ -203,6 +203,9 @@ export function buildCFG(protocol: GlobalProtocolDeclaration): CFG {
     nodes: sortedNodes,
     edges: ctx.edges,
     roles: ctx.roles,
+    // ENRICHED: Protocol metadata for code generation
+    protocolName: protocol.name,
+    parameters: protocol.parameters,
   };
 }
 
@@ -468,12 +471,20 @@ function buildMessageTransfer(
     kind: 'message',
     from: msg.from,
     to: msg.to,
+
+    // ENRICHED: Pass full Message object with type information
+    message: msg.message,
+
+    // DEPRECATED: Keep for backward compatibility during migration
     label: msg.message.label,
     payloadType: msg.message.payload?.payloadType.type === 'SimpleType'
       ? (msg.message.payload.payloadType as any).name
       : msg.message.payload?.payloadType.type === 'ParametricType'
       ? (msg.message.payload.payloadType as any).name
       : undefined,
+
+    // NEW: Preserve source location
+    location: msg.location,
   };
 
   const actionNode = addNode(ctx, createActionNode(action));
