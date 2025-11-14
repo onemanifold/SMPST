@@ -182,9 +182,13 @@ function projectBody(
   for (const interaction of body) {
     const projected = projectInteraction(interaction, role, options);
 
-    // Only add non-empty projections (tau-elimination)
+    // Handle both single interaction and array of interactions (for self-communication)
     if (projected !== null) {
-      localInteractions.push(projected);
+      if (Array.isArray(projected)) {
+        localInteractions.push(...projected);
+      } else {
+        localInteractions.push(projected);
+      }
     }
   }
 
@@ -205,13 +209,13 @@ function projectBody(
  * @param interaction - Global interaction to project
  * @param role - Role to project for
  * @param options - Projection options
- * @returns Local interaction or null (tau-eliminated)
+ * @returns Local interaction, array of interactions (for self-communication), or null (tau-eliminated)
  */
 function projectInteraction(
   interaction: GlobalInteraction,
   role: string,
   options: ProjectionOptions
-): LocalInteraction | null {
+): LocalInteraction | LocalInteraction[] | null {
   // RULE 1: MESSAGE PASSING
   if (isMessageTransfer(interaction)) {
     return projectMessageTransfer(interaction, role);
@@ -257,16 +261,40 @@ function projectInteraction(
  *   - !⟨q,U⟩.(G↓r) if r = p (sender)
  *   - ?⟨p,U⟩.(G↓r) if r = q (receiver)
  *   - G↓r           if r ≠ p, r ≠ q (tau-elimination)
+ *
+ * Special case: Self-communication (p→p,... )
+ *   - Returns both Send and Receive for role p
  */
 function projectMessageTransfer(
   msg: MessageTransfer,
   role: string
-): Send | Receive | null {
+): Send | Receive | (Send | Receive)[] | null {
   const { from, to, message } = msg;
 
+  const isSender = from === role;
+  const isReceiver = to === role || (Array.isArray(to) && to.includes(role));
+
+  // Special case: Role is both sender AND receiver (self-communication)
+  // This is a well-formedness error, but projection should not crash
+  if (isSender && isReceiver) {
+    const send: Send = {
+      type: 'Send',
+      message,
+      to,  // Preserve multicast: string | string[]
+      location: msg.location,
+    };
+    const receive: Receive = {
+      type: 'Receive',
+      message,
+      from,
+      location: msg.location,
+    };
+    // Return both Send and Receive
+    return [send, receive];
+  }
+
   // Case 1: Role is sender - project to Send
-  if (from === role) {
-    // Handle multicast: preserve the full recipient list (string or string[])
+  if (isSender) {
     const send: Send = {
       type: 'Send',
       message,
@@ -277,7 +305,7 @@ function projectMessageTransfer(
   }
 
   // Case 2: Role is receiver - project to Receive
-  if (to === role || (Array.isArray(to) && to.includes(role))) {
+  if (isReceiver) {
     const receive: Receive = {
       type: 'Receive',
       message,

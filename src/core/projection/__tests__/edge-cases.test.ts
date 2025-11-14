@@ -84,9 +84,12 @@ describe('CFSM Projection - Edge Cases', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const cCFSM = project(cfg, 'C');
 
-    // C has no actions, just initial -> terminal
-    const actionTransitions = cCFSM.transitions.filter(t => t.action);
-    expect(actionTransitions.length).toBe(0);
+    // C has no actions, just initial -> terminal (with tau transition)
+    // Should have no send/receive actions, only tau transitions
+    const protocolActions = cCFSM.transitions.filter(
+      t => t.action.type === 'send' || t.action.type === 'receive'
+    );
+    expect(protocolActions.length).toBe(0);
   });
 
   it('should handle long sequence (stress test)', () => {
