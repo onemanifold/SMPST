@@ -41,7 +41,7 @@ export interface VerificationResult {
 
 export const verificationResult = writable<VerificationResult | null>(null);
 
-// Mock projection data (for UI demonstration)
+// Projection data with serialized local protocols
 export interface ProjectionData {
   role: string;
   states: string[];
@@ -50,6 +50,8 @@ export interface ProjectionData {
     to: string;
     label: string;
   }>;
+  // Serialized Scribble local protocol text
+  localProtocol: string;
 }
 
 export const projectionData = writable<ProjectionData[]>([]);
@@ -121,6 +123,7 @@ export async function parseProtocol(content: string) {
     const { buildCFG } = await import('../../core/cfg/builder');
     const { verifyProtocol } = await import('../../core/verification/verifier');
     const { projectAll } = await import('../../core/projection/projector');
+    const { serializeCFSM } = await import('../../core/serializer/cfsm-serializer');
 
     // 1. Parse Scribble
     const ast = parse(content);
@@ -217,7 +220,7 @@ export async function parseProtocol(content: string) {
       }
     };
 
-    // Update projection data
+    // Update projection data with serialized local protocols
     projectionData.set(
       roles.map((role: string) => {
         const cfsm = projectionResult.cfsms.get(role);
@@ -225,9 +228,13 @@ export async function parseProtocol(content: string) {
           return {
             role,
             states: [],
-            transitions: []
+            transitions: [],
+            localProtocol: `// No projection for role ${role}`
           };
         }
+
+        // Serialize CFSM to Scribble local protocol text
+        const localProtocol = serializeCFSM(cfsm);
 
         return {
           role,
@@ -236,7 +243,8 @@ export async function parseProtocol(content: string) {
             from: t.from,
             to: t.to,
             label: formatActionLabel(t.action)
-          }))
+          })),
+          localProtocol
         };
       })
     );
