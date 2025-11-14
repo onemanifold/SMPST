@@ -1,0 +1,44 @@
+/**
+ * Multiple Dynamic Roles Protocol
+ *
+ * Demonstrates:
+ * - Multiple dynamic role declarations
+ * - Creating multiple participants
+ * - Communication between dynamic participants
+ * - Role coordination
+ *
+ * Properties verified:
+ * ✅ All participants properly invited
+ * ✅ Trace equivalence with multiple dynamic roles
+ * ✅ Deadlock-free (no circular dependencies)
+ * ✅ Message ordering preserved
+ *
+ * SCENARIO:
+ *   A Server creates both a Database and a Logger.
+ *   The Server coordinates communication between them.
+ */
+
+protocol MultiRole(role Server) {
+  new role Database;
+  new role Logger;
+
+  // Create both dynamic participants
+  Server creates Database;
+  Server creates Logger;
+
+  // Invite them to join
+  Server invites Database;
+  Server invites Logger;
+
+  // Server sends query to Database
+  Server -> Database: Query(string);
+
+  // Database responds to Server
+  Database -> Server: QueryResult(int);
+
+  // Server logs the result
+  Server -> Logger: LogEntry(string);
+
+  // Logger acknowledges
+  Logger -> Server: Ack();
+}

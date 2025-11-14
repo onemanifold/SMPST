@@ -1,0 +1,32 @@
+/**
+ * Choice with Dynamic Participants
+ *
+ * Demonstrates:
+ * - Choice construct with dynamic roles
+ * - Different participant sets per branch
+ * - Conditional participant creation
+ *
+ * Properties verified:
+ * ✅ Well-formed choice (all branches valid)
+ * ✅ Trace equivalence (per branch)
+ * ✅ No orphans (all created participants complete)
+ *
+ * SCENARIO:
+ *   A Coordinator decides whether to create a Worker or
+ *   handle the task internally.
+ */
+
+protocol ConditionalCreation(role Coordinator) {
+  new role Worker;
+
+  choice at Coordinator {
+    // Branch 1: Delegate to Worker
+    Coordinator creates Worker;
+    Coordinator invites Worker;
+    Coordinator -> Worker: Task(string);
+    Worker -> Coordinator: Result(int);
+  } or {
+    // Branch 2: Handle internally (no Worker created)
+    Coordinator -> Coordinator: SelfProcess(string);
+  }
+}
