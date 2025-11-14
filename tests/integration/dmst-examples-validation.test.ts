@@ -12,10 +12,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { parse } from '../../src/parser/parser';
-import { buildCFG } from '../../src/core/cfg/cfg-builder';
-import { verifyProtocol } from '../../src/core/verification/verify';
-import { project } from '../../src/core/projection/project';
+import { parse } from '../../src/core/parser/parser';
+import { buildCFG } from '../../src/core/cfg/builder';
+import { verifyProtocol } from '../../src/core/verification/verifier';
+import { project } from '../../src/core/projection/projector';
 import { checkSafeProtocolUpdate } from '../../src/core/verification/dmst/safe-update';
 import { verifyTraceEquivalence } from '../../src/core/verification/dmst/trace-equivalence';
 
@@ -24,9 +24,24 @@ describe('DMst Examples Validation', () => {
 
   const examples = [
     {
+      file: 'minimal-invitation.smpst',
+      name: 'Minimal Invitation',
+      features: ['new role', 'creates', 'invites'],
+    },
+    {
       file: 'simple-dynamic-worker.smpst',
       name: 'Simple Dynamic Worker',
       features: ['new role', 'creates', 'invites', 'messages'],
+    },
+    {
+      file: 'multiple-dynamic-roles.smpst',
+      name: 'Multiple Dynamic Roles',
+      features: ['new role', 'creates', 'invites', 'messages'],
+    },
+    {
+      file: 'choice-with-dynamic.smpst',
+      name: 'Choice with Dynamic',
+      features: ['new role', 'creates', 'invites', 'choice', 'messages'],
     },
     {
       file: 'updatable-pipeline.smpst',
@@ -37,6 +52,21 @@ describe('DMst Examples Validation', () => {
       file: 'protocol-call.smpst',
       name: 'Protocol Call',
       features: ['new role', 'creates', 'invites', 'calls', 'combining operator'],
+    },
+    {
+      file: 'sequential-calls.smpst',
+      name: 'Sequential Calls',
+      features: ['new role', 'creates', 'invites', 'calls', 'combining operator'],
+    },
+    {
+      file: 'parallel-workers.smpst',
+      name: 'Parallel Workers',
+      features: ['new role', 'creates', 'invites', 'messages', 'parallel'],
+    },
+    {
+      file: 'nested-update.smpst',
+      name: 'Nested Update',
+      features: ['new role', 'creates', 'invites', 'updatable recursion', 'choice'],
     },
     {
       file: 'map-reduce.smpst',
@@ -172,8 +202,8 @@ describe('DMst Examples Validation', () => {
   });
 
   describe('All Examples Summary', () => {
-    it('should have at least 4 passing examples', () => {
-      expect(examples.length).toBeGreaterThanOrEqual(4);
+    it('should have at least 10 passing examples', () => {
+      expect(examples.length).toBeGreaterThanOrEqual(10);
     });
 
     it('should cover all DMst features', () => {
