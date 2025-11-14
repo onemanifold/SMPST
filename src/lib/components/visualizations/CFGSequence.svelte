@@ -85,9 +85,9 @@
     const roles = $currentCFG.roles;
     const messages = extractMessages();
 
-    const numRoles = roles.length;
-    const totalLaneWidth = numRoles * (LANE_WIDTH + LANE_MARGIN);
-    const startX = Math.max(40, (width - totalLaneWidth) / 2);
+    // Use fixed starting position for consistent sizing
+    // Don't cram lanes into viewport; use pan/zoom to navigate
+    const startX = 100;
 
     // Calculate lane positions
     const laneX = new Map<string, number>();

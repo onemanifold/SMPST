@@ -69,9 +69,21 @@
     return $executionState.visitedNodes.some(nodeId => nodeId.includes(stateId));
   }
 
-  // Check if a state is currently active
-  function isStateCurrent(stateId: string): boolean {
+  // Check if a state is currently active (either executing from it or executing to it)
+  function isStateCurrent(projection: typeof $projectionData[0], stateId: string): boolean {
     if (!$executionState) return false;
+
+    // Check if any active transition leads to this state
+    const currentMsg = getCurrentMessage();
+    if (currentMsg) {
+      for (const transition of projection.transitions) {
+        if (isTransitionActive(projection, transition) && transition.to === stateId) {
+          return true;
+        }
+      }
+    }
+
+    // Original check: if we're at this state
     const currentNodeId = typeof $executionState.currentNode === 'string'
       ? $executionState.currentNode
       : $executionState.currentNode[0];
@@ -106,10 +118,9 @@
     // Apply current transform (preserves zoom/pan between re-renders)
     container.attr('transform', currentTransform);
 
-    // Calculate layout
-    const numCFSMs = $projectionData.length;
-    const totalWidth = numCFSMs * (CFSM_WIDTH + CFSM_MARGIN);
-    const startX = Math.max(CFSM_MARGIN, (width - totalWidth) / 2);
+    // Calculate layout - use fixed starting position for consistent sizing
+    // Don't cram CFSMs into viewport; use pan/zoom to navigate
+    const startX = CFSM_MARGIN;
 
     // Define arrowhead marker (once for all CFSMs)
     svg
@@ -258,7 +269,7 @@
       const isInitial = i === 0;
       const isFinal = i === states.length - 1;
       const isVisited = isStateVisited(state);
-      const isCurrent = isStateCurrent(state);
+      const isCurrent = isStateCurrent(projection, state);
 
       // Determine state styling
       let fillColor = '#2d2d2d';

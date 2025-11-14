@@ -38,9 +38,24 @@
     selectedChoice = null;
   }
 
-  // Auto-select first choice if at choice point
-  $: if ($isAtChoice && $availableChoices.length > 0 && selectedChoice === null) {
+  // In play mode: auto-select and auto-step when at choice
+  // In step mode: don't auto-select, wait for user input
+  $: if ($isAtChoice && $isPlaying && $availableChoices.length > 0) {
+    // Auto-select first choice in play mode
     selectedChoice = 0;
+    // Brief pause to show the choice (200ms), then make selection
+    setTimeout(() => {
+      if (selectedChoice !== null) {
+        makeChoice(selectedChoice);
+        selectedChoice = null;
+      }
+    }, 200);
+  }
+
+  // Reset selection when no longer at choice or when switching modes
+  $: if (!$isAtChoice || ($isAtChoice && !$isPlaying && selectedChoice === null)) {
+    // In step mode, wait for user selection (don't auto-select)
+    selectedChoice = null;
   }
 </script>
 
@@ -92,10 +107,19 @@
       {/if}
     </div>
 
-    {#if $isAtChoice && !$isPlaying}
-      <div class="choice-group">
-        <span class="choice-label">Choose branch:</span>
-        <select bind:value={selectedChoice} class="choice-select">
+    {#if $isAtChoice}
+      <div class="choice-group" class:auto-selecting={$isPlaying}>
+        <span class="choice-label">
+          {$isPlaying ? '⚡ Auto-selecting:' : 'Choose branch:'}
+        </span>
+        <select
+          bind:value={selectedChoice}
+          class="choice-select"
+          disabled={$isPlaying}
+        >
+          {#if selectedChoice === null}
+            <option value={null} disabled selected>Select a branch...</option>
+          {/if}
           {#each $availableChoices as choice, index}
             <option value={index}>
               {choice.label || `Branch ${index + 1}`}
@@ -229,12 +253,24 @@
     gap: 4px;
     padding-left: 6px;
     border-left: 1px solid #555;
+    transition: background-color 0.3s;
+  }
+
+  .choice-group.auto-selecting {
+    background: rgba(45, 77, 127, 0.2);
+    border-left-color: #66b3ff;
+    padding: 2px 6px;
+    border-radius: 4px;
   }
 
   .choice-label {
     color: #ccc;
     font-size: 12px;
     font-weight: 500;
+  }
+
+  .choice-group.auto-selecting .choice-label {
+    color: #66b3ff;
   }
 
   .choice-select {
