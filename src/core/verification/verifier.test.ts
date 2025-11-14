@@ -223,9 +223,9 @@ describe('Liveness Detection', () => {
 });
 
 describe('Race Condition Detection', () => {
-  it('should pass when different channels (no race per MPST theory)', () => {
+  it('should NOT detect race when same sender, different receivers', () => {
     const source = `
-      protocol PotentialRace(role A, role B, role C) {
+      protocol NoRace(role A, role B, role C) {
         par {
           A -> B: Update();
         } and {
@@ -237,14 +237,14 @@ describe('Race Condition Detection', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectRaceConditions(cfg);
 
-    // Channels are "A->B" and "A->C" - different channels, no race
-    // Per MPST theory (Deniélou & Yoshida 2012), only same channel causes race
+    // FORMAL SEMANTICS (Deniélou & Yoshida 2012):
+    // Channels (A,B) and (A,C) are DISJOINT → NO RACE
     expect(result.hasRaces).toBe(false);
   });
 
-  it('should pass when different channels to same receiver', () => {
+  it('should NOT detect race when different senders, same receiver', () => {
     const source = `
-      protocol ReceiveRace(role A, role B, role C) {
+      protocol NoRace(role A, role B, role C) {
         par {
           A -> C: M1();
         } and {
@@ -256,7 +256,9 @@ describe('Race Condition Detection', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectRaceConditions(cfg);
 
-    // Channels are "A->C" and "B->C" - different channels, no race
+    // FORMAL SEMANTICS (Deniélou & Yoshida 2012):
+    // Channels (A,C) and (B,C) are DISJOINT → NO RACE
+    // NOTE: C doesn't know message arrival order, but that's asynchrony, not a race
     expect(result.hasRaces).toBe(false);
   });
 });
@@ -615,7 +617,7 @@ describe('Parallel Deadlock Detection Algorithm', () => {
 });
 
 describe('Race Condition Detection Algorithm', () => {
-  it('should pass when different channels (no race per MPST theory)', () => {
+  it('should NOT detect race when different channels (different senders)', () => {
     const source = `
       protocol NoRace(role A, role B, role C) {
         par {
@@ -625,18 +627,17 @@ describe('Race Condition Detection Algorithm', () => {
         }
       }
     `;
-    // Channels are "A->B" and "C->B" - different channels, no race per MPST theory
     const ast = parse(source);
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectRaceConditions(cfg);
 
-    // No race: different channels (sender-receiver pairs are disjoint)
+    // FORMAL SEMANTICS: Channels (A,B) and (C,B) are DISJOINT → NO RACE
     expect(result.hasRaces).toBe(false);
   });
 
-  it('should pass when different channels to same receiver', () => {
+  it('should NOT detect race with different channels', () => {
     const source = `
-      protocol SharedResource(role A, role B, role Resource) {
+      protocol NoRace(role A, role B, role Resource) {
         par {
           A -> Resource: Write();
         } and {
@@ -648,7 +649,7 @@ describe('Race Condition Detection Algorithm', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectRaceConditions(cfg);
 
-    // No race: channels "A->Resource" and "B->Resource" are different
+    // FORMAL SEMANTICS: Channels (A,Resource) and (B,Resource) are DISJOINT → NO RACE
     expect(result.hasRaces).toBe(false);
   });
 });
