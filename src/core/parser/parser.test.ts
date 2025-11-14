@@ -217,6 +217,154 @@ describe('Scribble Parser - Message Transfer', () => {
   });
 });
 
+describe('Scribble Parser - Dual Message Syntax Support', () => {
+  it('should parse standard Scribble syntax: Msg() from A to B;', () => {
+    const source = `
+      protocol StandardSyntax(role Client, role Server) {
+        Request(String) from Client to Server;
+        Response(Int) from Server to Client;
+      }
+    `;
+
+    const ast = parse(source);
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    expect(protocol.body).toHaveLength(2);
+
+    const msg1 = protocol.body[0] as MessageTransfer;
+    expect(msg1.type).toBe('MessageTransfer');
+    expect(msg1.from).toBe('Client');
+    expect(msg1.to).toBe('Server');
+    expect(msg1.message.label).toBe('Request');
+
+    const msg2 = protocol.body[1] as MessageTransfer;
+    expect(msg2.from).toBe('Server');
+    expect(msg2.to).toBe('Client');
+    expect(msg2.message.label).toBe('Response');
+  });
+
+  it('should parse arrow syntax: A -> B: Msg();', () => {
+    const source = `
+      protocol ArrowSyntax(role Client, role Server) {
+        Client -> Server: Request(String);
+        Server -> Client: Response(Int);
+      }
+    `;
+
+    const ast = parse(source);
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    expect(protocol.body).toHaveLength(2);
+
+    const msg1 = protocol.body[0] as MessageTransfer;
+    expect(msg1.type).toBe('MessageTransfer');
+    expect(msg1.from).toBe('Client');
+    expect(msg1.to).toBe('Server');
+    expect(msg1.message.label).toBe('Request');
+
+    const msg2 = protocol.body[1] as MessageTransfer;
+    expect(msg2.from).toBe('Server');
+    expect(msg2.to).toBe('Client');
+    expect(msg2.message.label).toBe('Response');
+  });
+
+  it('should parse both syntaxes to identical AST', () => {
+    const source1 = `
+      protocol StandardSyntax(role A, role B) {
+        Hello(String) from A to B;
+      }
+    `;
+
+    const source2 = `
+      protocol ArrowSyntax(role A, role B) {
+        A -> B: Hello(String);
+      }
+    `;
+
+    const ast1 = parse(source1);
+    const ast2 = parse(source2);
+
+    const msg1 = (ast1.declarations[0] as GlobalProtocolDeclaration).body[0] as MessageTransfer;
+    const msg2 = (ast2.declarations[0] as GlobalProtocolDeclaration).body[0] as MessageTransfer;
+
+    // Should produce identical message transfer structure
+    expect(msg1.from).toBe(msg2.from);
+    expect(msg1.to).toBe(msg2.to);
+    expect(msg1.message.label).toBe(msg2.message.label);
+  });
+
+  it('should support multicast in standard syntax', () => {
+    const source = `
+      protocol Multicast(role A, role B, role C) {
+        Broadcast(Int) from A to B, C;
+      }
+    `;
+
+    const ast = parse(source);
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    const msg = protocol.body[0] as MessageTransfer;
+
+    expect(msg.from).toBe('A');
+    expect(Array.isArray(msg.to)).toBe(true);
+    expect(msg.to).toEqual(['B', 'C']);
+    expect(msg.message.label).toBe('Broadcast');
+  });
+
+  it('should support multicast in arrow syntax', () => {
+    const source = `
+      protocol Multicast(role A, role B, role C) {
+        A -> B, C: Broadcast(Int);
+      }
+    `;
+
+    const ast = parse(source);
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    const msg = protocol.body[0] as MessageTransfer;
+
+    expect(msg.from).toBe('A');
+    expect(Array.isArray(msg.to)).toBe(true);
+    expect(msg.to).toEqual(['B', 'C']);
+    expect(msg.message.label).toBe('Broadcast');
+  });
+
+  it('should allow mixing both syntaxes in same protocol', () => {
+    const source = `
+      protocol MixedSyntax(role Client, role Server) {
+        Client -> Server: Request(String);
+        Response(Int) from Server to Client;
+      }
+    `;
+
+    const ast = parse(source);
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    expect(protocol.body).toHaveLength(2);
+
+    const msg1 = protocol.body[0] as MessageTransfer;
+    expect(msg1.from).toBe('Client');
+    expect(msg1.to).toBe('Server');
+    expect(msg1.message.label).toBe('Request');
+
+    const msg2 = protocol.body[1] as MessageTransfer;
+    expect(msg2.from).toBe('Server');
+    expect(msg2.to).toBe('Client');
+    expect(msg2.message.label).toBe('Response');
+  });
+
+  it('should parse standard syntax with payload types', () => {
+    const source = `
+      protocol WithPayload(role A, role B) {
+        Data(List<String>) from A to B;
+      }
+    `;
+
+    const ast = parse(source);
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    const msg = protocol.body[0] as MessageTransfer;
+
+    expect(msg.message.label).toBe('Data');
+    expect(msg.message.payload).toBeDefined();
+    expect(msg.message.payload?.payloadType.type).toBe('ParametricType');
+  });
+});
+
 describe('Scribble Parser - Choice', () => {
   it('should parse choice with two branches', () => {
     const source = `

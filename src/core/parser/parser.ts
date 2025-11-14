@@ -280,19 +280,42 @@ export class ScribbleParser extends CstParser {
   });
 
   private messageTransfer = this.RULE('messageTransfer', () => {
-    this.CONSUME(tokens.Identifier, { LABEL: 'from' });
-    this.CONSUME(tokens.Arrow);
+    this.OR([
+      // Arrow syntax: Sender -> Receiver: Message();
+      // Example: Client -> Server: Request(String);
+      { ALT: () => {
+        this.CONSUME(tokens.Identifier, { LABEL: 'from' });
+        this.CONSUME(tokens.Arrow);
 
-    // Support multicast: to1, to2, to3
-    this.CONSUME2(tokens.Identifier, { LABEL: 'to' });
-    this.MANY(() => {
-      this.CONSUME(tokens.Comma);
-      this.CONSUME3(tokens.Identifier, { LABEL: 'toAdditional' });
-    });
+        // Support multicast: to1, to2, to3
+        this.CONSUME2(tokens.Identifier, { LABEL: 'to' });
+        this.MANY(() => {
+          this.CONSUME(tokens.Comma);
+          this.CONSUME3(tokens.Identifier, { LABEL: 'toAdditional' });
+        });
 
-    this.CONSUME(tokens.Colon);
-    this.SUBRULE(this.message);
-    this.CONSUME(tokens.Semicolon);
+        this.CONSUME(tokens.Colon);
+        this.SUBRULE(this.message, { LABEL: 'arrowMessage' });
+        this.CONSUME(tokens.Semicolon);
+      }},
+      // Standard Scribble syntax: Message() from Sender to Receiver;
+      // Example: Request(String) from Client to Server;
+      { ALT: () => {
+        this.SUBRULE2(this.message, { LABEL: 'standardMessage' });
+        this.CONSUME(tokens.From);
+        this.CONSUME4(tokens.Identifier, { LABEL: 'standardFrom' });
+        this.CONSUME(tokens.To);
+        this.CONSUME5(tokens.Identifier, { LABEL: 'standardTo' });
+
+        // Support multicast: to1, to2, to3
+        this.MANY2(() => {
+          this.CONSUME2(tokens.Comma);
+          this.CONSUME6(tokens.Identifier, { LABEL: 'standardToAdditional' });
+        });
+
+        this.CONSUME2(tokens.Semicolon);
+      }}
+    ]);
   });
 
   private message = this.RULE('message', () => {
@@ -736,16 +759,32 @@ class ScribbleToAstVisitor extends BaseCstVisitor {
   }
 
   messageTransfer(ctx: any): AST.MessageTransfer {
-    // Support multicast: if toAdditional exists, create array of all receivers
-    const to = ctx.toAdditional
-      ? [ctx.to[0].image, ...ctx.toAdditional.map((t: any) => t.image)]
-      : ctx.to[0].image;
+    // Handle both arrow syntax (A -> B: Msg) and standard syntax (Msg from A to B)
+    let from: string;
+    let to: string | string[];
+    let message: AST.Message;
+
+    if (ctx.arrowMessage) {
+      // Arrow syntax: Sender -> Receiver: Message();
+      from = ctx.from[0].image;
+      to = ctx.toAdditional
+        ? [ctx.to[0].image, ...ctx.toAdditional.map((t: any) => t.image)]
+        : ctx.to[0].image;
+      message = this.visit(ctx.arrowMessage);
+    } else {
+      // Standard Scribble syntax: Message() from Sender to Receiver;
+      from = ctx.standardFrom[0].image;
+      to = ctx.standardToAdditional
+        ? [ctx.standardTo[0].image, ...ctx.standardToAdditional.map((t: any) => t.image)]
+        : ctx.standardTo[0].image;
+      message = this.visit(ctx.standardMessage);
+    }
 
     return {
       type: 'MessageTransfer',
-      from: ctx.from[0].image,
+      from,
       to,
-      message: this.visit(ctx.message),
+      message,
       location: this.getLocation(ctx),
     };
   }
