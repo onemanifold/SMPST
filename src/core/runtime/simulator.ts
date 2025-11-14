@@ -128,6 +128,11 @@ export class Simulator {
     } else {
       // Step all roles (one iteration of interleaving)
       for (const [roleName, executor] of this.executors.entries()) {
+        // Check if paused (allow interruption mid-step)
+        if (this.paused) {
+          break;
+        }
+
         // Skip completed roles
         if (executor.getState().completed) {
           continue;
@@ -136,6 +141,15 @@ export class Simulator {
         // Try to step this role
         const result = await executor.step();
         updates.set(roleName, result);
+
+        // Yield to event loop after each executor step to allow pause()
+        if (this.options.stepDelay && this.options.stepDelay > 0) {
+          // Use setTimeout with configured delay for interactive debugging
+          await new Promise(resolve => setTimeout(resolve, this.options.stepDelay));
+        } else {
+          // Use setImmediate for minimal delay
+          await new Promise(resolve => setImmediate(resolve));
+        }
       }
     }
 
@@ -166,9 +180,6 @@ export class Simulator {
     }
 
     while (this.stepCount < maxSteps && !this.paused) {
-      // Yield to event loop at start of each iteration to allow pause() to execute
-      await new Promise(resolve => setImmediate(resolve));
-
       const state = this.getState();
 
       // Check if completed

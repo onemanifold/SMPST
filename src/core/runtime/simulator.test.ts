@@ -392,7 +392,10 @@ describe('Protocol Simulator - Interactive Control', () => {
     const cfg = buildCFG(parse(source).declarations[0]);
     const { cfsms } = projectAll(cfg);
 
-    const simulator = new Simulator({ roles: cfsms });
+    const simulator = new Simulator({
+      roles: cfsms,
+      options: { stepDelay: 15 },  // Delay between steps to allow pause() to execute
+    });
 
     // Start running
     const runPromise = simulator.run();
