@@ -11,10 +11,15 @@
   let currentTransform = d3.zoomIdentity;
 
   // Visualization dimensions
-  const CFSM_WIDTH = 250;
-  const CFSM_HEIGHT = 400;
-  const CFSM_MARGIN = 40;
+  const CFSM_WIDTH = 300;
+  const CFSM_HEIGHT = 500;
+  const CFSM_MARGIN = 100;
   const STATE_RADIUS = 20;
+  const LAYER_SPACING = 80;
+  const NODE_SPACING = 60;
+
+  // Track state positions across all CFSMs for channel rendering
+  const statePositions = new Map<string, { x: number; y: number; role: string }>();
 
   // Get currently active message from execution state
   function getCurrentMessage(): { from: string; to: string | string[]; label: string } | null {
@@ -42,7 +47,6 @@
     const currentMsg = getCurrentMessage();
     if (!currentMsg) return false;
 
-    // Check if this transition matches the current message
     const transitionLabel = transition.label;
 
     // For send transitions
@@ -69,25 +73,123 @@
     return $executionState.visitedNodes.some(nodeId => nodeId.includes(stateId));
   }
 
-  // Check if a state is currently active (either executing from it or executing to it)
-  function isStateCurrent(projection: typeof $projectionData[0], stateId: string): boolean {
+  // Check if currently AT a state (not executing FROM it)
+  function isStateAtCurrent(stateId: string): boolean {
     if (!$executionState) return false;
 
-    // Check if any active transition leads to this state
-    const currentMsg = getCurrentMessage();
-    if (currentMsg) {
-      for (const transition of projection.transitions) {
-        if (isTransitionActive(projection, transition) && transition.to === stateId) {
-          return true;
+    const currentNodeId = typeof $executionState.currentNode === 'string'
+      ? $executionState.currentNode
+      : $executionState.currentNode[0];
+
+    return currentNodeId.includes(stateId);
+  }
+
+  // Check if state is the SOURCE of an active transition
+  function isStateSource(projection: typeof $projectionData[0], stateId: string): boolean {
+    if (!$executionState) return false;
+
+    for (const transition of projection.transitions) {
+      if (isTransitionActive(projection, transition) && transition.from === stateId) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // Check if state is the TARGET of an active transition
+  function isStateTarget(projection: typeof $projectionData[0], stateId: string): boolean {
+    if (!$executionState) return false;
+
+    for (const transition of projection.transitions) {
+      if (isTransitionActive(projection, transition) && transition.to === stateId) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Compute hierarchical layout for CFSM states
+   * Uses layer assignment based on longest path from initial state
+   */
+  function computeHierarchicalLayout(projection: typeof $projectionData[0]) {
+    const states = projection.states;
+    const transitions = projection.transitions;
+
+    // Build adjacency graph
+    const outgoing = new Map<string, string[]>();
+    const incoming = new Map<string, string[]>();
+
+    states.forEach(s => {
+      outgoing.set(s, []);
+      incoming.set(s, []);
+    });
+
+    transitions.forEach(t => {
+      outgoing.get(t.from)?.push(t.to);
+      incoming.get(t.to)?.push(t.from);
+    });
+
+    // Assign layers using BFS from initial state
+    const layers = new Map<string, number>();
+    const queue: Array<{ state: string; layer: number }> = [];
+
+    if (states.length > 0) {
+      queue.push({ state: states[0], layer: 0 });
+      layers.set(states[0], 0);
+    }
+
+    while (queue.length > 0) {
+      const { state, layer } = queue.shift()!;
+
+      for (const next of outgoing.get(state) || []) {
+        const currentLayer = layers.get(next);
+        const newLayer = layer + 1;
+
+        // Only update if new layer is deeper (handles cycles)
+        if (currentLayer === undefined || newLayer > currentLayer) {
+          layers.set(next, newLayer);
+          queue.push({ state: next, layer: newLayer });
         }
       }
     }
 
-    // Original check: if we're at this state
-    const currentNodeId = typeof $executionState.currentNode === 'string'
-      ? $executionState.currentNode
-      : $executionState.currentNode[0];
-    return currentNodeId.includes(stateId);
+    // Handle unreachable states (shouldn't happen in verified protocols)
+    states.forEach((s, i) => {
+      if (!layers.has(s)) {
+        layers.set(s, i);
+      }
+    });
+
+    // Group states by layer
+    const layerGroups = new Map<number, string[]>();
+    layers.forEach((layer, state) => {
+      if (!layerGroups.has(layer)) {
+        layerGroups.set(layer, []);
+      }
+      layerGroups.get(layer)!.push(state);
+    });
+
+    // Compute positions
+    const positions = new Map<string, { x: number; y: number }>();
+    const maxLayer = Math.max(...Array.from(layers.values()));
+
+    layerGroups.forEach((statesInLayer, layer) => {
+      const layerY = layer * LAYER_SPACING;
+      const layerWidth = statesInLayer.length * NODE_SPACING;
+      const startX = (CFSM_WIDTH - layerWidth) / 2 + NODE_SPACING / 2;
+
+      statesInLayer.forEach((state, i) => {
+        positions.set(state, {
+          x: startX + i * NODE_SPACING,
+          y: layerY
+        });
+      });
+    });
+
+    return positions;
   }
 
   function renderCFSMNetwork() {
@@ -95,6 +197,7 @@
 
     // Clear existing visualization
     d3.select(svgElement).selectAll('*').remove();
+    statePositions.clear();
 
     const svg = d3.select(svgElement);
     const width = containerElement.clientWidth;
@@ -107,25 +210,22 @@
 
     // Set up zoom behavior
     zoomBehavior = d3.zoom()
-      .scaleExtent([0.1, 4]) // Allow zoom from 10% to 400%
+      .scaleExtent([0.1, 4])
       .on('zoom', (event) => {
         currentTransform = event.transform;
         container.attr('transform', event.transform);
       });
 
     svg.call(zoomBehavior);
-
-    // Apply current transform (preserves zoom/pan between re-renders)
     container.attr('transform', currentTransform);
 
-    // Calculate layout - use fixed starting position for consistent sizing
-    // Don't cram CFSMs into viewport; use pan/zoom to navigate
     const startX = CFSM_MARGIN;
 
-    // Define arrowhead marker (once for all CFSMs)
-    svg
-      .append('defs')
-      .append('marker')
+    // Define markers
+    const defs = svg.append('defs');
+
+    // Standard arrowhead
+    defs.append('marker')
       .attr('id', 'arrowhead')
       .attr('markerWidth', 10)
       .attr('markerHeight', 10)
@@ -136,20 +236,48 @@
       .attr('points', '0 0, 10 3, 0 6')
       .attr('fill', '#666');
 
+    // Active transition arrowhead (green)
+    defs.append('marker')
+      .attr('id', 'arrowhead-active')
+      .attr('markerWidth', 10)
+      .attr('markerHeight', 10)
+      .attr('refX', 8)
+      .attr('refY', 3)
+      .attr('orient', 'auto')
+      .append('polygon')
+      .attr('points', '0 0, 10 3, 0 6')
+      .attr('fill', '#4EC9B0');
+
+    // Channel arrowhead (purple)
+    defs.append('marker')
+      .attr('id', 'arrowhead-channel')
+      .attr('markerWidth', 10)
+      .attr('markerHeight', 10)
+      .attr('refX', 8)
+      .attr('refY', 3)
+      .attr('orient', 'auto')
+      .append('polygon')
+      .attr('points', '0 0, 10 3, 0 6')
+      .attr('fill', '#C586C0');
+
     // Render each CFSM
     $projectionData.forEach((projection, index) => {
       const cfsmX = startX + index * (CFSM_WIDTH + CFSM_MARGIN);
       const cfsmY = 60;
 
-      renderCFSM(container, projection, cfsmX, cfsmY);
+      renderCFSM(container, projection, cfsmX, cfsmY, index);
     });
+
+    // Render message channels between CFSMs
+    renderChannels(container);
   }
 
   function renderCFSM(
     container: d3.Selection<SVGGElement, unknown, null, undefined>,
     projection: typeof $projectionData[0],
     x: number,
-    y: number
+    y: number,
+    cfsmIndex: number
   ) {
     const g = container.append('g').attr('transform', `translate(${x}, ${y})`);
 
@@ -174,39 +302,40 @@
       .attr('stroke-width', 2)
       .attr('rx', 4);
 
-    // Layout states vertically
-    const states = projection.states;
-    const stateY = new Map<string, number>();
-    const stateSpacing = states.length > 1 ? CFSM_HEIGHT / (states.length + 1) : CFSM_HEIGHT / 2;
+    // Compute hierarchical layout
+    const statePositions = computeHierarchicalLayout(projection);
 
-    states.forEach((state, i) => {
-      const yPos = (i + 1) * stateSpacing;
-      stateY.set(state, yPos);
+    // Store global positions for channel rendering
+    statePositions.forEach((pos, state) => {
+      statePositions.set(`${projection.role}:${state}`, {
+        x: x + pos.x,
+        y: y + pos.y,
+        role: projection.role
+      });
     });
 
     // Render transitions
     const transitionsGroup = g.append('g').attr('class', 'transitions');
 
     projection.transitions.forEach(t => {
-      const y1 = stateY.get(t.from) || 0;
-      const y2 = stateY.get(t.to) || 0;
-      const x1 = CFSM_WIDTH / 2;
-      const x2 = CFSM_WIDTH / 2;
+      const from = statePositions.get(t.from);
+      const to = statePositions.get(t.to);
+      if (!from || !to) return;
 
-      // Check if this transition is currently active
       const isActive = isTransitionActive(projection, t);
       const strokeColor = isActive ? '#4EC9B0' : '#666';
       const strokeWidth = isActive ? 2.5 : 1.5;
       const labelColor = isActive ? '#4EC9B0' : '#9CDCFE';
       const labelWeight = isActive ? 'bold' : 'normal';
+      const marker = isActive ? 'url(#arrowhead-active)' : 'url(#arrowhead)';
 
       if (t.from === t.to) {
         // Self-loop
         const loopRadius = 30;
-        const path = `M ${x1},${y1 - STATE_RADIUS}
-                      C ${x1 + loopRadius},${y1 - loopRadius}
-                        ${x1 + loopRadius},${y1 + loopRadius}
-                        ${x1},${y1 + STATE_RADIUS}`;
+        const path = `M ${from.x},${from.y - STATE_RADIUS}
+                      C ${from.x + loopRadius},${from.y - loopRadius}
+                        ${from.x + loopRadius},${from.y + loopRadius}
+                        ${from.x},${from.y + STATE_RADIUS}`;
 
         transitionsGroup
           .append('path')
@@ -214,48 +343,55 @@
           .attr('fill', 'none')
           .attr('stroke', strokeColor)
           .attr('stroke-width', strokeWidth)
-          .attr('marker-end', 'url(#arrowhead)');
+          .attr('marker-end', marker);
 
-        // Label for self-loop
         transitionsGroup
           .append('text')
-          .attr('x', x1 + loopRadius + 10)
-          .attr('y', y1)
+          .attr('x', from.x + loopRadius + 10)
+          .attr('y', from.y)
           .attr('font-size', 11)
           .attr('fill', labelColor)
           .attr('font-weight', labelWeight)
           .text(truncateLabel(t.label));
       } else {
         // Regular transition
-        const dy = y2 - y1;
-        const dx = x2 - x1;
+        const dy = to.y - from.y;
+        const dx = to.x - from.x;
         const angle = Math.atan2(dy, dx);
 
-        // Adjust start and end points to be on circle edge
-        const startX = x1 + STATE_RADIUS * Math.cos(angle);
-        const startY = y1 + STATE_RADIUS * Math.sin(angle);
-        const endX = x2 - STATE_RADIUS * Math.cos(angle);
-        const endY = y2 - STATE_RADIUS * Math.sin(angle);
+        const startX = from.x + STATE_RADIUS * Math.cos(angle);
+        const startY = from.y + STATE_RADIUS * Math.sin(angle);
+        const endX = to.x - STATE_RADIUS * Math.cos(angle);
+        const endY = to.y - STATE_RADIUS * Math.sin(angle);
 
-        // Draw line
+        // Use curved path for better layout
+        const midX = (startX + endX) / 2;
+        const midY = (startY + endY) / 2;
+
+        // Add curve offset for parallel edges
+        const curveOffset = 20;
+        const perpAngle = angle + Math.PI / 2;
+        const ctrlX = midX + curveOffset * Math.cos(perpAngle);
+        const ctrlY = midY + curveOffset * Math.sin(perpAngle);
+
+        const path = `M ${startX},${startY} Q ${ctrlX},${ctrlY} ${endX},${endY}`;
+
         transitionsGroup
-          .append('line')
-          .attr('x1', startX)
-          .attr('y1', startY)
-          .attr('x2', endX)
-          .attr('y2', endY)
+          .append('path')
+          .attr('d', path)
+          .attr('fill', 'none')
           .attr('stroke', strokeColor)
           .attr('stroke-width', strokeWidth)
-          .attr('marker-end', 'url(#arrowhead)');
+          .attr('marker-end', marker);
 
-        // Label
         transitionsGroup
           .append('text')
-          .attr('x', (startX + endX) / 2 + 10)
-          .attr('y', (startY + endY) / 2)
+          .attr('x', ctrlX)
+          .attr('y', ctrlY)
           .attr('font-size', 11)
           .attr('fill', labelColor)
           .attr('font-weight', labelWeight)
+          .attr('text-anchor', 'middle')
           .text(truncateLabel(t.label));
       }
     });
@@ -263,26 +399,34 @@
     // Render states on top
     const statesGroup = g.append('g').attr('class', 'states');
 
-    states.forEach((state, i) => {
-      const yPos = stateY.get(state) || 0;
-      const xPos = CFSM_WIDTH / 2;
-      const isInitial = i === 0;
-      const isFinal = i === states.length - 1;
-      const isVisited = isStateVisited(state);
-      const isCurrent = isStateCurrent(projection, state);
+    projection.states.forEach((state, i) => {
+      const pos = statePositions.get(state);
+      if (!pos) return;
 
-      // Determine state styling
+      const isInitial = i === 0;
+      const isFinal = i === projection.states.length - 1;
+      const isVisited = isStateVisited(state);
+      const isAtState = isStateAtCurrent(state);
+      const isSource = isStateSource(projection, state);
+      const isTarget = isStateTarget(projection, state);
+
+      // Determine state styling based on separate concerns
       let fillColor = '#2d2d2d';
       let strokeColor = '#666';
       let strokeWidth = 2;
 
-      if (isCurrent) {
-        // Current state: pulsing green
+      if (isAtState) {
+        // Currently AT this state (idle here)
         fillColor = '#2d5f2d';
+        strokeColor = '#90ee90';
+        strokeWidth = 3;
+      } else if (isSource || isTarget) {
+        // Executing FROM or TO this state
+        fillColor = '#2d5f5f';
         strokeColor = '#4EC9B0';
         strokeWidth = 3;
       } else if (isVisited) {
-        // Visited state: darker with green tint
+        // Visited but not current
         fillColor = '#2d4d3d';
         strokeColor = '#4EC9B0';
         strokeWidth = 2;
@@ -297,15 +441,15 @@
       // State circle
       const circle = statesGroup
         .append('circle')
-        .attr('cx', xPos)
-        .attr('cy', yPos)
+        .attr('cx', pos.x)
+        .attr('cy', pos.y)
         .attr('r', STATE_RADIUS)
         .attr('fill', fillColor)
         .attr('stroke', strokeColor)
         .attr('stroke-width', strokeWidth);
 
-      // Add pulsing animation for current state
-      if (isCurrent) {
+      // Pulse animation for active state
+      if (isAtState || isSource || isTarget) {
         circle
           .append('animate')
           .attr('attributeName', 'stroke-width')
@@ -317,14 +461,141 @@
       // State label
       statesGroup
         .append('text')
-        .attr('x', xPos)
-        .attr('y', yPos + 5)
+        .attr('x', pos.x)
+        .attr('y', pos.y + 5)
         .attr('text-anchor', 'middle')
         .attr('font-size', 12)
-        .attr('fill', isCurrent ? '#4EC9B0' : '#fff')
-        .attr('font-weight', isCurrent ? 'bold' : 'normal')
+        .attr('fill', (isAtState || isSource || isTarget) ? '#4EC9B0' : '#fff')
+        .attr('font-weight', (isAtState || isSource || isTarget) ? 'bold' : 'normal')
         .text(state);
     });
+  }
+
+  /**
+   * Render message channels between CFSMs
+   */
+  function renderChannels(container: d3.Selection<SVGGElement, unknown, null, undefined>) {
+    if (!$currentCFG) return;
+
+    const currentMsg = getCurrentMessage();
+    if (!currentMsg) return;
+
+    // Find matching send/recv state positions
+    $projectionData.forEach(projection => {
+      projection.transitions.forEach(transition => {
+        const label = transition.label;
+
+        // Check if this is a send transition that matches current message
+        if (label.includes('send ') && projection.role === currentMsg.from) {
+          const msgName = label.replace('send ', '');
+          if (msgName === currentMsg.label) {
+            // Find receive side
+            const receivers = Array.isArray(currentMsg.to) ? currentMsg.to : [currentMsg.to];
+
+            receivers.forEach(receiver => {
+              const sendFrom = statePositions.get(`${projection.role}:${transition.from}`);
+              const recvProj = $projectionData.find(p => p.role === receiver);
+
+              if (!recvProj || !sendFrom) return;
+
+              // Find matching receive transition
+              const recvTransition = recvProj.transitions.find(t =>
+                t.label === `recv ${msgName}`
+              );
+
+              if (!recvTransition) return;
+
+              const recvTo = statePositions.get(`${receiver}:${recvTransition.to}`);
+              if (!recvTo) return;
+
+              // Draw channel
+              drawMessageChannel(container, sendFrom, recvTo, msgName, true);
+            });
+          }
+        }
+      });
+    });
+  }
+
+  /**
+   * Draw a message channel between two states (different CFSMs)
+   */
+  function drawMessageChannel(
+    container: d3.Selection<SVGGElement, unknown, null, undefined>,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    label: string,
+    isActive: boolean
+  ) {
+    const channelGroup = container.append('g').attr('class', 'channel');
+
+    const strokeColor = isActive ? '#C586C0' : '#666';
+    const strokeWidth = isActive ? 2.5 : 1.5;
+    const dashArray = '5,5';
+
+    // Draw dashed line representing the channel
+    const path = channelGroup
+      .append('line')
+      .attr('x1', from.x)
+      .attr('y1', from.y)
+      .attr('x2', to.x)
+      .attr('y2', to.y)
+      .attr('stroke', strokeColor)
+      .attr('stroke-width', strokeWidth)
+      .attr('stroke-dasharray', dashArray)
+      .attr('marker-end', 'url(#arrowhead-channel)')
+      .attr('opacity', 0.6);
+
+    // Add label
+    const midX = (from.x + to.x) / 2;
+    const midY = (from.y + to.y) / 2;
+
+    channelGroup
+      .append('text')
+      .attr('x', midX)
+      .attr('y', midY - 10)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 11)
+      .attr('fill', strokeColor)
+      .attr('font-weight', 'bold')
+      .text(label);
+
+    // Animate message in channel
+    if (isActive) {
+      const messageCircle = channelGroup
+        .append('circle')
+        .attr('r', 5)
+        .attr('fill', '#C586C0');
+
+      // Animate along the path
+      messageCircle
+        .append('animateMotion')
+        .attr('dur', '2s')
+        .attr('repeatCount', 'indefinite')
+        .append('mpath')
+        .attr('href', `#channel-path-${Math.random()}`);
+
+      // Since we can't easily animate along a line, use simple translation
+      messageCircle
+        .attr('cx', from.x)
+        .attr('cy', from.y)
+        .transition()
+        .duration(2000)
+        .ease(d3.easeLinear)
+        .attr('cx', to.x)
+        .attr('cy', to.y)
+        .on('end', function repeat() {
+          d3.select(this)
+            .attr('cx', from.x)
+            .attr('cy', from.y)
+            .transition()
+            .duration(2000)
+            .ease(d3.easeLinear)
+            .attr('cx', to.x)
+            .attr('cy', to.y)
+            .on('end', repeat);
+        });
+    }
   }
 
   function truncateLabel(label: string, maxLength = 15): string {
@@ -332,7 +603,6 @@
     return label.substring(0, maxLength - 3) + '...';
   }
 
-  // Reset zoom to identity
   function resetZoom() {
     if (svgElement && zoomBehavior) {
       d3.select(svgElement)
