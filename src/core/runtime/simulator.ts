@@ -158,7 +158,17 @@ export class Simulator {
   async run(): Promise<SimulationStepResult> {
     const maxSteps = this.options.maxSteps || 1000;
 
+    // Only unpause if resuming (stepCount > 0 means we've made progress before)
+    // This allows pause() to work during first run()
+    const state = this.getState();
+    if (this.stepCount > 0 && !state.completed) {
+      this.paused = false;
+    }
+
     while (this.stepCount < maxSteps && !this.paused) {
+      // Yield to event loop at start of each iteration to allow pause() to execute
+      await new Promise(resolve => setImmediate(resolve));
+
       const state = this.getState();
 
       // Check if completed
@@ -186,6 +196,20 @@ export class Simulator {
 
       // Execute one step for all roles
       const result = await this.step();
+
+      // Check for protocol violations (strictMode errors)
+      const protocolViolation = Array.from(result.updates.values()).find(
+        r => r.error?.type === 'protocol-violation'
+      );
+      if (protocolViolation) {
+        return {
+          success: false,
+          updates: result.updates,
+          state: this.getState(),
+          error: protocolViolation.error,
+          completed: false,
+        };
+      }
 
       // Check if any role made progress
       const anySuccess = Array.from(result.updates.values()).some(r => r.success);
