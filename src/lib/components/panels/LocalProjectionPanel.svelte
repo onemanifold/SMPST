@@ -8,67 +8,9 @@
     selectedRole = $projectionData[0].role;
   }
 
-  // Format local Scribble from CFSM transitions
-  function formatLocalScribble(projection: typeof $projectionData[0]): string {
-    if (!projection || projection.transitions.length === 0) {
-      return `// No transitions for role ${projection.role}\n// This role may not participate in the protocol`;
-    }
-
-    const lines: string[] = [];
-    lines.push(`// Local protocol for role: ${projection.role}`);
-    lines.push('');
-
-    // Group transitions by source state
-    const stateTransitions = new Map<string, typeof projection.transitions>();
-    for (const t of projection.transitions) {
-      if (!stateTransitions.has(t.from)) {
-        stateTransitions.set(t.from, []);
-      }
-      stateTransitions.get(t.from)!.push(t);
-    }
-
-    // Format as local Scribble notation
-    let currentState = projection.states[0];
-    const visited = new Set<string>();
-
-    function formatState(state: string, indent = 0) {
-      if (visited.has(state)) return;
-      visited.add(state);
-
-      const transitions = stateTransitions.get(state) || [];
-      const indentStr = '  '.repeat(indent);
-
-      for (const t of transitions) {
-        const label = t.label;
-
-        // Parse label to determine send/receive
-        if (label.includes('send ')) {
-          const msg = label.replace('send ', '');
-          lines.push(`${indentStr}// Send ${msg}`);
-          lines.push(`${indentStr}!${msg};`);
-        } else if (label.includes('recv ')) {
-          const msg = label.replace('recv ', '');
-          lines.push(`${indentStr}// Receive ${msg}`);
-          lines.push(`${indentStr}?${msg};`);
-        } else if (label === 'τ' || label === 'tau') {
-          lines.push(`${indentStr}// Internal action`);
-        } else {
-          lines.push(`${indentStr}// ${label}`);
-        }
-
-        if (t.to !== state && !visited.has(t.to)) {
-          formatState(t.to, indent);
-        }
-      }
-    }
-
-    formatState(currentState);
-
-    return lines.join('\n');
-  }
-
+  // Get serialized local protocol from projection data
   $: currentProjection = $projectionData.find(p => p.role === selectedRole);
-  $: localScribble = currentProjection ? formatLocalScribble(currentProjection) : '';
+  $: localScribble = currentProjection?.localProtocol || '';
 </script>
 
 <div class="local-projection-panel">
