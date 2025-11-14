@@ -357,9 +357,5 @@ export {
   type ChannelConflict,
   type ChannelDisjointnessResult,
   type CombineResult,
-  extractChannels,
-  checkChannelDisjointness,
-  combineProtocols,
   sequentialCompose,
-  interleavingCompose,
 };
