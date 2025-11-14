@@ -2,6 +2,35 @@
 
 The SMPST IDE provides powerful command-line tools for working with Scribble protocols.
 
+## Quick Start
+
+**Unified CLI Entry Point:**
+```bash
+npm run smpst <command> [args...]
+```
+
+**Available Commands:**
+- `parse` - Parse Scribble protocols to AST
+- `build-cfg` - Build Control Flow Graph from protocol
+- `verify` - Verify protocol safety properties
+- `project` - Project global protocol to local protocols
+- `simulate` - Simulate protocol execution
+
+**Complete Workflow Example:**
+```bash
+# 1. Parse and validate syntax
+npm run smpst parse examples/two-phase.scr
+
+# 2. Verify safety properties
+npm run smpst verify examples/two-phase.scr
+
+# 3. Project to local protocols
+npm run smpst project examples/two-phase.scr --output-dir ./local
+
+# 4. Simulate execution
+npm run smpst simulate examples/two-phase.scr
+```
+
 ## Available Commands
 
 ### 1. `npm run parse` - Parse Scribble Protocols
@@ -99,6 +128,198 @@ npm run project:help
    ```
 
 3. **Both** - Generates both text and JSON files
+
+---
+
+### 3. `npm run build-cfg` - Build Control Flow Graph
+
+Build a Control Flow Graph (CFG) from a Scribble protocol for analysis and visualization.
+
+**Usage:**
+```bash
+npm run build-cfg <file.scr> [options]
+npm run build-cfg -- --stdin [options]
+```
+
+**Options:**
+- `--format <fmt>` - Output format: `json` (default), `dot`, `text`
+- `--output <file>` - Save output to file
+- `--stdin` - Read from standard input
+- `--help`, `-h` - Show help message
+
+**Examples:**
+```bash
+# Build CFG as JSON
+npm run build-cfg examples/two-phase.scr
+
+# Output in DOT format for GraphViz visualization
+npm run build-cfg examples/two-phase.scr --format dot
+
+# Generate and visualize
+npm run build-cfg examples/two-phase.scr --format dot | dot -Tpng > cfg.png
+
+# Save to file
+npm run build-cfg examples/two-phase.scr --output cfg.json
+
+# Text format for inspection
+npm run build-cfg examples/two-phase.scr --format text
+```
+
+**Output Formats:**
+1. **JSON** - Complete CFG structure (nodes, edges, roles)
+2. **DOT** - GraphViz format for visualization
+3. **TEXT** - Human-readable summary
+
+---
+
+### 4. `npm run verify` - Verify Protocol Safety
+
+Run comprehensive verification checks on protocol safety properties.
+
+**Usage:**
+```bash
+npm run verify <file.scr> [options]
+npm run verify -- --stdin [options]
+```
+
+**Options:**
+- `--checks <list>` - Comma-separated checks to run (default: all)
+- `--format <fmt>` - Output format: `text` (default), `json`
+- `--output <file>` - Save output to file
+- `--strict` - Treat warnings as errors
+- `--stdin` - Read from standard input
+- `--help`, `-h` - Show help message
+
+**Available Checks:**
+- `deadlock` - Deadlock detection (P0 - Critical)
+- `liveness` - Liveness checking (P0 - Critical)
+- `parallel` - Parallel deadlock detection (P0)
+- `race` - Race condition detection (P0)
+- `progress` - Progress checking (P0)
+- `determinism` - Choice determinism (P0 - Projection critical)
+- `mergeability` - Choice mergeability (P0 - Projection critical)
+- `connectedness` - Role connectedness (P0 - Projection critical)
+- `recursion` - Nested recursion validation (P1)
+- `recursion-parallel` - Recursion in parallel (P1)
+- `fork-join` - Fork-join structure (P1)
+- `multicast` - Multicast detection (P2 - warnings)
+- `self-comm` - Self-communication detection (P2)
+- `empty-branch` - Empty choice branch detection (P2)
+- `merge-reach` - Merge reachability (P3)
+
+**Examples:**
+```bash
+# Run all verification checks
+npm run verify examples/two-phase.scr
+
+# Run specific checks only
+npm run verify examples/two-phase.scr --checks deadlock,liveness
+
+# JSON output for programmatic use
+npm run verify examples/two-phase.scr --format json
+
+# Strict mode (warnings become errors)
+npm run verify examples/two-phase.scr --strict
+
+# Save report to file
+npm run verify examples/two-phase.scr --output report.txt
+```
+
+**Output:**
+- Comprehensive verification report
+- Pass/Fail status for each check
+- Detailed error descriptions
+- Summary statistics
+- Exit code 0 (pass) or 1 (fail)
+
+---
+
+### 5. `npm run simulate` - Simulate Protocol Execution
+
+Execute protocols and generate execution traces.
+
+**Usage:**
+```bash
+npm run simulate <file.scr> [options]
+npm run simulate -- --stdin [options]
+```
+
+**Options:**
+- `--mode <mode>` - Simulation mode: `cfg` (default), `cfsm`, `distributed`
+- `--max-steps <n>` - Maximum execution steps (default: 1000)
+- `--choice <strategy>` - Choice strategy: `manual`, `random`, `first` (default)
+- `--format <fmt>` - Output format: `text` (default), `json`
+- `--output <file>` - Save output to file
+- `--stdin` - Read from standard input
+- `--help`, `-h` - Show help message
+
+**Simulation Modes:**
+1. **CFG** - Global choreography view (centralized orchestration)
+2. **CFSM** - Single-role local view (requires `--role` option) [Coming Soon]
+3. **Distributed** - Multi-role distributed execution [Coming Soon]
+
+**Choice Strategies:**
+- `first` - Always select first branch (deterministic)
+- `random` - Random branch selection
+- `manual` - Prompt user for choice (interactive) [Coming Soon]
+
+**Examples:**
+```bash
+# Simple CFG simulation
+npm run simulate examples/two-phase.scr
+
+# Limit execution steps (useful for recursive protocols)
+npm run simulate examples/stream-data.scr --max-steps 10
+
+# Random choice selection
+npm run simulate examples/login-or-register.scr --choice random
+
+# JSON output for programmatic use
+npm run simulate examples/two-phase.scr --format json
+
+# Save trace to file
+npm run simulate examples/two-phase.scr --output trace.json --format json
+```
+
+**Output:**
+- Execution trace with all protocol actions
+- Step-by-step message sequences
+- Choice selections
+- Recursion iterations
+- Completion status
+- Performance statistics
+
+---
+
+### 6. `npm run smpst` - Unified CLI Entry Point
+
+Single entry point for all CLI commands.
+
+**Usage:**
+```bash
+npm run smpst <command> [args...]
+```
+
+**Examples:**
+```bash
+# Parse
+npm run smpst parse examples/two-phase.scr
+
+# Build CFG
+npm run smpst build-cfg examples/two-phase.scr --format dot
+
+# Verify
+npm run smpst verify examples/two-phase.scr
+
+# Project
+npm run smpst project examples/two-phase.scr --output-dir ./local
+
+# Simulate
+npm run smpst simulate examples/two-phase.scr
+
+# Get help
+npm run smpst help
+```
 
 ---
 
