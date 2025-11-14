@@ -25,10 +25,10 @@
     }
   }
 
-  function handleLoadExample(exampleId: string) {
+  async function handleLoadExample(exampleId: string) {
     const example = protocolExamples.find(ex => ex.id === exampleId);
     if (example) {
-      loadExample(example);
+      await loadExample(example);
     }
   }
 
@@ -68,11 +68,14 @@
     }
   }
 
-  function handleLoadSaved(id: number | undefined) {
+  async function handleLoadSaved(id: number | undefined) {
     if (!id) return;
     const protocol = savedProtocols.find(p => p.id === id);
     if (protocol) {
       editorContent.set(protocol.code);
+      // Trigger parsing for saved protocols too
+      const { parseProtocol } = await import('$lib/stores/editor');
+      await parseProtocol(protocol.code);
     }
   }
 

@@ -5,8 +5,8 @@
   import { onMount } from 'svelte';
 
   // Load example on mount
-  onMount(() => {
-    loadExample(protocolExamples[0]); // Load Request-Response example
+  onMount(async () => {
+    await loadExample(protocolExamples[0]); // Load Request-Response example
   });
 </script>
 
