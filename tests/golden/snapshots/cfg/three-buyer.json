@@ -1,0 +1,12 @@
+{
+  "nodeCount": 11,
+  "edgeCount": 11,
+  "roles": [
+    "B1",
+    "B2",
+    "B3",
+    "Seller"
+  ],
+  "protocolName": "ThreeBuyer",
+  "structureHash": "90a389e0b1505d9560f5ab120e2fd32d18ae02c70a8e5a278ef539f952f93dbb"
+}

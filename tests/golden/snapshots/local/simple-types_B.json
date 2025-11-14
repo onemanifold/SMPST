@@ -1,0 +1,1 @@
+"local protocol SimpleTypes_B at B() {\n  IntMsg(Int) from A;\n  StringMsg(String) from A;\n  BoolMsg(Bool) from A;\n}"

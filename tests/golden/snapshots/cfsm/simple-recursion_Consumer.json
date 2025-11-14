@@ -1,0 +1,114 @@
+{
+  "role": "Consumer",
+  "protocolName": "SimpleRecursion",
+  "stateCount": 5,
+  "transitionCount": 6,
+  "protocolActionCount": 3,
+  "cfsm": {
+    "role": "Consumer",
+    "protocolName": "SimpleRecursion",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n58"
+      },
+      {
+        "id": "s2",
+        "label": "terminal"
+      },
+      {
+        "id": "s3",
+        "label": "n56"
+      },
+      {
+        "id": "s4",
+        "label": "n57"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "Producer",
+          "message": {
+            "type": "Message",
+            "label": "Data",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "Data",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s0",
+        "to": "s2",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "send",
+          "to": "Producer",
+          "message": {
+            "type": "Message",
+            "label": "Continue"
+          },
+          "label": "Continue"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s1",
+        "to": "s4",
+        "action": {
+          "type": "send",
+          "to": "Producer",
+          "message": {
+            "type": "Message",
+            "label": "Stop"
+          },
+          "label": "Stop"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s4",
+        "to": "s2",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t5",
+        "from": "s3",
+        "to": "s0",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s2"
+    ]
+  }
+}

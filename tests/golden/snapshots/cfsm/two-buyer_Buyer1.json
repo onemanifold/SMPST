@@ -1,0 +1,122 @@
+{
+  "role": "Buyer1",
+  "protocolName": "TwoBuyer",
+  "stateCount": 5,
+  "transitionCount": 5,
+  "protocolActionCount": 3,
+  "cfsm": {
+    "role": "Buyer1",
+    "protocolName": "TwoBuyer",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n99"
+      },
+      {
+        "id": "s2",
+        "label": "n98"
+      },
+      {
+        "id": "s3",
+        "label": "n95"
+      },
+      {
+        "id": "s4",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "Seller",
+          "message": {
+            "type": "Message",
+            "label": "Quote",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Quote",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "Buyer2",
+          "message": {
+            "type": "Message",
+            "label": "Share",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Share",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "receive",
+          "from": "Seller",
+          "message": {
+            "type": "Message",
+            "label": "Confirm",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Bool"
+              }
+            }
+          },
+          "label": "Confirm",
+          "payloadType": "Bool"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s2",
+        "to": "s4",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s3",
+        "to": "s4",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s4"
+    ]
+  }
+}

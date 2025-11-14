@@ -1,0 +1,11 @@
+{
+  "nodeCount": 9,
+  "edgeCount": 9,
+  "roles": [
+    "Buyer1",
+    "Buyer2",
+    "Seller"
+  ],
+  "protocolName": "TwoBuyer",
+  "structureHash": "9f085fafa0496b992e2936388726389d71cfc91ae79712683ab65d81b5351fef"
+}

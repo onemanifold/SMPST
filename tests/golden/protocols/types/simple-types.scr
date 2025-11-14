@@ -1,0 +1,5 @@
+protocol SimpleTypes(role A, role B) {
+  A -> B: IntMsg(Int);
+  A -> B: StringMsg(String);
+  A -> B: BoolMsg(Bool);
+}

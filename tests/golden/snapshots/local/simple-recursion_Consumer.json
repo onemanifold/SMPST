@@ -1,0 +1,1 @@
+"local protocol SimpleRecursion_Consumer at Consumer() {\n  choice {\n    Data(String) from Producer;\n    choice {\n      Continue() to Producer;\n    } or {\n      Stop() to Producer;\n    }\n  } or {\n  }\n}"

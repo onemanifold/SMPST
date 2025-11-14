@@ -1,0 +1,7 @@
+protocol MulticastChoice(role Leader, role F1, role F2) {
+  choice at Leader {
+    Leader -> F1, F2: Commit();
+  } or {
+    Leader -> F1, F2: Abort();
+  }
+}

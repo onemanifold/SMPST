@@ -1,0 +1,1 @@
+"local protocol ManyRoles_R1 at R1() {\n  M1() to R2;\n  M5() from R5;\n}"

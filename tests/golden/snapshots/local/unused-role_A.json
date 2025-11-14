@@ -1,0 +1,1 @@
+"local protocol UnusedRole_A at A() {\n  Message(String) to B;\n}"

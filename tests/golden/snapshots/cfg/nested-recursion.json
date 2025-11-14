@@ -1,0 +1,10 @@
+{
+  "nodeCount": 14,
+  "edgeCount": 17,
+  "roles": [
+    "A",
+    "B"
+  ],
+  "protocolName": "NestedRecursion",
+  "structureHash": "dc330598cfee47b619063f9fc52dfb3fb44de6c72636b68f5565378ed707e222"
+}

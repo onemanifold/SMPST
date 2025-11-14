@@ -1,0 +1,1 @@
+"local protocol PingPong_A at A() {\n  Ping() to B;\n  Pong() from B;\n}"

@@ -1,0 +1,104 @@
+{
+  "role": "Server",
+  "protocolName": "ParametricTypes",
+  "stateCount": 4,
+  "transitionCount": 3,
+  "protocolActionCount": 2,
+  "cfsm": {
+    "role": "Server",
+    "protocolName": "ParametricTypes",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n139"
+      },
+      {
+        "id": "s2",
+        "label": "n138"
+      },
+      {
+        "id": "s3",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "Client",
+          "message": {
+            "type": "Message",
+            "label": "ListRequest",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "ParametricType",
+                "name": "List",
+                "arguments": [
+                  {
+                    "type": "SimpleType",
+                    "name": "String"
+                  }
+                ]
+              }
+            }
+          },
+          "label": "ListRequest",
+          "payloadType": "List"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "Client",
+          "message": {
+            "type": "Message",
+            "label": "MapResponse",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "ParametricType",
+                "name": "Map",
+                "arguments": [
+                  {
+                    "type": "SimpleType",
+                    "name": "String"
+                  },
+                  {
+                    "type": "SimpleType",
+                    "name": "Int"
+                  }
+                ]
+              }
+            }
+          },
+          "label": "MapResponse",
+          "payloadType": "Map"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s3"
+    ]
+  }
+}

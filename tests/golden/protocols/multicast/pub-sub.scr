@@ -1,0 +1,6 @@
+protocol PubSub(role Publisher, role Sub1, role Sub2, role Sub3) {
+  Publisher -> Sub1, Sub2, Sub3: Publish(Int);
+  Sub1 -> Publisher: Ack1();
+  Sub2 -> Publisher: Ack2();
+  Sub3 -> Publisher: Ack3();
+}

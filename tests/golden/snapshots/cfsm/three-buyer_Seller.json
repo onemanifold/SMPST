@@ -1,0 +1,148 @@
+{
+  "role": "Seller",
+  "protocolName": "ThreeBuyer",
+  "stateCount": 6,
+  "transitionCount": 6,
+  "protocolActionCount": 4,
+  "cfsm": {
+    "role": "Seller",
+    "protocolName": "ThreeBuyer",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n110"
+      },
+      {
+        "id": "s2",
+        "label": "n105"
+      },
+      {
+        "id": "s3",
+        "label": "n106"
+      },
+      {
+        "id": "s4",
+        "label": "n104"
+      },
+      {
+        "id": "s5",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": [
+            "B1",
+            "B2",
+            "B3"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Quote",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Quote",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "B3",
+          "message": {
+            "type": "Message",
+            "label": "Buy",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "Buy",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "receive",
+          "from": "B3",
+          "message": {
+            "type": "Message",
+            "label": "Quit"
+          },
+          "label": "Quit"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s2",
+        "to": "s4",
+        "action": {
+          "type": "send",
+          "to": [
+            "B1",
+            "B2",
+            "B3"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Confirm",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Bool"
+              }
+            }
+          },
+          "label": "Confirm",
+          "payloadType": "Bool"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s3",
+        "to": "s5",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t5",
+        "from": "s4",
+        "to": "s5",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s5"
+    ]
+  }
+}

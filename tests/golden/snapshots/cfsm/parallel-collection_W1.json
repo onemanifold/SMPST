@@ -1,0 +1,88 @@
+{
+  "role": "W1",
+  "protocolName": "ParallelCollection",
+  "stateCount": 4,
+  "transitionCount": 3,
+  "protocolActionCount": 2,
+  "cfsm": {
+    "role": "W1",
+    "protocolName": "ParallelCollection",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n90"
+      },
+      {
+        "id": "s2",
+        "label": "n88"
+      },
+      {
+        "id": "s3",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "Coordinator",
+          "message": {
+            "type": "Message",
+            "label": "Task",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "Task",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "Coordinator",
+          "message": {
+            "type": "Message",
+            "label": "Result1",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Result1",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s3"
+    ]
+  }
+}

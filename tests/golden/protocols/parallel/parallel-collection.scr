@@ -1,0 +1,8 @@
+protocol ParallelCollection(role Coordinator, role W1, role W2) {
+  Coordinator -> W1, W2: Task(String);
+  par {
+    W1 -> Coordinator: Result1(Int);
+  } and {
+    W2 -> Coordinator: Result2(Int);
+  }
+}

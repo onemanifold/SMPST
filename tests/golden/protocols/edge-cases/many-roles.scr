@@ -1,0 +1,7 @@
+protocol ManyRoles(role R1, role R2, role R3, role R4, role R5) {
+  R1 -> R2: M1();
+  R2 -> R3: M2();
+  R3 -> R4: M3();
+  R4 -> R5: M4();
+  R5 -> R1: M5();
+}

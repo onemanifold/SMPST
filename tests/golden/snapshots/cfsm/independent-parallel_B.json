@@ -1,0 +1,62 @@
+{
+  "role": "B",
+  "protocolName": "IndependentParallel",
+  "stateCount": 3,
+  "transitionCount": 2,
+  "protocolActionCount": 1,
+  "cfsm": {
+    "role": "B",
+    "protocolName": "IndependentParallel",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n82"
+      },
+      {
+        "id": "s2",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "M1",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "M1",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s2"
+    ]
+  }
+}

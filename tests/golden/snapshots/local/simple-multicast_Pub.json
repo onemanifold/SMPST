@@ -1,0 +1,1 @@
+"local protocol SimpleMulticast_Pub at Pub() {\n  Event(String) to Sub1, Sub2;\n}"

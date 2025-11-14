@@ -1,0 +1,1 @@
+"local protocol OAuth_ResourceServer at ResourceServer() {\n  choice {\n    ResourceRequest(String) from Client;\n    Resource(String) to Client;\n  } or {\n  }\n}"

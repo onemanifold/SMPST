@@ -1,0 +1,1 @@
+"local protocol NestedParametric_A at A() {\n  Data(Map<String, List<Int>>) to B;\n  Response(List<Map<String, Bool>>) from B;\n}"

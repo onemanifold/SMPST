@@ -1,0 +1,11 @@
+{
+  "nodeCount": 6,
+  "edgeCount": 6,
+  "roles": [
+    "F1",
+    "F2",
+    "Leader"
+  ],
+  "protocolName": "MulticastChoice",
+  "structureHash": "e4d7828cea6c3b33012fb51f8db899d37f7cd0bf42e26e944ec50533a829ea6b"
+}

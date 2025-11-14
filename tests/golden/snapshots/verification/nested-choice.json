@@ -1,0 +1,76 @@
+{
+  "structural": {
+    "valid": true,
+    "errors": [],
+    "warnings": []
+  },
+  "deadlock": {
+    "hasDeadlock": false,
+    "cycles": []
+  },
+  "liveness": {
+    "isLive": true,
+    "violations": []
+  },
+  "parallelDeadlock": {
+    "hasDeadlock": false,
+    "conflicts": []
+  },
+  "raceConditions": {
+    "hasRaces": false,
+    "races": []
+  },
+  "progress": {
+    "canProgress": true,
+    "blockedNodes": []
+  },
+  "choiceDeterminism": {
+    "isDeterministic": true,
+    "violations": []
+  },
+  "choiceMergeability": {
+    "isMergeable": true,
+    "violations": []
+  },
+  "connectedness": {
+    "isConnected": true,
+    "orphanedRoles": []
+  },
+  "nestedRecursion": {
+    "isValid": true,
+    "violations": []
+  },
+  "recursionInParallel": {
+    "isValid": true,
+    "violations": []
+  },
+  "forkJoinStructure": {
+    "isValid": true,
+    "violations": []
+  },
+  "multicast": {
+    "isValid": true,
+    "warnings": []
+  },
+  "selfCommunication": {
+    "isValid": true,
+    "violations": []
+  },
+  "emptyChoiceBranch": {
+    "isValid": true,
+    "violations": []
+  },
+  "mergeReachability": {
+    "isValid": false,
+    "violations": [
+      {
+        "branchNodeId": "n29",
+        "description": "Choice branches do not converge at same merge node",
+        "branches": {
+          "branch1": "n30",
+          "branch2": "n28"
+        }
+      }
+    ]
+  }
+}

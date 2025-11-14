@@ -1,0 +1,12 @@
+protocol ThreeBuyer(role Seller, role B1, role B2, role B3) {
+  Seller -> B1, B2, B3: Quote(Int);
+  B1 -> B2: Share1(Int);
+  B2 -> B3: Share2(Int);
+  B3 -> B1: Share3(Int);
+  choice at B3 {
+    B3 -> Seller: Buy(String);
+    Seller -> B1, B2, B3: Confirm(Bool);
+  } or {
+    B3 -> Seller: Quit();
+  }
+}

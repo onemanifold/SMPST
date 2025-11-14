@@ -1,0 +1,10 @@
+{
+  "nodeCount": 4,
+  "edgeCount": 3,
+  "roles": [
+    "A",
+    "B"
+  ],
+  "protocolName": "NestedParametric",
+  "structureHash": "9746b7c4ad8d09d2072f689c0c8e24710a6e77575de580de1f8967280b9ff248"
+}

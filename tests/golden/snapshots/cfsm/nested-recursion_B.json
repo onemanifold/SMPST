@@ -1,0 +1,220 @@
+{
+  "role": "B",
+  "protocolName": "NestedRecursion",
+  "stateCount": 10,
+  "transitionCount": 13,
+  "protocolActionCount": 8,
+  "cfsm": {
+    "role": "B",
+    "protocolName": "NestedRecursion",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n77"
+      },
+      {
+        "id": "s2",
+        "label": "terminal"
+      },
+      {
+        "id": "s3",
+        "label": "n76"
+      },
+      {
+        "id": "s4",
+        "label": "n69"
+      },
+      {
+        "id": "s5",
+        "label": "n70"
+      },
+      {
+        "id": "s6",
+        "label": "n74"
+      },
+      {
+        "id": "s7",
+        "label": "n75"
+      },
+      {
+        "id": "s8",
+        "label": "n69"
+      },
+      {
+        "id": "s9",
+        "label": "n70"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "Start"
+          },
+          "label": "Start"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s0",
+        "to": "s2",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "send",
+          "to": "A",
+          "message": {
+            "type": "Message",
+            "label": "Data",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Data",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s1",
+        "to": "s4",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "MoreOuter"
+          },
+          "label": "MoreOuter"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s1",
+        "to": "s5",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "DoneOuter"
+          },
+          "label": "DoneOuter"
+        }
+      },
+      {
+        "id": "t5",
+        "from": "s3",
+        "to": "s6",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "MoreInner"
+          },
+          "label": "MoreInner"
+        }
+      },
+      {
+        "id": "t6",
+        "from": "s3",
+        "to": "s7",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "DoneInner"
+          },
+          "label": "DoneInner"
+        }
+      },
+      {
+        "id": "t7",
+        "from": "s5",
+        "to": "s2",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t8",
+        "from": "s7",
+        "to": "s8",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "MoreOuter"
+          },
+          "label": "MoreOuter"
+        }
+      },
+      {
+        "id": "t9",
+        "from": "s7",
+        "to": "s9",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "DoneOuter"
+          },
+          "label": "DoneOuter"
+        }
+      },
+      {
+        "id": "t10",
+        "from": "s9",
+        "to": "s2",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t11",
+        "from": "s8",
+        "to": "s0",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t12",
+        "from": "s6",
+        "to": "s1",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s2"
+    ]
+  }
+}

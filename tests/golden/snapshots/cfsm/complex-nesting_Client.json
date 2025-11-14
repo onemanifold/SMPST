@@ -1,0 +1,136 @@
+{
+  "role": "Client",
+  "protocolName": "ComplexNesting",
+  "stateCount": 4,
+  "transitionCount": 3,
+  "protocolActionCount": 2,
+  "cfsm": {
+    "role": "Client",
+    "protocolName": "ComplexNesting",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n147"
+      },
+      {
+        "id": "s2",
+        "label": "n146"
+      },
+      {
+        "id": "s3",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": "Server",
+          "message": {
+            "type": "Message",
+            "label": "Request",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "ParametricType",
+                "name": "Map",
+                "arguments": [
+                  {
+                    "type": "SimpleType",
+                    "name": "String"
+                  },
+                  {
+                    "type": "ParametricType",
+                    "name": "List",
+                    "arguments": [
+                      {
+                        "type": "ParametricType",
+                        "name": "Map",
+                        "arguments": [
+                          {
+                            "type": "SimpleType",
+                            "name": "Int"
+                          },
+                          {
+                            "type": "SimpleType",
+                            "name": "String"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "label": "Request",
+          "payloadType": "Map"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "Server",
+          "message": {
+            "type": "Message",
+            "label": "Response",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "ParametricType",
+                "name": "List",
+                "arguments": [
+                  {
+                    "type": "ParametricType",
+                    "name": "List",
+                    "arguments": [
+                      {
+                        "type": "ParametricType",
+                        "name": "Map",
+                        "arguments": [
+                          {
+                            "type": "SimpleType",
+                            "name": "String"
+                          },
+                          {
+                            "type": "SimpleType",
+                            "name": "Int"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "label": "Response",
+          "payloadType": "List"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s3"
+    ]
+  }
+}

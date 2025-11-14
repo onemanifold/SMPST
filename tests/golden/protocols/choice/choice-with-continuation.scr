@@ -1,0 +1,8 @@
+protocol ChoiceWithContinuation(role A, role B) {
+  choice at A {
+    A -> B: Yes();
+    B -> A: Confirm();
+  } or {
+    A -> B: No();
+  }
+}

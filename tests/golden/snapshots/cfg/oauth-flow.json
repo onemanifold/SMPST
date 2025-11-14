@@ -1,0 +1,11 @@
+{
+  "nodeCount": 9,
+  "edgeCount": 9,
+  "roles": [
+    "AuthServer",
+    "Client",
+    "ResourceServer"
+  ],
+  "protocolName": "OAuth",
+  "structureHash": "06457cdd73fbcfa55132ce3413d9ac4d8723cda8ec16115777d9d2ed57cb3157"
+}

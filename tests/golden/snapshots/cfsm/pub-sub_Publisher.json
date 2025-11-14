@@ -1,0 +1,120 @@
+{
+  "role": "Publisher",
+  "protocolName": "PubSub",
+  "stateCount": 6,
+  "transitionCount": 5,
+  "protocolActionCount": 4,
+  "cfsm": {
+    "role": "Publisher",
+    "protocolName": "PubSub",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n44"
+      },
+      {
+        "id": "s2",
+        "label": "n43"
+      },
+      {
+        "id": "s3",
+        "label": "n42"
+      },
+      {
+        "id": "s4",
+        "label": "n41"
+      },
+      {
+        "id": "s5",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": [
+            "Sub1",
+            "Sub2",
+            "Sub3"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Publish",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Publish",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "Sub1",
+          "message": {
+            "type": "Message",
+            "label": "Ack1"
+          },
+          "label": "Ack1"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "receive",
+          "from": "Sub2",
+          "message": {
+            "type": "Message",
+            "label": "Ack2"
+          },
+          "label": "Ack2"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s3",
+        "to": "s4",
+        "action": {
+          "type": "receive",
+          "from": "Sub3",
+          "message": {
+            "type": "Message",
+            "label": "Ack3"
+          },
+          "label": "Ack3"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s4",
+        "to": "s5",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s5"
+    ]
+  }
+}

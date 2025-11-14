@@ -1,0 +1,1 @@
+"local protocol SimpleChoice_Client at Client() {\n  choice {\n    Accept() to Server;\n  } or {\n    Reject() to Server;\n  }\n}"

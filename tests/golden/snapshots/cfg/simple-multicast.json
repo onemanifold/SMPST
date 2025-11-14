@@ -1,0 +1,11 @@
+{
+  "nodeCount": 3,
+  "edgeCount": 2,
+  "roles": [
+    "Pub",
+    "Sub1",
+    "Sub2"
+  ],
+  "protocolName": "SimpleMulticast",
+  "structureHash": "e047b942532241d4f013f0bd0bc421bdb389d0ae6d59f4ddd9c073292cb43220"
+}

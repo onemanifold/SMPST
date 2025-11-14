@@ -1,0 +1,10 @@
+{
+  "nodeCount": 10,
+  "edgeCount": 11,
+  "roles": [
+    "Client",
+    "Server"
+  ],
+  "protocolName": "NestedChoice",
+  "structureHash": "3d08ab63d899067b29b8fc701ffa454d58750fb3ba9d710a11a70f7b3cb2eed0"
+}

@@ -1,0 +1,86 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run golden tests
+        run: npm run test:golden
+
+      - name: Check for snapshot changes
+        run: |
+          if git diff --exit-code tests/golden/snapshots/; then
+            echo "✅ No snapshot changes - golden tests passed!"
+          else
+            echo "❌ Snapshots changed! This indicates breaking changes."
+            echo ""
+            echo "Changed files:"
+            git diff --name-only tests/golden/snapshots/
+            echo ""
+            echo "If these changes are intentional (new language feature):"
+            echo "  1. Review the diff carefully"
+            echo "  2. Run: npm run test:golden:update"
+            echo "  3. Commit the updated snapshots"
+            echo ""
+            echo "Diff:"
+            git diff tests/golden/snapshots/
+            exit 1
+          fi
+
+      - name: Run performance check
+        run: |
+          echo "🚀 Performance check"
+          npm run test:golden 2>&1 | grep -E "Duration|tests" || true
+
+  golden-tests:
+    runs-on: ubuntu-latest
+    name: Golden Protocol Tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run golden tests
+        run: npm run test:golden
+
+      - name: Upload snapshot artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-diffs
+          path: tests/golden/snapshots/
+          retention-days: 7

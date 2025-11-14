@@ -1,0 +1,166 @@
+{
+  "role": "Client",
+  "protocolName": "OAuth",
+  "stateCount": 7,
+  "transitionCount": 7,
+  "protocolActionCount": 5,
+  "cfsm": {
+    "role": "Client",
+    "protocolName": "OAuth",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n130"
+      },
+      {
+        "id": "s2",
+        "label": "n128"
+      },
+      {
+        "id": "s3",
+        "label": "n129"
+      },
+      {
+        "id": "s4",
+        "label": "n127"
+      },
+      {
+        "id": "s5",
+        "label": "n126"
+      },
+      {
+        "id": "s6",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": "AuthServer",
+          "message": {
+            "type": "Message",
+            "label": "AuthRequest",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "AuthRequest",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "AuthServer",
+          "message": {
+            "type": "Message",
+            "label": "AuthToken",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "AuthToken",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "receive",
+          "from": "AuthServer",
+          "message": {
+            "type": "Message",
+            "label": "AuthDenied"
+          },
+          "label": "AuthDenied"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s2",
+        "to": "s4",
+        "action": {
+          "type": "send",
+          "to": "ResourceServer",
+          "message": {
+            "type": "Message",
+            "label": "ResourceRequest",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "ResourceRequest",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s4",
+        "to": "s5",
+        "action": {
+          "type": "receive",
+          "from": "ResourceServer",
+          "message": {
+            "type": "Message",
+            "label": "Resource",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "Resource",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t5",
+        "from": "s3",
+        "to": "s6",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t6",
+        "from": "s5",
+        "to": "s6",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s6"
+    ]
+  }
+}

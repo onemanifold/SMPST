@@ -1,0 +1,114 @@
+{
+  "role": "A",
+  "protocolName": "SimpleTypes",
+  "stateCount": 5,
+  "transitionCount": 4,
+  "protocolActionCount": 3,
+  "cfsm": {
+    "role": "A",
+    "protocolName": "SimpleTypes",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n135"
+      },
+      {
+        "id": "s2",
+        "label": "n134"
+      },
+      {
+        "id": "s3",
+        "label": "n133"
+      },
+      {
+        "id": "s4",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "IntMsg",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "IntMsg",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "StringMsg",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "StringMsg",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "BoolMsg",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Bool"
+              }
+            }
+          },
+          "label": "BoolMsg",
+          "payloadType": "Bool"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s3",
+        "to": "s4",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s4"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+protocol OAuth(role Client, role AuthServer, role ResourceServer) {
+  Client -> AuthServer: AuthRequest(String);
+  choice at AuthServer {
+    AuthServer -> Client: AuthToken(String);
+    Client -> ResourceServer: ResourceRequest(String);
+    ResourceServer -> Client: Resource(String);
+  } or {
+    AuthServer -> Client: AuthDenied();
+  }
+}

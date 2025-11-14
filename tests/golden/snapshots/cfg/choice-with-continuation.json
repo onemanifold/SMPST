@@ -1,0 +1,10 @@
+{
+  "nodeCount": 7,
+  "edgeCount": 7,
+  "roles": [
+    "A",
+    "B"
+  ],
+  "protocolName": "ChoiceWithContinuation",
+  "structureHash": "36eb948e19a94fb748192ecd1047e4c127f7e9cda5972f4a5df9fe353bb1837b"
+}

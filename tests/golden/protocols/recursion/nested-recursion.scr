@@ -1,0 +1,20 @@
+protocol NestedRecursion(role A, role B) {
+  rec Outer {
+    A -> B: Start();
+    rec Inner {
+      B -> A: Data(Int);
+      choice at A {
+        A -> B: MoreInner();
+        continue Inner;
+      } or {
+        A -> B: DoneInner();
+      }
+    }
+    choice at A {
+      A -> B: MoreOuter();
+      continue Outer;
+    } or {
+      A -> B: DoneOuter();
+    }
+  }
+}

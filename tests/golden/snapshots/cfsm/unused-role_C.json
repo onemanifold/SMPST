@@ -1,0 +1,36 @@
+{
+  "role": "C",
+  "protocolName": "UnusedRole",
+  "stateCount": 2,
+  "transitionCount": 1,
+  "protocolActionCount": 0,
+  "cfsm": {
+    "role": "C",
+    "protocolName": "UnusedRole",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s1"
+    ]
+  }
+}

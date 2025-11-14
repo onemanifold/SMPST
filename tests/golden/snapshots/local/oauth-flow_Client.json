@@ -1,0 +1,1 @@
+"local protocol OAuth_Client at Client() {\n  AuthRequest(String) to AuthServer;\n  choice {\n    AuthToken(String) from AuthServer;\n    ResourceRequest(String) to ResourceServer;\n    Resource(String) from ResourceServer;\n  } or {\n    AuthDenied() from AuthServer;\n  }\n}"

@@ -1,0 +1,123 @@
+{
+  "structural": {
+    "valid": true,
+    "errors": [],
+    "warnings": []
+  },
+  "deadlock": {
+    "hasDeadlock": false,
+    "cycles": []
+  },
+  "liveness": {
+    "isLive": true,
+    "violations": []
+  },
+  "parallelDeadlock": {
+    "hasDeadlock": false,
+    "conflicts": []
+  },
+  "raceConditions": {
+    "hasRaces": false,
+    "races": []
+  },
+  "progress": {
+    "canProgress": true,
+    "blockedNodes": []
+  },
+  "choiceDeterminism": {
+    "isDeterministic": true,
+    "violations": []
+  },
+  "choiceMergeability": {
+    "isMergeable": false,
+    "violations": [
+      {
+        "branchNodeId": "n103",
+        "role": "B1",
+        "description": "Choice mergeability violation: Role \"B1\" participates in choice branches [branch1] but not in [branch2]. After a choice, all roles must have a consistent view of the protocol state. Either include \"B1\" in all branches with equivalent actions, or remove it from all branches. Branch participation: {\"branch1\": {B3, Seller, B1, B2}, \"branch2\": {B3, Seller}}.",
+        "branches": {
+          "branch1": [
+            "B3",
+            "Seller",
+            "B1",
+            "B2"
+          ],
+          "branch2": [
+            "B3",
+            "Seller"
+          ]
+        }
+      },
+      {
+        "branchNodeId": "n103",
+        "role": "B2",
+        "description": "Choice mergeability violation: Role \"B2\" participates in choice branches [branch1] but not in [branch2]. After a choice, all roles must have a consistent view of the protocol state. Either include \"B2\" in all branches with equivalent actions, or remove it from all branches. Branch participation: {\"branch1\": {B3, Seller, B1, B2}, \"branch2\": {B3, Seller}}.",
+        "branches": {
+          "branch1": [
+            "B3",
+            "Seller",
+            "B1",
+            "B2"
+          ],
+          "branch2": [
+            "B3",
+            "Seller"
+          ]
+        }
+      }
+    ]
+  },
+  "connectedness": {
+    "isConnected": true,
+    "orphanedRoles": []
+  },
+  "nestedRecursion": {
+    "isValid": true,
+    "violations": []
+  },
+  "recursionInParallel": {
+    "isValid": true,
+    "violations": []
+  },
+  "forkJoinStructure": {
+    "isValid": true,
+    "violations": []
+  },
+  "multicast": {
+    "isValid": true,
+    "warnings": [
+      {
+        "actionNodeId": "n110",
+        "sender": "Seller",
+        "receivers": [
+          "B1",
+          "B2",
+          "B3"
+        ],
+        "description": "Multicast message from Seller to [B1, B2, B3] - verify all receivers handle message"
+      },
+      {
+        "actionNodeId": "n104",
+        "sender": "Seller",
+        "receivers": [
+          "B1",
+          "B2",
+          "B3"
+        ],
+        "description": "Multicast message from Seller to [B1, B2, B3] - verify all receivers handle message"
+      }
+    ]
+  },
+  "selfCommunication": {
+    "isValid": true,
+    "violations": []
+  },
+  "emptyChoiceBranch": {
+    "isValid": true,
+    "violations": []
+  },
+  "mergeReachability": {
+    "isValid": true,
+    "violations": []
+  }
+}

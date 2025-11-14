@@ -1,0 +1,12 @@
+protocol NestedChoice(role Client, role Server) {
+  choice at Client {
+    Client -> Server: Login(String);
+    choice at Server {
+      Server -> Client: Success();
+    } or {
+      Server -> Client: Failure();
+    }
+  } or {
+    Client -> Server: Cancel();
+  }
+}

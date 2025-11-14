@@ -1,0 +1,4 @@
+protocol ComplexNesting(role Client, role Server) {
+  Client -> Server: Request(Map<String, List<Map<Int, String>>>);
+  Server -> Client: Response(List<List<Map<String, Int>>>);
+}

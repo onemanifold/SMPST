@@ -1,0 +1,80 @@
+{
+  "role": "Server",
+  "protocolName": "SimpleChoice",
+  "stateCount": 4,
+  "transitionCount": 4,
+  "protocolActionCount": 2,
+  "cfsm": {
+    "role": "Server",
+    "protocolName": "SimpleChoice",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n17"
+      },
+      {
+        "id": "s2",
+        "label": "n18"
+      },
+      {
+        "id": "s3",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "Client",
+          "message": {
+            "type": "Message",
+            "label": "Accept"
+          },
+          "label": "Accept"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s0",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "Client",
+          "message": {
+            "type": "Message",
+            "label": "Reject"
+          },
+          "label": "Reject"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s3"
+    ]
+  }
+}

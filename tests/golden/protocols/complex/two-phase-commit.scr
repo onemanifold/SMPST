@@ -1,0 +1,13 @@
+protocol TwoPhaseCommit(role Coordinator, role P1, role P2) {
+  Coordinator -> P1, P2: Prepare();
+  par {
+    P1 -> Coordinator: Vote1(Bool);
+  } and {
+    P2 -> Coordinator: Vote2(Bool);
+  }
+  choice at Coordinator {
+    Coordinator -> P1, P2: Commit();
+  } or {
+    Coordinator -> P1, P2: Abort();
+  }
+}

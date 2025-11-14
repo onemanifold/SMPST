@@ -1,0 +1,98 @@
+{
+  "structural": {
+    "valid": true,
+    "errors": [],
+    "warnings": []
+  },
+  "deadlock": {
+    "hasDeadlock": false,
+    "cycles": []
+  },
+  "liveness": {
+    "isLive": true,
+    "violations": []
+  },
+  "parallelDeadlock": {
+    "hasDeadlock": true,
+    "conflicts": [
+      {
+        "parallelId": "par0",
+        "branch1": [
+          "n82"
+        ],
+        "branch2": [
+          "n83"
+        ],
+        "description": "Parallel deadlock detected: Role \"A\" send messages in multiple parallel branches, which may cause blocking. A role cannot send in concurrent branches as it would require the role to act simultaneously. Review parallel_id \"par0\" to ensure branch independence."
+      },
+      {
+        "parallelId": "par0",
+        "branch1": [
+          "n82"
+        ],
+        "branch2": [
+          "n83"
+        ],
+        "description": "Circular dependency detected in parallel branches: Branch 0 (role B) waits for message from Branch 1, while Branch 1 (role C) waits for message from Branch 0. This creates a deadlock where both branches are blocked waiting for each other. Parallel_id: \"par0\"."
+      }
+    ]
+  },
+  "raceConditions": {
+    "hasRaces": true,
+    "races": [
+      {
+        "parallelId": "par0",
+        "conflictingActions": [
+          "n82",
+          "n83"
+        ],
+        "resource": "A",
+        "description": "Race condition: Role \"A\" involved in concurrent operations across parallel branches. Branch 1: [A → B: M1], Branch 2: [A → C: M2]. This may cause non-deterministic behavior."
+      }
+    ]
+  },
+  "progress": {
+    "canProgress": true,
+    "blockedNodes": []
+  },
+  "choiceDeterminism": {
+    "isDeterministic": true,
+    "violations": []
+  },
+  "choiceMergeability": {
+    "isMergeable": true,
+    "violations": []
+  },
+  "connectedness": {
+    "isConnected": true,
+    "orphanedRoles": []
+  },
+  "nestedRecursion": {
+    "isValid": true,
+    "violations": []
+  },
+  "recursionInParallel": {
+    "isValid": true,
+    "violations": []
+  },
+  "forkJoinStructure": {
+    "isValid": true,
+    "violations": []
+  },
+  "multicast": {
+    "isValid": true,
+    "warnings": []
+  },
+  "selfCommunication": {
+    "isValid": true,
+    "violations": []
+  },
+  "emptyChoiceBranch": {
+    "isValid": true,
+    "violations": []
+  },
+  "mergeReachability": {
+    "isValid": true,
+    "violations": []
+  }
+}
