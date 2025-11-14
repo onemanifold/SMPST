@@ -6,6 +6,9 @@
  * All verification, projection, and execution are based on the CFG.
  */
 
+// Import Message type from AST for rich type preservation
+import type { Message, SourceLocation } from '../ast/types';
+
 // ============================================================================
 // Node Types
 // ============================================================================
@@ -40,8 +43,20 @@ export interface MessageAction {
   kind: 'message';
   from: string;
   to: string | string[]; // string[] for multicast
-  label: string;
+
+  // ENRICHED: Full message with type information
+  message: Message;
+
+  // DEPRECATED: Use message.label instead
+  /** @deprecated Use message.label */
+  label?: string;
+
+  // DEPRECATED: Use message.payload?.payloadType instead
+  /** @deprecated Use message.payload?.payloadType */
   payloadType?: string;
+
+  // NEW: Source location for error reporting
+  location?: SourceLocation;
 }
 
 export interface ParallelAction {
@@ -134,6 +149,10 @@ export interface CFG {
   nodes: Node[];
   edges: Edge[];
   roles: string[]; // All roles participating in the protocol
+
+  // ENRICHED: Protocol metadata for code generation and serialization
+  protocolName: string;
+  parameters: import('../ast/types').ProtocolParameter[];
 }
 
 // ============================================================================

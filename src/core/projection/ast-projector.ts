@@ -69,7 +69,14 @@ export interface ProjectionResult {
 }
 
 export interface ProjectionError {
-  type: 'invalid-role' | 'projection-error' | 'well-formedness-error';
+  type:
+    | 'invalid-role'
+    | 'projection-error'
+    | 'well-formedness-error'
+    | 'undefined-role'
+    | 'undefined-recursion-label'
+    | 'non-deterministic-choice'
+    | 'self-communication';
   role?: string;
   message: string;
   location?: any;
@@ -209,7 +216,7 @@ function projectBody(
  * @param interaction - Global interaction to project
  * @param role - Role to project for
  * @param options - Projection options
- * @returns Local interaction or null (tau-eliminated)
+ * @returns Local interaction, array of interactions (for self-communication), or null (tau-eliminated)
  */
 function projectInteraction(
   interaction: GlobalInteraction,
@@ -261,6 +268,9 @@ function projectInteraction(
  *   - !⟨q,U⟩.(G↓r) if r = p (sender)
  *   - ?⟨p,U⟩.(G↓r) if r = q (receiver)
  *   - G↓r           if r ≠ p, r ≠ q (tau-elimination)
+ *
+ * Special case: Self-communication (p→p,... )
+ *   - Returns both Send and Receive for role p
  */
 function projectMessageTransfer(
   msg: MessageTransfer,
@@ -277,7 +287,7 @@ function projectMessageTransfer(
     const send: Send = {
       type: 'Send',
       message,
-      to,
+      to,  // Preserve multicast: string | string[]
       location: msg.location,
     };
     const receive: Receive = {
@@ -553,10 +563,12 @@ export function getRoles(protocol: GlobalProtocolDeclaration): string[] {
 /**
  * Validate well-formedness of a global protocol
  *
- * Basic checks:
- * - All roles are defined
- * - No orphan messages
- * - Choice branches are consistent
+ * Implements the following well-formedness checks:
+ * 1. Role names: All message senders/receivers are defined roles
+ * 2. Recursion labels: All continue statements have matching rec labels
+ * 3. Choice determinism: Choice branches have distinguishable first messages
+ * 4. No self-communication: Roles cannot send to themselves
+ * 5. Recursion scoping: Recursion labels are properly nested
  *
  * @param protocol - Global protocol to validate
  * @returns Array of validation errors
@@ -567,11 +579,132 @@ export function validateWellFormedness(
   const errors: ProjectionError[] = [];
   const roleNames = new Set(protocol.roles.map(r => r.name));
 
-  // TODO: Implement full well-formedness checks
-  // - Check all message senders/receivers are defined roles
-  // - Check recursion labels are properly scoped
-  // - Check choice branches are deterministic
-  // - Check no communication races
+  // Helper to check a single interaction
+  function checkInteraction(
+    interaction: GlobalInteraction,
+    recursionLabels: Set<string>
+  ): void {
+    // RULE 1: Role Name Validation
+    if (isMessageTransfer(interaction)) {
+      const { from, to } = interaction;
+
+      // Check sender exists
+      if (!roleNames.has(from)) {
+        errors.push({
+          type: 'undefined-role',
+          role: from,
+          message: `Sender role "${from}" is not defined in protocol. Available roles: ${Array.from(roleNames).join(', ')}`,
+          location: interaction.location,
+        });
+      }
+
+      // Check receiver(s) exist
+      const receivers = Array.isArray(to) ? to : [to];
+      for (const receiver of receivers) {
+        if (!roleNames.has(receiver)) {
+          errors.push({
+            type: 'undefined-role',
+            role: receiver,
+            message: `Receiver role "${receiver}" is not defined in protocol. Available roles: ${Array.from(roleNames).join(', ')}`,
+            location: interaction.location,
+          });
+        }
+      }
+
+      // RULE 4: No Self-Communication
+      if (receivers.includes(from)) {
+        errors.push({
+          type: 'self-communication',
+          role: from,
+          message: `Role "${from}" cannot send to itself. Self-communication is not allowed in well-formed protocols.`,
+          location: interaction.location,
+        });
+      }
+    }
+
+    // RULE 2: Recursion Label Scoping
+    if (isContinue(interaction)) {
+      if (!recursionLabels.has(interaction.label)) {
+        errors.push({
+          type: 'undefined-recursion-label',
+          message: `Continue label "${interaction.label}" does not have a matching rec statement. Available labels: ${Array.from(recursionLabels).join(', ') || 'none'}`,
+          location: interaction.location,
+        });
+      }
+    }
+
+    // Recursion: Add label to scope and check body
+    if (isRecursion(interaction)) {
+      const newScope = new Set(recursionLabels);
+      newScope.add(interaction.label);
+      checkBody(interaction.body, newScope);
+    }
+
+    // RULE 3: Choice Determinism
+    if (isChoice(interaction)) {
+      // Check that branches have distinguishable first messages
+      const firstMessages = new Map<string, number>();
+
+      for (let i = 0; i < interaction.branches.length; i++) {
+        const branch = interaction.branches[i];
+        if (branch.body.length > 0) {
+          const firstInteraction = branch.body[0];
+          if (isMessageTransfer(firstInteraction)) {
+            const key = `${firstInteraction.from}->${firstInteraction.to}:${firstInteraction.message.label}`;
+
+            if (firstMessages.has(key)) {
+              errors.push({
+                type: 'non-deterministic-choice',
+                message: `Choice branches ${firstMessages.get(key)} and ${i} have the same first message "${firstInteraction.message.label}". Branches must be distinguishable.`,
+                location: interaction.location,
+              });
+            } else {
+              firstMessages.set(key, i);
+            }
+          }
+        }
+      }
+
+      // Check each branch body
+      for (const branch of interaction.branches) {
+        checkBody(branch.body, recursionLabels);
+      }
+    }
+
+    // Parallel: Check each branch body
+    if (isParallel(interaction)) {
+      for (const branch of interaction.branches) {
+        checkBody(branch, recursionLabels);
+      }
+
+      // Note: Communication race detection is complex and typically done
+      // on the CFG level. We skip it here in AST validation.
+    }
+
+    // Do: Check role arguments are valid
+    if (isDo(interaction)) {
+      for (const role of interaction.roleArguments) {
+        if (!roleNames.has(role)) {
+          errors.push({
+            type: 'undefined-role',
+            role,
+            message: `Role "${role}" in sub-protocol call is not defined. Available roles: ${Array.from(roleNames).join(', ')}`,
+            location: interaction.location,
+          });
+        }
+      }
+    }
+  }
+
+  // Helper to check a sequence of interactions
+  function checkBody(body: GlobalInteraction[], recursionLabels: Set<string>): void {
+    for (const interaction of body) {
+      checkInteraction(interaction, recursionLabels);
+    }
+  }
+
+  // Start validation with empty recursion label scope
+  checkBody(protocol.body, new Set());
 
   return errors;
 }

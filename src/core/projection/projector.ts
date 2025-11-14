@@ -210,15 +210,25 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
             actions.push({
               type: 'send',
               to: action.to,
+              // ENRICHED: Pass full Message object
+              message: action.message,
+              // DEPRECATED: Keep for backward compatibility
               label: action.label,
               payloadType: action.payloadType,
+              // NEW: Preserve location
+              location: action.location,
             } as SendAction);
           } else {
             actions.push({
               type: 'receive',
               from: action.from,
+              // ENRICHED: Pass full Message object
+              message: action.message,
+              // DEPRECATED: Keep for backward compatibility
               label: action.label,
               payloadType: action.payloadType,
+              // NEW: Preserve location
+              location: action.location,
             } as ReceiveAction);
           }
         }
@@ -235,9 +245,37 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
   };
 
   /**
+   * Generate all permutations of an array
+   * Used for creating all possible interleavings of parallel actions
+   */
+  const permutations = <T>(arr: T[]): T[][] => {
+    if (arr.length <= 1) return [arr];
+
+    const result: T[][] = [];
+    for (let i = 0; i < arr.length; i++) {
+      const current = arr[i];
+      const remaining = [...arr.slice(0, i), ...arr.slice(i + 1)];
+      const remainingPerms = permutations(remaining);
+
+      for (const perm of remainingPerms) {
+        result.push([current, ...perm]);
+      }
+    }
+    return result;
+  };
+
+  /**
    * Generate diamond pattern for parallel interleaving
    * Creates states for all possible orderings of parallel actions
-   * For N branches with actions [a1], [a2], ..., generates states for a1;a2, a2;a1, etc.
+   *
+   * Implements the formal parallel projection rule:
+   * (par { G1 || G2 || ... || Gn }) ↾ r = par { (G1↾r) || (G2↾r) || ... || (Gn↾r) }
+   *
+   * For a role r, we extract all actions from parallel branches that involve r,
+   * then generate all possible execution orders (interleavings) as separate paths.
+   *
+   * For N actions, generates N! paths (all permutations).
+   * Example: [a1, a2, a3] → 6 paths: a1,a2,a3 | a1,a3,a2 | a2,a1,a3 | a2,a3,a1 | a3,a1,a2 | a3,a2,a1
    */
   const generateDiamondPattern = (
     fromStateId: string,
@@ -262,26 +300,28 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
       return;
     }
 
-    // Multiple actions - need to generate interleavings
-    // For now, support 2 actions (most common case)
-    if (allActions.length === 2) {
-      const [action1, action2] = allActions;
+    // Multiple actions - generate all interleavings (permutations)
+    // This correctly implements the diamond pattern for 2 actions
+    // and generalizes to N! paths for N actions
+    const actions = allActions.map(item => item.action);
+    const allPermutations = permutations(actions);
 
-      // Path 1: action1 then action2
-      const mid1 = createState(`par_${fromStateId}_path1`);
-      createTransition(fromStateId, mid1.id, action1.action);
-      createTransition(mid1.id, toStateId, action2.action);
-
-      // Path 2: action2 then action1
-      const mid2 = createState(`par_${fromStateId}_path2`);
-      createTransition(fromStateId, mid2.id, action2.action);
-      createTransition(mid2.id, toStateId, action1.action);
-    } else {
-      // More than 2 actions - for now, just do sequential (TODO: full interleaving)
+    // Create a separate path for each permutation
+    for (let pathIdx = 0; pathIdx < allPermutations.length; pathIdx++) {
+      const perm = allPermutations[pathIdx];
       let currentState = fromStateId;
-      for (let i = 0; i < allActions.length; i++) {
-        const nextState = i === allActions.length - 1 ? toStateId : createState(`par_seq_${i}`).id;
-        createTransition(currentState, nextState, allActions[i].action);
+
+      // Create chain of states for this permutation
+      for (let stepIdx = 0; stepIdx < perm.length; stepIdx++) {
+        const action = perm[stepIdx];
+        const isLastStep = stepIdx === perm.length - 1;
+
+        // Last step goes to toStateId, others create intermediate states
+        const nextState = isLastStep
+          ? toStateId
+          : createState(`par_${fromStateId}_p${pathIdx}_s${stepIdx}`).id;
+
+        createTransition(currentState, nextState, action);
         currentState = nextState;
       }
     }
@@ -362,19 +402,34 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
           // Determine action type based on formal rules:
           // (p→q:⟨U⟩.G) ↾ r = !⟨q,U⟩.(G↾p) if r=p (sender)
           //              = ?⟨p,U⟩.(G↾q) if r=q (receiver)
+          //
+          // ENRICHED PROJECTION: Preserve full Message object with type information
+          // WHY: TypeScript codegen needs full Type AST (e.g., List<Int>, Map<String, User>)
+          //      Scribble serialization needs to reconstruct exact syntax
+          //      Future features (refinements, security annotations) attach to types
           const cfsmAction: CFSMAction =
             action.from === role
               ? ({
                   type: 'send',
                   to: action.to,
+                  // NEW: Full message with Type AST (not flattened string)
+                  message: action.message,
+                  // KEEP: Backward compatibility during migration
                   label: action.label,
                   payloadType: action.payloadType,
+                  // NEW: Source location for error messages
+                  location: action.location,
                 } as SendAction)
               : ({
                   type: 'receive',
                   from: action.from,
+                  // NEW: Full message with Type AST
+                  message: action.message,
+                  // KEEP: Backward compatibility
                   label: action.label,
                   payloadType: action.payloadType,
+                  // NEW: Source location
+                  location: action.location,
                 } as ReceiveAction);
 
           // Create transition from last relevant state to new state
@@ -663,8 +718,11 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
     .filter(s => s.label === 'terminal')
     .map(s => s.id);
 
+  // ENRICHED: Include protocol metadata for code generation and serialization
   return {
     role,
+    protocolName: cfg.protocolName,
+    parameters: cfg.parameters,
     states,
     transitions,
     initialState: initialState.id,
