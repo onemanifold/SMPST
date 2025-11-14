@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { projectionData, parseStatus } from '$lib/stores/editor';
+  import { parseStatus } from '$lib/stores/editor';
+  import { currentCFG, executionState } from '$lib/stores/simulation';
   import * as d3 from 'd3';
+  import type { CFGNode, MessageAction } from '../../../core/cfg/types';
 
   let svgElement: SVGSVGElement;
   let containerElement: HTMLDivElement;
@@ -14,35 +16,36 @@
 
   interface Message {
     from: string;
-    to: string;
+    to: string | string[];
     label: string;
-    step: number;
+    nodeId: string;
+    visited: boolean;
+    isCurrent: boolean;
   }
 
   function extractMessages(): Message[] {
+    if (!$currentCFG) return [];
+
     const messages: Message[] = [];
-    let step = 0;
+    const visitedNodes = new Set($executionState?.visitedNodes || []);
+    const currentNodeId = $executionState
+      ? (typeof $executionState.currentNode === 'string'
+          ? $executionState.currentNode
+          : $executionState.currentNode[0])
+      : null;
 
-    // Extract messages from projection transitions
-    // This is a simplified extraction - ideally we'd traverse the CFG
-    for (const projection of $projectionData) {
-      for (const transition of projection.transitions) {
-        const label = transition.label;
-
-        // Parse send/receive transitions
-        if (label.includes('send ')) {
-          const msgName = label.replace('send ', '');
-          // Find receiver (simplified - assumes binary protocol)
-          const otherRole = $projectionData.find(p => p.role !== projection.role);
-          if (otherRole) {
-            messages.push({
-              from: projection.role,
-              to: otherRole.role,
-              label: msgName,
-              step: step++
-            });
-          }
-        }
+    // Extract messages from CFG action nodes
+    for (const node of $currentCFG.nodes) {
+      if (node.type === 'action' && node.action.kind === 'message') {
+        const action = node.action as MessageAction;
+        messages.push({
+          from: action.from,
+          to: action.to,
+          label: action.message.label,
+          nodeId: node.id,
+          visited: visitedNodes.has(node.id),
+          isCurrent: node.id === currentNodeId
+        });
       }
     }
 
@@ -50,7 +53,7 @@
   }
 
   function renderSequenceDiagram() {
-    if (!svgElement || !containerElement || $projectionData.length === 0) return;
+    if (!svgElement || !containerElement || !$currentCFG) return;
 
     // Clear existing visualization
     d3.select(svgElement).selectAll('*').remove();
@@ -61,7 +64,7 @@
 
     svg.attr('width', width).attr('height', height);
 
-    const roles = $projectionData.map(p => p.role);
+    const roles = $currentCFG.roles;
     const messages = extractMessages();
 
     const numRoles = roles.length;
@@ -117,38 +120,98 @@
     // Draw messages
     messages.forEach((msg, index) => {
       const fromX = laneX.get(msg.from)!;
-      const toX = laneX.get(msg.to)!;
       const y = LANE_TOP_MARGIN + index * MESSAGE_SPACING + MESSAGE_SPACING / 2;
 
-      // Message arrow
-      svg
-        .append('line')
-        .attr('x1', fromX)
-        .attr('y1', y)
-        .attr('x2', toX)
-        .attr('y2', y)
-        .attr('stroke', '#007acc')
-        .attr('stroke-width', 2)
-        .attr('marker-end', 'url(#arrowhead-blue)');
+      // Color based on status: current > visited > unvisited
+      let strokeColor, strokeWidth, arrowMarker, labelColor, labelWeight, opacity;
 
-      // Message label
+      if (msg.isCurrent) {
+        // Current message: bright yellow/orange with pulsing
+        strokeColor = '#FFA500';
+        strokeWidth = 4;
+        arrowMarker = 'url(#arrowhead-current)';
+        labelColor = '#FFA500';
+        labelWeight = 'bold';
+        opacity = 1;
+      } else if (msg.visited) {
+        // Visited message: green
+        strokeColor = '#4EC9B0';
+        strokeWidth = 3;
+        arrowMarker = 'url(#arrowhead-visited)';
+        labelColor = '#4EC9B0';
+        labelWeight = 'bold';
+        opacity = 1;
+      } else {
+        // Unvisited message: blue, dimmed
+        strokeColor = '#007acc';
+        strokeWidth = 2;
+        arrowMarker = 'url(#arrowhead-blue)';
+        labelColor = '#9CDCFE';
+        labelWeight = 'normal';
+        opacity = 0.6;
+      }
+
+      // Handle multicast: draw arrow to each recipient
+      const recipients = Array.isArray(msg.to) ? msg.to : [msg.to];
+
+      recipients.forEach(recipient => {
+        const toX = laneX.get(recipient)!;
+
+        // Message arrow
+        const line = svg
+          .append('line')
+          .attr('x1', fromX)
+          .attr('y1', y)
+          .attr('x2', toX)
+          .attr('y2', y)
+          .attr('stroke', strokeColor)
+          .attr('stroke-width', strokeWidth)
+          .attr('marker-end', arrowMarker)
+          .attr('opacity', opacity);
+
+        // Add pulsing animation for current message
+        if (msg.isCurrent) {
+          line
+            .append('animate')
+            .attr('attributeName', 'opacity')
+            .attr('values', '1;0.5;1')
+            .attr('dur', '1.5s')
+            .attr('repeatCount', 'indefinite');
+        }
+      });
+
+      // Message label (show once, centered)
+      const firstRecipient = recipients[0];
+      const toX = laneX.get(firstRecipient)!;
       const labelX = (fromX + toX) / 2;
       const labelY = y - 8;
 
-      svg
+      const label = svg
         .append('text')
         .attr('x', labelX)
         .attr('y', labelY)
         .attr('text-anchor', 'middle')
-        .attr('font-size', 12)
-        .attr('fill', '#9CDCFE')
-        .attr('background', '#1e1e1e')
+        .attr('font-size', msg.isCurrent ? 13 : 12)
+        .attr('fill', labelColor)
+        .attr('font-weight', labelWeight)
         .text(msg.label);
+
+      // Add pulsing animation for current message label
+      if (msg.isCurrent) {
+        label
+          .append('animate')
+          .attr('attributeName', 'opacity')
+          .attr('values', '1;0.7;1')
+          .attr('dur', '1.5s')
+          .attr('repeatCount', 'indefinite');
+      }
     });
 
-    // Define arrowhead marker
-    svg
-      .append('defs')
+    // Define arrowhead markers
+    const defs = svg.append('defs');
+
+    // Blue arrowhead for unvisited
+    defs
       .append('marker')
       .attr('id', 'arrowhead-blue')
       .attr('markerWidth', 10)
@@ -159,10 +222,36 @@
       .append('polygon')
       .attr('points', '0 0, 10 3, 0 6')
       .attr('fill', '#007acc');
+
+    // Green arrowhead for visited
+    defs
+      .append('marker')
+      .attr('id', 'arrowhead-visited')
+      .attr('markerWidth', 10)
+      .attr('markerHeight', 10)
+      .attr('refX', 9)
+      .attr('refY', 3)
+      .attr('orient', 'auto')
+      .append('polygon')
+      .attr('points', '0 0, 10 3, 0 6')
+      .attr('fill', '#4EC9B0');
+
+    // Orange arrowhead for current
+    defs
+      .append('marker')
+      .attr('id', 'arrowhead-current')
+      .attr('markerWidth', 12)
+      .attr('markerHeight', 12)
+      .attr('refX', 10)
+      .attr('refY', 3)
+      .attr('orient', 'auto')
+      .append('polygon')
+      .attr('points', '0 0, 12 3, 0 6')
+      .attr('fill', '#FFA500');
   }
 
-  // Re-render on data change or window resize
-  $: if ($projectionData) {
+  // Re-render on CFG or execution state change
+  $: if ($currentCFG || $executionState) {
     renderSequenceDiagram();
   }
 
@@ -177,11 +266,12 @@
 </script>
 
 <div class="sequence-diagram" bind:this={containerElement}>
-  {#if $parseStatus !== 'success' || $projectionData.length === 0}
+  {#if $parseStatus !== 'success' || !$currentCFG}
     <div class="placeholder">
       <h3>📊 CFG Sequence Diagram</h3>
       <p>Parse a protocol to see the message sequence diagram</p>
       <p class="note">Messages flow from top to bottom over time</p>
+      <p class="note">🟠 Orange: Current message | 🟢 Green: Executed | 🔵 Blue: Pending</p>
     </div>
   {:else}
     <svg bind:this={svgElement}></svg>
