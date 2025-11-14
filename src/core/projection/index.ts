@@ -1,11 +1,15 @@
 /**
  * Projection Module Exports
  *
- * This module provides both CFG-based (CFSM) and AST-based (textual local protocol)
- * projection capabilities for Scribble protocols.
+ * Provides CFG-based projection to CFSM state machines.
+ * CFG/CFSM is the single source of truth for all semantics.
+ *
+ * Pipeline: Global Protocol → CFG → CFSM → Scribble Text
+ *
+ * See ENRICHED_CFSM_DESIGN.md for architectural decisions.
  */
 
-// CFG-based projection (existing - generates CFSMs for monitoring/verification)
+// CFG-based projection (generates CFSMs with full type preservation)
 export { project, projectAll } from './projector';
 export type {
   CFSM,
@@ -14,28 +18,10 @@ export type {
   CFSMAction,
   SendAction,
   ReceiveAction,
-  ProjectionResult as CFSMProjectionResult,
-  ProjectionError as CFSMProjectionError,
+  ProjectionResult,
+  ProjectionError,
 } from './types';
 
-// AST-based projection (new - generates textual local protocols)
-export {
-  projectToLocalProtocols,
-  projectForRole,
-  isRoleInvolved,
-  getRoles,
-  validateWellFormedness,
-} from './ast-projector';
-export type {
-  ProjectionResult as ASTProjectionResult,
-  ProjectionError as ASTProjectionError,
-  ProjectionOptions,
-} from './ast-projector';
-
-// Local protocol serialization
-export {
-  serializeLocalProtocol,
-  serializeAll,
-  prettyPrint,
-} from '../serializer/local-serializer';
-export type { SerializerOptions } from '../serializer/local-serializer';
+// CFSM serialization to Scribble local protocol text
+export { serializeCFSM } from '../serializer/cfsm-serializer';
+export type { CFSMSerializerOptions } from '../serializer/cfsm-serializer';
