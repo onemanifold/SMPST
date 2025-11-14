@@ -1,0 +1,64 @@
+/**
+ * Map-Reduce Protocol with Dynamic Workers
+ *
+ * Inspired by Castro-Perez & Yoshida (ECOOP 2023), Example 5
+ *
+ * Demonstrates:
+ * - Multiple dynamic participants (elastic worker pool)
+ * - Updatable recursion with growing participant set
+ * - Protocol calls for subtask delegation
+ * - Safe protocol update (workers added dynamically)
+ *
+ * Properties verified (when tests enabled):
+ * ✅ Safe update (Definition 14) - adding workers is safe
+ * ✅ Trace equivalence with elastic participant set
+ * ✅ Deadlock-freedom (no circular dependencies)
+ * ✅ Liveness (all workers can complete)
+ *
+ * WORKFLOW:
+ *   1. Master creates initial Worker
+ *   2. Master distributes map tasks to workers
+ *   3. Workers process and return results
+ *   4. Master can add more workers (updatable recursion)
+ *   5. Master reduces results when done
+ *
+ * SAFETY:
+ *   Definition 14 ensures adding workers doesn't deadlock:
+ *   - Workers use disjoint channels (no races)
+ *   - Update body is well-formed
+ *   - 1-unfolding verification guarantees all iterations safe
+ */
+
+// Map task protocol: Worker processes chunk
+protocol MapTask(role w, role m) {
+  m -> w: Chunk(string);
+  w -> m: MapResult(int);
+}
+
+// Main map-reduce protocol
+protocol MapReduce(role Master) {
+  new role Worker;
+
+  // Create initial worker pool
+  Master creates Worker as w1;
+  Master invites w1;
+
+  rec ProcessingLoop {
+    // Distribute map task to worker
+    Master calls MapTask(w1, Master);
+
+    choice at Master {
+      // Branch 1: Add worker and continue (updatable recursion)
+      continue ProcessingLoop with {
+        // Update body: add new worker
+        Master creates Worker as w_new;
+        Master invites w_new;
+        Master calls MapTask(w_new, Master);
+      };
+    } or {
+      // Branch 2: Reduce phase
+      Master -> w1: Reduce();
+      w1 -> Master: FinalResult(int);
+    }
+  }
+}

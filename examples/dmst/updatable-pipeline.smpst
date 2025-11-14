@@ -1,0 +1,53 @@
+/**
+ * Updatable Pipeline Protocol
+ *
+ * From Castro-Perez & Yoshida (ECOOP 2023), Example 3
+ *
+ * Demonstrates:
+ * - Updatable recursion with `continue X with { ... }`
+ * - Dynamic participant creation in update body
+ * - Safe protocol update (Definition 14)
+ * - Growing participant set across iterations
+ *
+ * Properties verified (when tests enabled):
+ * ✅ Safe update (Definition 14) - 1-unfolding is well-formed
+ * ✅ Trace equivalence with growing participants
+ * ✅ Deadlock-freedom (all iterations)
+ * ✅ No stuck participants (new workers can complete)
+ *
+ * INTUITION:
+ *   A Manager processes tasks with Workers. Each iteration, the Manager
+ *   can choose to:
+ *   1. Add a new Worker to the pipeline (updatable recursion)
+ *   2. Finish processing
+ *
+ *   The update body adds a new Worker and assigns it a task.
+ *   Definition 14 ensures this update is safe: adding workers doesn't
+ *   introduce deadlocks or races.
+ */
+
+protocol Pipeline(role Manager) {
+  new role Worker;
+
+  rec Loop {
+    // Main loop body: process task with existing workers
+    Manager creates Worker as w1;
+    Manager invites w1;
+    Manager -> w1: Task(string);
+    w1 -> Manager: Result(int);
+
+    choice at Manager {
+      // Branch 1: Add a new worker (updatable recursion)
+      continue Loop with {
+        // Update body: create and assign task to new worker
+        Manager creates Worker as w_new;
+        Manager invites w_new;
+        Manager -> w_new: Task(string);
+        w_new -> Manager: Result(int);
+      };
+    } or {
+      // Branch 2: Finish processing
+      Manager -> w1: Done();
+    }
+  }
+}
