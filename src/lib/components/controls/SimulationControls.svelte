@@ -38,9 +38,25 @@
     selectedChoice = null;
   }
 
-  // Auto-select first choice if at choice point
-  $: if ($isAtChoice && $availableChoices.length > 0 && selectedChoice === null) {
-    selectedChoice = 0;
+  // In play mode: auto-select and auto-step when at choice
+  // In step mode: don't auto-select, wait for user input
+  $: if ($isAtChoice && $isPlaying && $availableChoices.length > 0) {
+    // Auto-select RANDOM choice in play mode
+    const randomIndex = Math.floor(Math.random() * $availableChoices.length);
+    selectedChoice = randomIndex;
+    // Brief pause to show the choice (200ms), then make selection
+    setTimeout(() => {
+      if (selectedChoice !== null) {
+        makeChoice(selectedChoice);
+        selectedChoice = null;
+      }
+    }, 200);
+  }
+
+  // Reset selection when no longer at choice or when switching modes
+  $: if (!$isAtChoice || ($isAtChoice && !$isPlaying && selectedChoice === null)) {
+    // In step mode, wait for user selection (don't auto-select)
+    selectedChoice = null;
   }
 </script>
 
@@ -92,17 +108,29 @@
       {/if}
     </div>
 
-    {#if $isAtChoice && !$isPlaying}
-      <div class="choice-group">
-        <span class="choice-label">Choose branch:</span>
-        <select bind:value={selectedChoice} class="choice-select">
+    {#if $isAtChoice}
+      <div class="choice-group" class:auto-selecting={$isPlaying}>
+        <span class="choice-label">
+          {$isPlaying ? '⚡ Auto-selecting:' : 'Choose branch:'}
+        </span>
+        <div class="choice-buttons">
           {#each $availableChoices as choice, index}
-            <option value={index}>
+            <button
+              class="choice-btn"
+              class:selected={selectedChoice === index}
+              class:auto-selected={$isPlaying && selectedChoice === index}
+              on:click={() => {
+                if (!$isPlaying) {
+                  selectedChoice = index;
+                }
+              }}
+              disabled={$isPlaying}
+              title={choice.description || `Branch ${index + 1}`}
+            >
               {choice.label || `Branch ${index + 1}`}
-              {choice.description ? ` - ${choice.description}` : ''}
-            </option>
+            </button>
           {/each}
-        </select>
+        </div>
       </div>
     {/if}
   </div>
@@ -229,6 +257,14 @@
     gap: 4px;
     padding-left: 6px;
     border-left: 1px solid #555;
+    transition: background-color 0.3s;
+  }
+
+  .choice-group.auto-selecting {
+    background: rgba(45, 77, 127, 0.2);
+    border-left-color: #66b3ff;
+    padding: 2px 6px;
+    border-radius: 4px;
   }
 
   .choice-label {
@@ -237,23 +273,56 @@
     font-weight: 500;
   }
 
-  .choice-select {
-    padding: 3px 6px;
+  .choice-group.auto-selecting .choice-label {
+    color: #66b3ff;
+  }
+
+  .choice-buttons {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .choice-btn {
+    padding: 4px 10px;
     background: #3d3d3d;
     color: #ccc;
     border: 1px solid #555;
     border-radius: 4px;
     font-size: 12px;
     cursor: pointer;
-    min-width: 180px;
+    transition: all 0.2s;
+    white-space: nowrap;
   }
 
-  .choice-select:hover {
+  .choice-btn:hover:not(:disabled) {
+    background: #4d4d4d;
     border-color: #007acc;
   }
 
-  .choice-select:focus {
-    outline: none;
+  .choice-btn:disabled {
+    cursor: not-allowed;
+  }
+
+  .choice-btn.selected {
+    background: #007acc;
     border-color: #007acc;
+    color: #fff;
+  }
+
+  .choice-btn.auto-selected {
+    background: #66b3ff;
+    border-color: #66b3ff;
+    color: #fff;
+    animation: pulse 0.5s ease-in-out;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
   }
 </style>
