@@ -12,6 +12,8 @@
  */
 
 import type { CFG, Action, isUpdatableRecursionAction } from '../../cfg/types';
+import { combineProtocols, checkChannelDisjointness } from '../../cfg/combining-operator';
+import { verifyProtocol } from '../verifier';
 
 // ============================================================================
 // Safe Protocol Update (Definition 14)
@@ -53,13 +55,30 @@ export function checkSafeProtocolUpdate(cfg: CFG): SafeUpdateResult {
   const violations: UpdateViolation[] = [];
 
   for (const recAction of updatableRecursions) {
-    // TODO: Implement 1-unfolding computation
-    // For now, return a placeholder indicating verification needed
-    violations.push({
-      label: recAction.label,
-      reason: 'Safe update verification not yet implemented (Phase 6)',
-      location: recAction.location,
-    });
+    try {
+      // Extract recursion and update bodies
+      const { recursionBody, updateBody } = extractBodies(cfg, recAction.label);
+
+      // Compute 1-unfolding
+      const unfolding = compute1Unfolding(recursionBody, updateBody);
+
+      // Check if 1-unfolding is well-formed
+      const verificationResult = verifyProtocol(unfolding);
+
+      if (verificationResult.errors.length > 0) {
+        violations.push({
+          label: recAction.label,
+          reason: `1-unfolding is not well-formed: ${verificationResult.errors.map(e => e.message).join(', ')}`,
+          location: recAction.location,
+        });
+      }
+    } catch (error) {
+      violations.push({
+        label: recAction.label,
+        reason: `Failed to compute 1-unfolding: ${error instanceof Error ? error.message : String(error)}`,
+        location: recAction.location,
+      });
+    }
   }
 
   return {
@@ -81,18 +100,33 @@ export function checkSafeProtocolUpdate(cfg: CFG): SafeUpdateResult {
  * - Preserves safety properties (no races, progress)
  * - Actions must use disjoint channels
  *
+ * ALGORITHM:
+ * 1. Combine G and G_update using combining operator ♢
+ * 2. Check channel disjointness (safety requirement)
+ * 3. Return combined CFG if safe, throw error otherwise
+ *
  * @param recursionBody - The main recursion body G
  * @param updateBody - The update body G_update
  * @returns CFG representing the 1-unfolding
+ * @throws Error if combining fails (channel conflicts)
  */
 export function compute1Unfolding(recursionBody: CFG, updateBody: CFG): CFG {
-  // TODO: Implement 1-unfolding algorithm
-  // This requires:
-  // 1. CFG composition via combining operator ♢
-  // 2. Substitution of recursion variable
-  // 3. Preservation of safety properties
+  // Use combining operator to interleave G and G_update
+  const combineResult = combineProtocols(recursionBody, updateBody);
 
-  throw new Error('compute1Unfolding not yet implemented (Phase 6)');
+  if (!combineResult.success) {
+    throw new Error(
+      `Cannot combine protocols: ${combineResult.error}\n` +
+      `Channel conflicts: ${combineResult.channelCheck.conflicts.length}`
+    );
+  }
+
+  if (!combineResult.combined) {
+    throw new Error('Combining operator returned success but no combined CFG');
+  }
+
+  // The combined CFG is the 1-unfolding
+  return combineResult.combined;
 }
 
 // ============================================================================
@@ -124,6 +158,52 @@ function findUpdatableRecursions(cfg: CFG): Array<{
   }
 
   return updatableRecursions;
+}
+
+/**
+ * Extract recursion body and update body from CFG.
+ *
+ * Given a recursion label X, extract:
+ * 1. Recursion body G: all nodes reachable from recursion point to continue
+ * 2. Update body G_update: subgraph built during CFG construction
+ *
+ * ALGORITHM:
+ * 1. Find recursion node with label X
+ * 2. Find updatable-recursion action node
+ * 3. Extract reachable nodes between recursion and update
+ * 4. Extract update body nodes (marked during CFG build)
+ *
+ * NOTE: This is a simplified implementation. A full implementation would:
+ * - Traverse CFG to build subgraphs
+ * - Handle nested recursions
+ * - Preserve metadata
+ *
+ * For now, we return the entire CFG as both bodies (conservative).
+ * This is sound but may report false positives.
+ *
+ * TODO: Implement proper subgraph extraction
+ *
+ * @param cfg - Full CFG
+ * @param label - Recursion label
+ * @returns Recursion body and update body CFGs
+ */
+function extractBodies(
+  cfg: CFG,
+  label: string
+): { recursionBody: CFG; updateBody: CFG } {
+  // Conservative implementation: return full CFG for both
+  // This ensures we check the entire protocol for safety
+  //
+  // A more precise implementation would:
+  // 1. Find recursion node labeled X
+  // 2. Extract subgraph from recursion to updatable-recursion node
+  // 3. Extract update body subgraph (stored during CFG build)
+  //
+  // For safe update verification, being conservative (checking more) is safe
+  return {
+    recursionBody: cfg,
+    updateBody: cfg,
+  };
 }
 
 // ============================================================================
