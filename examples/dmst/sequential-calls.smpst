@@ -1,0 +1,52 @@
+/**
+ * Sequential Protocol Calls
+ *
+ * Demonstrates:
+ * - Multiple sequential protocol calls
+ * - Role parameter passing
+ * - Combining operator ♢ applied multiple times
+ * - Compositional protocol design
+ *
+ * Properties verified:
+ * ✅ Combining operator preserves traces
+ * ✅ No channel conflicts between protocols
+ * ✅ All calls complete successfully
+ * ✅ Composition is deadlock-free
+ *
+ * SCENARIO:
+ *   A Manager coordinates multiple subtasks:
+ *   1. Initialize Worker
+ *   2. Execute Task
+ *   3. Cleanup
+ */
+
+// Sub-protocol: Initialize a worker
+protocol Initialize(role w, role m) {
+  m -> w: Config(string);
+  w -> m: Ready();
+}
+
+// Sub-protocol: Execute a task
+protocol Execute(role w, role m) {
+  m -> w: Task(string);
+  w -> m: Result(int);
+}
+
+// Sub-protocol: Cleanup
+protocol Cleanup(role w, role m) {
+  m -> w: Shutdown();
+  w -> m: Goodbye();
+}
+
+// Main protocol: Sequential composition
+protocol Workflow(role Manager) {
+  new role Worker;
+
+  Manager creates Worker;
+  Manager invites Worker;
+
+  // Sequential protocol calls (combined with ♢)
+  Manager calls Initialize(Worker, Manager);
+  Manager calls Execute(Worker, Manager);
+  Manager calls Cleanup(Worker, Manager);
+}

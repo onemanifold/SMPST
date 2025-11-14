@@ -71,7 +71,88 @@ export interface SubProtocolAction {
   roleArguments: string[];
 }
 
-export type Action = MessageAction | ParallelAction | SubProtocolAction;
+// ============================================================================
+// DMst Actions (Castro-Perez & Yoshida, ECOOP 2023)
+// ============================================================================
+
+/**
+ * Dynamic Role Declaration Action
+ * Declares a role type that can be instantiated dynamically.
+ *
+ * From ECOOP 2023: `new role Worker`
+ */
+export interface DynamicRoleDeclarationAction {
+  kind: 'dynamic-role-declaration';
+  roleName: string;
+  location?: SourceLocation;
+}
+
+/**
+ * Protocol Call Action
+ * Calls a sub-protocol, creating a nested session.
+ *
+ * From ECOOP 2023 Definition 1: p ↪→ x⟨q⟩
+ * Combining operator ♢ interleaves caller with callee protocol.
+ */
+export interface ProtocolCallAction {
+  kind: 'protocol-call';
+  caller: string;
+  protocol: string;
+  roleArguments: string[];
+  location?: SourceLocation;
+}
+
+/**
+ * Create Participants Action
+ * Creates a new instance of a dynamic role at runtime.
+ *
+ * From ECOOP 2023: Manager creates Worker as w1
+ */
+export interface CreateParticipantsAction {
+  kind: 'create-participants';
+  creator: string;
+  roleName: string;
+  instanceName?: string;
+  location?: SourceLocation;
+}
+
+/**
+ * Invitation Action
+ * Synchronization point for dynamic participant creation.
+ *
+ * From ECOOP 2023: Ensures created participants are ready before use.
+ * Prevents orphaned messages and ensures proper initialization.
+ */
+export interface InvitationAction {
+  kind: 'invitation';
+  inviter: string;
+  invitee: string;
+  location?: SourceLocation;
+}
+
+/**
+ * Updatable Recursion Action
+ * Recursion point with dynamic behavior updates.
+ *
+ * From ECOOP 2023 Definition 13: continue X with { G_update }
+ * Safety requirement: Definition 14 (Safe Protocol Update via 1-unfolding).
+ */
+export interface UpdatableRecursionAction {
+  kind: 'updatable-recursion';
+  label: string;
+  // Note: Update body is handled by CFG builder creating separate subgraph
+  location?: SourceLocation;
+}
+
+export type Action =
+  | MessageAction
+  | ParallelAction
+  | SubProtocolAction
+  | DynamicRoleDeclarationAction
+  | ProtocolCallAction
+  | CreateParticipantsAction
+  | InvitationAction
+  | UpdatableRecursionAction;
 
 // ============================================================================
 // Nodes
@@ -201,4 +282,28 @@ export function isParallelAction(action: Action): action is ParallelAction {
 
 export function isSubProtocolAction(action: Action): action is SubProtocolAction {
   return action.kind === 'subprotocol';
+}
+
+// ============================================================================
+// Type Guards for DMst Actions
+// ============================================================================
+
+export function isDynamicRoleDeclarationAction(action: Action): action is DynamicRoleDeclarationAction {
+  return action.kind === 'dynamic-role-declaration';
+}
+
+export function isProtocolCallAction(action: Action): action is ProtocolCallAction {
+  return action.kind === 'protocol-call';
+}
+
+export function isCreateParticipantsAction(action: Action): action is CreateParticipantsAction {
+  return action.kind === 'create-participants';
+}
+
+export function isInvitationAction(action: Action): action is InvitationAction {
+  return action.kind === 'invitation';
+}
+
+export function isUpdatableRecursionAction(action: Action): action is UpdatableRecursionAction {
+  return action.kind === 'updatable-recursion';
 }

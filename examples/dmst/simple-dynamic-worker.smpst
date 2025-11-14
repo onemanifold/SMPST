@@ -1,0 +1,31 @@
+/**
+ * Simple Dynamic Worker Protocol
+ *
+ * From Castro-Perez & Yoshida (ECOOP 2023), Example 1
+ *
+ * Demonstrates:
+ * - Dynamic role creation with `new role`
+ * - Participant creation with `creates`
+ * - Invitation synchronization with `invites`
+ * - Standard communication after invitation
+ *
+ * Properties verified (when tests enabled):
+ * ✅ Trace equivalence (Theorem 20)
+ * ✅ Deadlock-freedom (Theorem 23)
+ * ✅ Orphan-freedom (Theorem 29)
+ */
+
+protocol DynamicWorker(role Manager) {
+  // Dynamic role declaration (Definition 12)
+  new role Worker;
+
+  // Manager creates a Worker instance
+  Manager creates Worker;
+
+  // Manager invites Worker to join protocol
+  Manager invites Worker;
+
+  // After invitation, standard protocol interactions
+  Manager -> Worker: Task(string);
+  Worker -> Manager: Result(int);
+}

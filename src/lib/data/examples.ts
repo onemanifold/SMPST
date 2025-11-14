@@ -147,10 +147,130 @@ export const protocolExamples: ProtocolExample[] = [
     }
   }
 }`
+  },
+  // ============================================================================
+  // DMst (Dynamically Updatable MPST) Examples
+  // From Castro-Perez & Yoshida (ECOOP 2023)
+  // ============================================================================
+  {
+    id: 'dynamic-worker',
+    name: 'Dynamic Worker',
+    description: 'Dynamic participant creation with invitation protocol',
+    category: 'DMst',
+    code: `protocol DynamicWorker(role Manager) {
+  // Dynamic role declaration
+  new role Worker;
+
+  // Manager creates a Worker instance
+  Manager creates Worker;
+
+  // Manager invites Worker to join protocol
+  Manager invites Worker;
+
+  // After invitation, standard protocol interactions
+  Manager -> Worker: Task(string);
+  Worker -> Manager: Result(int);
+}`
+  },
+  {
+    id: 'updatable-pipeline',
+    name: 'Updatable Pipeline',
+    description: 'Growing participant set with updatable recursion',
+    category: 'DMst',
+    code: `protocol Pipeline(role Manager) {
+  new role Worker;
+
+  rec Loop {
+    // Main loop body: process task with existing workers
+    Manager creates Worker as w1;
+    Manager invites w1;
+    Manager -> w1: Task(string);
+    w1 -> Manager: Result(int);
+
+    choice at Manager {
+      // Branch 1: Add a new worker (updatable recursion)
+      continue Loop with {
+        // Update body: create and assign task to new worker
+        Manager creates Worker as w_new;
+        Manager invites w_new;
+        Manager -> w_new: Task(string);
+        w_new -> Manager: Result(int);
+      };
+    } or {
+      // Branch 2: Finish processing
+      Manager -> w1: Done();
+    }
+  }
+}`
+  },
+  {
+    id: 'protocol-call',
+    name: 'Protocol Call',
+    description: 'Nested protocol composition with combining operator',
+    category: 'DMst',
+    code: `// Sub-protocol: Worker reports status
+protocol SubTask(role w) {
+  w -> Manager: Status(string);
+}
+
+// Main protocol: Coordinator manages Worker via SubTask
+protocol Main(role Coordinator) {
+  new role Worker;
+
+  // Create and invite Worker
+  Coordinator creates Worker;
+  Coordinator invites Worker;
+
+  // Call SubTask with Worker as parameter
+  Coordinator calls SubTask(Worker);
+
+  // Continue Main protocol after SubTask completes
+  Coordinator -> Worker: Continue(string);
+  Worker -> Coordinator: Done();
+}`
+  },
+  {
+    id: 'map-reduce',
+    name: 'Map-Reduce',
+    description: 'Elastic worker pool with all DMst features',
+    category: 'DMst',
+    code: `// Map task protocol: Worker processes chunk
+protocol MapTask(role w, role m) {
+  m -> w: Chunk(string);
+  w -> m: MapResult(int);
+}
+
+// Main map-reduce protocol
+protocol MapReduce(role Master) {
+  new role Worker;
+
+  // Create initial worker pool
+  Master creates Worker as w1;
+  Master invites w1;
+
+  rec ProcessingLoop {
+    // Distribute map task to worker
+    Master calls MapTask(w1, Master);
+
+    choice at Master {
+      // Branch 1: Add worker and continue (updatable recursion)
+      continue ProcessingLoop with {
+        // Update body: add new worker
+        Master creates Worker as w_new;
+        Master invites w_new;
+        Master calls MapTask(w_new, Master);
+      };
+    } or {
+      // Branch 2: Reduce phase
+      Master -> w1: Reduce();
+      w1 -> Master: FinalResult(int);
+    }
+  }
+}`
   }
 ];
 
-export const categories = ['All', 'Basic', 'Classic', 'Advanced'];
+export const categories = ['All', 'Basic', 'Classic', 'Advanced', 'DMst'];
 
 export function getExampleById(id: string): ProtocolExample | undefined {
   return protocolExamples.find(ex => ex.id === id);

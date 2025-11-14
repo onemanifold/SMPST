@@ -266,6 +266,12 @@ export class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.recursion) },
       { ALT: () => this.SUBRULE(this.continueStatement) },
       { ALT: () => this.SUBRULE(this.doStatement) },
+      // DMst - Dynamically Updatable MPST (Castro-Perez & Yoshida ECOOP 2023)
+      { ALT: () => this.SUBRULE(this.dynamicRoleDeclaration) },
+      { ALT: () => this.SUBRULE(this.protocolCall) },
+      { ALT: () => this.SUBRULE(this.createParticipants) },
+      { ALT: () => this.SUBRULE(this.invitation) },
+      { ALT: () => this.SUBRULE(this.updatableRecursion) },
       // TODO: Re-enable Exception Handling (Phase 4)
       // DISABLED: Not yet needed; enable after core projection complete
       // Requires: Exception propagation semantics, projection rules
@@ -387,6 +393,114 @@ export class ScribbleParser extends CstParser {
       },
     });
     this.CONSUME(tokens.RParen);
+    this.CONSUME(tokens.Semicolon);
+  });
+
+  // ==========================================================================
+  // DMst - Dynamically Updatable MPST (Castro-Perez & Yoshida, ECOOP 2023)
+  // ==========================================================================
+
+  /**
+   * Dynamic Role Declaration: new role Worker;
+   *
+   * Syntax: new role RoleName;
+   *
+   * Declares a role that can be instantiated dynamically at runtime.
+   * Unlike static roles (in protocol parameters), dynamic roles are
+   * created via CreateParticipants during execution.
+   */
+  private dynamicRoleDeclaration = this.RULE('dynamicRoleDeclaration', () => {
+    this.CONSUME(tokens.New);
+    this.CONSUME(tokens.Role);
+    this.CONSUME(tokens.Identifier, { LABEL: 'roleName' });
+    this.CONSUME(tokens.Semicolon);
+  });
+
+  /**
+   * Protocol Call: Coordinator calls SubTask(Worker);
+   *
+   * Syntax: Caller calls Protocol<TypeArgs>(role1, role2);
+   *
+   * Calls a sub-protocol, creating a nested session.
+   * From ECOOP 2023 Definition 1: p ↪→ x⟨q⟩
+   */
+  private protocolCall = this.RULE('protocolCall', () => {
+    this.CONSUME(tokens.Identifier, { LABEL: 'caller' });
+    this.CONSUME(tokens.Calls);
+    this.CONSUME2(tokens.Identifier, { LABEL: 'protocol' });
+
+    // Optional type arguments
+    this.OPTION(() => {
+      this.SUBRULE(this.typeArguments);
+    });
+
+    // Role arguments
+    this.CONSUME(tokens.LParen);
+    this.AT_LEAST_ONE_SEP({
+      SEP: tokens.Comma,
+      DEF: () => {
+        this.CONSUME3(tokens.Identifier, { LABEL: 'roleArg' });
+      },
+    });
+    this.CONSUME(tokens.RParen);
+    this.CONSUME(tokens.Semicolon);
+  });
+
+  /**
+   * Create Participants: Manager creates Worker;
+   *                      Manager creates Worker as w1;
+   *
+   * Syntax: Creator creates RoleName;
+   *         Creator creates RoleName as InstanceName;
+   *
+   * Creates a new instance of a dynamic role at runtime.
+   */
+  private createParticipants = this.RULE('createParticipants', () => {
+    this.CONSUME(tokens.Identifier, { LABEL: 'creator' });
+    this.CONSUME(tokens.Creates);
+    this.CONSUME2(tokens.Identifier, { LABEL: 'roleName' });
+
+    // Optional instance name
+    this.OPTION(() => {
+      this.CONSUME(tokens.As);
+      this.CONSUME3(tokens.Identifier, { LABEL: 'instanceName' });
+    });
+
+    this.CONSUME(tokens.Semicolon);
+  });
+
+  /**
+   * Invitation: Manager invites Worker;
+   *
+   * Syntax: Inviter invites Invitee;
+   *
+   * Synchronization point for dynamic participant creation.
+   * Ensures the created participant is ready before messages are sent.
+   */
+  private invitation = this.RULE('invitation', () => {
+    this.CONSUME(tokens.Identifier, { LABEL: 'inviter' });
+    this.CONSUME(tokens.Invites);
+    this.CONSUME2(tokens.Identifier, { LABEL: 'invitee' });
+    this.CONSUME(tokens.Semicolon);
+  });
+
+  /**
+   * Updatable Recursion: continue Loop with { ... }
+   *
+   * Syntax: continue Label with { GlobalProtocolBody }
+   *
+   * From ECOOP 2023 Definition 13:
+   * Allows recursive protocols to grow dynamically.
+   *
+   * Safety requirement: Must satisfy Definition 14 (Safe Protocol Update).
+   */
+  private updatableRecursion = this.RULE('updatableRecursion', () => {
+    this.CONSUME(tokens.Continue);
+    this.CONSUME(tokens.Identifier, { LABEL: 'label' });
+    this.CONSUME(tokens.With);
+    this.CONSUME(tokens.LCurly);
+    this.SUBRULE(this.globalProtocolBody, { LABEL: 'updateBody' });
+    this.CONSUME(tokens.RCurly);
     this.CONSUME(tokens.Semicolon);
   });
 
@@ -755,6 +869,22 @@ class ScribbleToAstVisitor extends BaseCstVisitor {
     if (ctx.doStatement) {
       return this.visit(ctx.doStatement);
     }
+    // DMst
+    if (ctx.dynamicRoleDeclaration) {
+      return this.visit(ctx.dynamicRoleDeclaration);
+    }
+    if (ctx.protocolCall) {
+      return this.visit(ctx.protocolCall);
+    }
+    if (ctx.createParticipants) {
+      return this.visit(ctx.createParticipants);
+    }
+    if (ctx.invitation) {
+      return this.visit(ctx.invitation);
+    }
+    if (ctx.updatableRecursion) {
+      return this.visit(ctx.updatableRecursion);
+    }
     throw new Error('Unknown global interaction');
   }
 
@@ -893,6 +1023,67 @@ class ScribbleToAstVisitor extends BaseCstVisitor {
       protocol: ctx.protocol[0].image,
       typeArguments,
       roleArguments,
+      location: this.getLocation(ctx),
+    };
+  }
+
+  // ==========================================================================
+  // DMst Visitors (Castro-Perez & Yoshida, ECOOP 2023)
+  // ==========================================================================
+
+  dynamicRoleDeclaration(ctx: any): AST.DynamicRoleDeclaration {
+    return {
+      type: 'DynamicRoleDeclaration',
+      roleName: ctx.roleName[0].image,
+      location: this.getLocation(ctx),
+    };
+  }
+
+  protocolCall(ctx: any): AST.ProtocolCall {
+    const typeArguments = ctx.typeArguments
+      ? this.visit(ctx.typeArguments)
+      : undefined;
+
+    const roleArguments = ctx.roleArg.map((id: IToken) => id.image);
+
+    return {
+      type: 'ProtocolCall',
+      caller: ctx.caller[0].image,
+      protocol: ctx.protocol[0].image,
+      typeArguments,
+      roleArguments,
+      location: this.getLocation(ctx),
+    };
+  }
+
+  createParticipants(ctx: any): AST.CreateParticipants {
+    const instanceName = ctx.instanceName
+      ? ctx.instanceName[0].image
+      : undefined;
+
+    return {
+      type: 'CreateParticipants',
+      creator: ctx.creator[0].image,
+      roleName: ctx.roleName[0].image,
+      instanceName,
+      location: this.getLocation(ctx),
+    };
+  }
+
+  invitation(ctx: any): AST.Invitation {
+    return {
+      type: 'Invitation',
+      inviter: ctx.inviter[0].image,
+      invitee: ctx.invitee[0].image,
+      location: this.getLocation(ctx),
+    };
+  }
+
+  updatableRecursion(ctx: any): AST.UpdatableRecursion {
+    return {
+      type: 'UpdatableRecursion',
+      label: ctx.label[0].image,
+      updateBody: this.visit(ctx.updateBody),
       location: this.getLocation(ctx),
     };
   }

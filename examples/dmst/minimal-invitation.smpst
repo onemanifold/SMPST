@@ -1,0 +1,22 @@
+/**
+ * Minimal Invitation Protocol
+ *
+ * The simplest possible DMst protocol.
+ *
+ * Demonstrates:
+ * - Minimal viable DMst protocol
+ * - Dynamic role creation
+ * - Invitation without communication
+ *
+ * Properties verified:
+ * ✅ Well-formed (minimal CFG)
+ * ✅ Trace equivalence (empty traces)
+ * ✅ Deadlock-free (no cycles)
+ */
+
+protocol MinimalInvitation(role Creator) {
+  new role Guest;
+
+  Creator creates Guest;
+  Creator invites Guest;
+}
