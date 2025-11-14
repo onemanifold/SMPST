@@ -37,7 +37,11 @@
     "test:coverage:theorems": "vitest run --coverage src/__tests__/theorems",
     "parse": "tsx src/core/parser/cli.ts",
     "project": "tsx src/core/projection/cli.ts",
-    "project:help": "tsx src/core/projection/cli.ts --help"
+    "project:help": "tsx src/core/projection/cli.ts --help",
+    "build-cfg": "tsx src/cli/build-cfg.ts",
+    "verify": "tsx src/cli/verify.ts",
+    "simulate": "tsx src/cli/simulate.ts",
+    "smpst": "tsx src/cli/index.ts"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.1.0",
