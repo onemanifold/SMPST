@@ -118,6 +118,13 @@ describe('CFSM Executor - Basic Execution', () => {
     // Step 2: Receive response
     await executor.step();
 
+    // Step 3: Execute tau transition to terminal state (if exists)
+    // CFSM may have: ... -receive-> s -tau-> terminal
+    const stateBeforeTau = executor.getState();
+    if (!stateBeforeTau.completed) {
+      await executor.step();
+    }
+
     const state = executor.getState();
     expect(state.completed).toBe(true);
     expect(cfsm.terminalStates).toContain(state.currentState);
