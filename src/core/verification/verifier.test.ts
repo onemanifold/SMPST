@@ -223,9 +223,9 @@ describe('Liveness Detection', () => {
 });
 
 describe('Race Condition Detection', () => {
-  it('should detect potential race in parallel branches', () => {
+  it('should NOT detect race when same sender, different receivers', () => {
     const source = `
-      protocol PotentialRace(role A, role B, role C) {
+      protocol NoRace(role A, role B, role C) {
         par {
           A -> B: Update();
         } and {
@@ -237,15 +237,14 @@ describe('Race Condition Detection', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectRaceConditions(cfg);
 
-    // A sending to multiple recipients concurrently might be a race
-    // depending on whether order matters
-    // For now, we'll be conservative and flag it
-    expect(result.hasRaces).toBe(true);
+    // FORMAL SEMANTICS (Deniélou & Yoshida 2012):
+    // Channels (A,B) and (A,C) are DISJOINT → NO RACE
+    expect(result.hasRaces).toBe(false);
   });
 
-  it('should detect race when same role receives in parallel', () => {
+  it('should NOT detect race when different senders, same receiver', () => {
     const source = `
-      protocol ReceiveRace(role A, role B, role C) {
+      protocol NoRace(role A, role B, role C) {
         par {
           A -> C: M1();
         } and {
@@ -257,8 +256,10 @@ describe('Race Condition Detection', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectRaceConditions(cfg);
 
-    // C receiving from multiple senders concurrently is a race
-    expect(result.hasRaces).toBe(true);
+    // FORMAL SEMANTICS (Deniélou & Yoshida 2012):
+    // Channels (A,C) and (B,C) are DISJOINT → NO RACE
+    // NOTE: C doesn't know message arrival order, but that's asynchrony, not a race
+    expect(result.hasRaces).toBe(false);
   });
 });
 
@@ -616,7 +617,7 @@ describe('Parallel Deadlock Detection Algorithm', () => {
 });
 
 describe('Race Condition Detection Algorithm', () => {
-  it('should pass when no concurrent access to same role', () => {
+  it('should NOT detect race when different channels (different senders)', () => {
     const source = `
       protocol NoRace(role A, role B, role C) {
         par {
@@ -626,18 +627,17 @@ describe('Race Condition Detection Algorithm', () => {
         }
       }
     `;
-    // Even though B receives from both, we need to check if they're truly concurrent
     const ast = parse(source);
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectRaceConditions(cfg);
 
-    // B is receiving from two sources concurrently
-    expect(result.hasRaces).toBe(true);
+    // FORMAL SEMANTICS: Channels (A,B) and (C,B) are DISJOINT → NO RACE
+    expect(result.hasRaces).toBe(false);
   });
 
-  it('should detect race on shared resource', () => {
+  it('should NOT detect race with different channels', () => {
     const source = `
-      protocol SharedResource(role A, role B, role Resource) {
+      protocol NoRace(role A, role B, role Resource) {
         par {
           A -> Resource: Write();
         } and {
@@ -649,8 +649,8 @@ describe('Race Condition Detection Algorithm', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = detectRaceConditions(cfg);
 
-    expect(result.hasRaces).toBe(true);
-    expect(result.races[0].resource).toContain('Resource');
+    // FORMAL SEMANTICS: Channels (A,Resource) and (B,Resource) are DISJOINT → NO RACE
+    expect(result.hasRaces).toBe(false);
   });
 });
 
