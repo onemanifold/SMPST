@@ -84,8 +84,10 @@ describe('CFSM Projection - Edge Cases', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const cCFSM = project(cfg, 'C');
 
-    // C has no actions, just initial -> terminal
-    const actionTransitions = cCFSM.transitions.filter(t => t.action);
+    // C has no actions (send/receive), just initial -> terminal via tau
+    const actionTransitions = cCFSM.transitions.filter(
+      t => t.action && t.action.type !== 'tau'
+    );
     expect(actionTransitions.length).toBe(0);
   });
 

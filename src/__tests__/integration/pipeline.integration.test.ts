@@ -343,9 +343,11 @@ describe('Integration - Full Pipeline', () => {
       expect(verification.structural.valid).toBe(true);
       expect(projection.errors).toHaveLength(0);
 
-      // Role A should have 5 sends + 5 receives (plus possibly terminal transition)
+      // Role A should have 5 sends + 5 receives (excluding tau transitions)
       const { cfsm } = createDebugCFSM(LONG_SEQUENCE, 'A');
-      const actionTransitions = cfsm.transitions.filter(t => t.action?.type);
+      const actionTransitions = cfsm.transitions.filter(
+        t => t.action?.type && t.action.type !== 'tau'
+      );
       expect(actionTransitions.length).toBe(10); // Exactly 10 action transitions (5 sends, 5 receives)
     });
 
