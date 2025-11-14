@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { projectionData, parseStatus } from '$lib/stores/editor';
+  import { currentCFG, executionState } from '$lib/stores/simulation';
   import * as d3 from 'd3';
+  import type { MessageAction } from '../../../core/cfg/types';
 
   let svgElement: SVGSVGElement;
   let containerElement: HTMLDivElement;
@@ -11,6 +13,53 @@
   const CFSM_HEIGHT = 400;
   const CFSM_MARGIN = 40;
   const STATE_RADIUS = 20;
+
+  // Get currently active message from execution state
+  function getCurrentMessage(): { from: string; to: string | string[]; label: string } | null {
+    if (!$currentCFG || !$executionState) return null;
+
+    const currentNodeId = typeof $executionState.currentNode === 'string'
+      ? $executionState.currentNode
+      : $executionState.currentNode[0];
+
+    const node = $currentCFG.nodes.find(n => n.id === currentNodeId);
+    if (!node || node.type !== 'action' || node.action.kind !== 'message') {
+      return null;
+    }
+
+    const action = node.action as MessageAction;
+    return {
+      from: action.from,
+      to: action.to,
+      label: action.message.label
+    };
+  }
+
+  // Check if a transition is currently active
+  function isTransitionActive(projection: typeof $projectionData[0], transition: any): boolean {
+    const currentMsg = getCurrentMessage();
+    if (!currentMsg) return false;
+
+    // Check if this transition matches the current message
+    const transitionLabel = transition.label;
+
+    // For send transitions
+    if (transitionLabel.includes('send ') && currentMsg.from === projection.role) {
+      const msgName = transitionLabel.replace('send ', '');
+      return msgName === currentMsg.label;
+    }
+
+    // For receive transitions
+    if (transitionLabel.includes('recv ') && (
+      currentMsg.to === projection.role ||
+      (Array.isArray(currentMsg.to) && currentMsg.to.includes(projection.role))
+    )) {
+      const msgName = transitionLabel.replace('recv ', '');
+      return msgName === currentMsg.label;
+    }
+
+    return false;
+  }
 
   function renderCFSMNetwork() {
     if (!svgElement || !containerElement || $projectionData.length === 0) return;
@@ -86,6 +135,13 @@
       const x1 = CFSM_WIDTH / 2;
       const x2 = CFSM_WIDTH / 2;
 
+      // Check if this transition is currently active
+      const isActive = isTransitionActive(projection, t);
+      const strokeColor = isActive ? '#4EC9B0' : '#666';
+      const strokeWidth = isActive ? 2.5 : 1.5;
+      const labelColor = isActive ? '#4EC9B0' : '#9CDCFE';
+      const labelWeight = isActive ? 'bold' : 'normal';
+
       if (t.from === t.to) {
         // Self-loop
         const loopRadius = 30;
@@ -98,8 +154,8 @@
           .append('path')
           .attr('d', path)
           .attr('fill', 'none')
-          .attr('stroke', '#666')
-          .attr('stroke-width', 1.5)
+          .attr('stroke', strokeColor)
+          .attr('stroke-width', strokeWidth)
           .attr('marker-end', 'url(#arrowhead)');
 
         // Label for self-loop
@@ -108,7 +164,8 @@
           .attr('x', x1 + loopRadius + 10)
           .attr('y', y1)
           .attr('font-size', 11)
-          .attr('fill', '#9CDCFE')
+          .attr('fill', labelColor)
+          .attr('font-weight', labelWeight)
           .text(truncateLabel(t.label));
       } else {
         // Regular transition
@@ -129,8 +186,8 @@
           .attr('y1', startY)
           .attr('x2', endX)
           .attr('y2', endY)
-          .attr('stroke', '#666')
-          .attr('stroke-width', 1.5)
+          .attr('stroke', strokeColor)
+          .attr('stroke-width', strokeWidth)
           .attr('marker-end', 'url(#arrowhead)');
 
         // Label
@@ -139,7 +196,8 @@
           .attr('x', (startX + endX) / 2 + 10)
           .attr('y', (startY + endY) / 2)
           .attr('font-size', 11)
-          .attr('fill', '#9CDCFE')
+          .attr('fill', labelColor)
+          .attr('font-weight', labelWeight)
           .text(truncateLabel(t.label));
       }
     });
@@ -194,8 +252,8 @@
     return label.substring(0, maxLength - 3) + '...';
   }
 
-  // Re-render on data change or window resize
-  $: if ($projectionData) {
+  // Re-render on data change, execution state change, or window resize
+  $: if ($projectionData || $executionState) {
     renderCFSMNetwork();
   }
 
