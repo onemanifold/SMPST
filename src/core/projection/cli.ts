@@ -26,9 +26,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { parse } from '../parser/parser';
-import { projectToLocalProtocols, projectForRole } from './ast-projector';
-import { serializeLocalProtocol } from '../serializer/local-serializer';
+import { buildCFG } from '../cfg/builder';
+import { verifyProtocol } from '../verification/verifier';
+import { projectAll, project } from './projector';
+import { serializeCFSM } from '../serializer/cfsm-serializer';
 import type { GlobalProtocolDeclaration } from '../ast/types';
+import type { CompleteVerification } from '../verification/types';
 
 // ============================================================================
 // CLI Configuration
@@ -40,6 +43,7 @@ interface CLIOptions {
   role?: string;
   outputDir?: string;
   format: 'text' | 'json' | 'both';
+  skipVerification: boolean;
   help: boolean;
 }
 
@@ -51,6 +55,7 @@ function parseArgs(args: string[]): CLIOptions {
   const options: CLIOptions = {
     stdin: false,
     format: 'text',
+    skipVerification: false,
     help: false,
   };
 
@@ -61,6 +66,8 @@ function parseArgs(args: string[]): CLIOptions {
       options.help = true;
     } else if (arg === '--stdin') {
       options.stdin = true;
+    } else if (arg === '--skip-verification') {
+      options.skipVerification = true;
     } else if (arg === '--role' || arg === '-r') {
       options.role = args[++i];
     } else if (arg === '--output-dir' || arg === '-o') {
@@ -237,6 +244,59 @@ function main() {
 }
 
 // ============================================================================
+// Verification
+// ============================================================================
+
+function runVerification(cfg: any, skipVerification: boolean): boolean {
+  if (skipVerification) {
+    console.log('⏭️  Skipping verification (--skip-verification)');
+    return true;
+  }
+
+  console.log('🔍 Verifying protocol correctness...');
+  console.log('─'.repeat(80));
+
+  const verification = verifyProtocol(cfg);
+
+  // Check for critical errors
+  const criticalErrors = [];
+
+  if (verification.deadlock.hasDeadlock) {
+    criticalErrors.push(`Deadlock detected: ${verification.deadlock.cycles.length} cycle(s)`);
+  }
+
+  if (!verification.liveness.isLive) {
+    criticalErrors.push(`Liveness violation: ${verification.liveness.violations.length} violation(s)`);
+  }
+
+  if (verification.parallelDeadlock.hasDeadlock) {
+    criticalErrors.push(`Parallel deadlock: ${verification.parallelDeadlock.conflicts.length} conflict(s)`);
+  }
+
+  if (verification.raceConditions.hasRaces) {
+    console.log(`⚠️  Warning: Race conditions detected (${verification.raceConditions.races.length})`);
+  }
+
+  if (!verification.selfCommunication.isValid) {
+    criticalErrors.push(`Self-communication detected: ${verification.selfCommunication.violations.length} violation(s)`);
+  }
+
+  if (criticalErrors.length > 0) {
+    console.log('✗ Verification failed!');
+    console.log('');
+    for (const error of criticalErrors) {
+      console.error(`  ❌ ${error}`);
+    }
+    console.log('');
+    return false;
+  }
+
+  console.log('✓ Verification passed!');
+  console.log('');
+  return true;
+}
+
+// ============================================================================
 // Projection Handlers
 // ============================================================================
 
@@ -245,14 +305,21 @@ function projectSingleRole(
   role: string,
   options: CLIOptions
 ) {
-  const localProtocol = projectForRole(globalProtocol, role);
+  // NEW PIPELINE: Global → CFG → Verification → CFSM → Scribble
+  const cfg = buildCFG(globalProtocol);
+
+  if (!runVerification(cfg, options.skipVerification)) {
+    process.exit(1);
+  }
+
+  const cfsm = project(cfg, role);
 
   console.log(`\n📝 Local Protocol for: ${role}`);
   console.log('─'.repeat(80));
 
   // Output based on format
   if (options.format === 'text' || options.format === 'both') {
-    const text = serializeLocalProtocol(localProtocol);
+    const text = serializeCFSM(cfsm);
 
     if (options.outputDir) {
       // Save to file
@@ -267,7 +334,7 @@ function projectSingleRole(
   }
 
   if (options.format === 'json' || options.format === 'both') {
-    const json = JSON.stringify(localProtocol, null, 2);
+    const json = JSON.stringify(cfsm, null, 2);
 
     if (options.outputDir) {
       // Save to file
@@ -283,15 +350,26 @@ function projectSingleRole(
 
   // Statistics
   console.log('');
-  console.log(`  Interactions: ${localProtocol.body.length}`);
-  console.log(`  Actions: ${countActions(localProtocol.body)}`);
+  console.log(`  States: ${cfsm.states.length}`);
+  console.log(`  Transitions: ${cfsm.transitions.length}`);
+  const protocolActions = cfsm.transitions.filter(
+    t => t.action.type === 'send' || t.action.type === 'receive'
+  );
+  console.log(`  Protocol Actions: ${protocolActions.length}`);
 }
 
 function projectAllRoles(
   globalProtocol: GlobalProtocolDeclaration,
   options: CLIOptions
 ) {
-  const result = projectToLocalProtocols(globalProtocol);
+  // NEW PIPELINE: Global → CFG → Verification → CFSMs → Scribble
+  const cfg = buildCFG(globalProtocol);
+
+  if (!runVerification(cfg, options.skipVerification)) {
+    process.exit(1);
+  }
+
+  const result = projectAll(cfg);
 
   if (result.errors.length > 0) {
     console.error('⚠️  Projection errors:');
@@ -302,13 +380,13 @@ function projectAllRoles(
   }
 
   // Process each role
-  for (const [role, localProtocol] of result.localProtocols) {
+  for (const [role, cfsm] of result.cfsms) {
     console.log(`\n📝 Local Protocol for: ${role}`);
     console.log('─'.repeat(80));
 
     // Output based on format
     if (options.format === 'text' || options.format === 'both') {
-      const text = serializeLocalProtocol(localProtocol);
+      const text = serializeCFSM(cfsm);
 
       if (options.outputDir) {
         // Save to file
@@ -323,7 +401,7 @@ function projectAllRoles(
     }
 
     if (options.format === 'json' || options.format === 'both') {
-      const json = JSON.stringify(localProtocol, null, 2);
+      const json = JSON.stringify(cfsm, null, 2);
 
       if (options.outputDir) {
         // Save to file
@@ -338,49 +416,22 @@ function projectAllRoles(
     }
 
     // Statistics
-    const actionCount = countActions(localProtocol.body);
-    console.log(`  Interactions: ${localProtocol.body.length}, Actions: ${actionCount}`);
+    const protocolActions = cfsm.transitions.filter(
+      t => t.action.type === 'send' || t.action.type === 'receive'
+    );
+    console.log(`  States: ${cfsm.states.length}, Transitions: ${cfsm.transitions.length}, Actions: ${protocolActions.length}`);
   }
 
   // Summary
   console.log('');
   console.log('─'.repeat(80));
   console.log('Summary:');
-  console.log(`  Total roles projected: ${result.localProtocols.size}`);
-  console.log(`  Roles: ${Array.from(result.localProtocols.keys()).join(', ')}`);
+  console.log(`  Total roles projected: ${result.cfsms.size}`);
+  console.log(`  Roles: ${Array.from(result.cfsms.keys()).join(', ')}`);
 
   if (options.outputDir) {
     console.log(`  Output directory: ${options.outputDir}`);
   }
-}
-
-// ============================================================================
-// Utilities
-// ============================================================================
-
-function countActions(body: any[]): number {
-  let count = 0;
-
-  function traverse(interactions: any[]): void {
-    for (const interaction of interactions) {
-      if (interaction.type === 'Send' || interaction.type === 'Receive') {
-        count++;
-      } else if (interaction.type === 'LocalChoice') {
-        for (const branch of interaction.branches) {
-          traverse(branch.body);
-        }
-      } else if (interaction.type === 'Recursion') {
-        traverse(interaction.body);
-      } else if (interaction.type === 'LocalParallel') {
-        for (const branch of interaction.branches) {
-          traverse(branch.body);
-        }
-      }
-    }
-  }
-
-  traverse(body);
-  return count;
 }
 
 // ============================================================================
