@@ -189,7 +189,7 @@ function projectBody(
   for (const interaction of body) {
     const projected = projectInteraction(interaction, role, options);
 
-    // Handle both single interaction and array of interactions (for self-communication)
+    // Handle self-communication case where projection returns array
     if (projected !== null) {
       if (Array.isArray(projected)) {
         localInteractions.push(...projected);
@@ -281,8 +281,8 @@ function projectMessageTransfer(
   const isSender = from === role;
   const isReceiver = to === role || (Array.isArray(to) && to.includes(role));
 
-  // Special case: Role is both sender AND receiver (self-communication)
-  // This is a well-formedness error, but projection should not crash
+  // Case 1: Self-communication (role is both sender and receiver)
+  // Must return BOTH Send and Receive for well-formedness checking
   if (isSender && isReceiver) {
     const send: Send = {
       type: 'Send',
@@ -296,11 +296,10 @@ function projectMessageTransfer(
       from,
       location: msg.location,
     };
-    // Return both Send and Receive
     return [send, receive];
   }
 
-  // Case 1: Role is sender - project to Send
+  // Case 2: Role is sender only - project to Send
   if (isSender) {
     const send: Send = {
       type: 'Send',
@@ -311,7 +310,7 @@ function projectMessageTransfer(
     return send;
   }
 
-  // Case 2: Role is receiver - project to Receive
+  // Case 3: Role is receiver only - project to Receive
   if (isReceiver) {
     const receive: Receive = {
       type: 'Receive',
@@ -322,7 +321,7 @@ function projectMessageTransfer(
     return receive;
   }
 
-  // Case 3: Role not involved - tau-elimination (return null)
+  // Case 4: Role not involved - tau-elimination (return null)
   return null;
 }
 

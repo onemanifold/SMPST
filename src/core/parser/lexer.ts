@@ -17,6 +17,7 @@ export const Type = createToken({ name: 'Type', pattern: /type/ });
 export const Sig = createToken({ name: 'Sig', pattern: /sig/ });
 export const Import = createToken({ name: 'Import', pattern: /import/ });
 export const From = createToken({ name: 'From', pattern: /from/ });
+export const To = createToken({ name: 'To', pattern: /to/ });
 export const As = createToken({ name: 'As', pattern: /as/ });
 export const Choice = createToken({ name: 'Choice', pattern: /choice/ });
 export const At = createToken({ name: 'At', pattern: /at/ });
@@ -112,6 +113,7 @@ export const allTokens = [
   Sig,
   Import,
   From,
+  To,
   As,
   Choice,
   At,
