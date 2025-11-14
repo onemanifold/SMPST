@@ -1,0 +1,5 @@
+protocol ThreeParty(role A, role B, role C) {
+  A -> B: M1(Int);
+  B -> C: M2(String);
+  C -> A: M3(Bool);
+}

@@ -1,0 +1,11 @@
+{
+  "nodeCount": 7,
+  "edgeCount": 7,
+  "roles": [
+    "Coordinator",
+    "W1",
+    "W2"
+  ],
+  "protocolName": "ParallelCollection",
+  "structureHash": "51d7beb26c34629e304e1589809f6f345a4b235c256b6b137e108a913d5cd488"
+}

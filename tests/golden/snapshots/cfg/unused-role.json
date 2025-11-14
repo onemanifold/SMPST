@@ -1,0 +1,11 @@
+{
+  "nodeCount": 3,
+  "edgeCount": 2,
+  "roles": [
+    "A",
+    "B",
+    "C"
+  ],
+  "protocolName": "UnusedRole",
+  "structureHash": "b9b2d1937b6cfb6b08f7fa3c1d567fe461fdc5f281b43f2af90c4be8327603e2"
+}

@@ -1,0 +1,216 @@
+{
+  "role": "A",
+  "protocolName": "LongSequence",
+  "stateCount": 12,
+  "transitionCount": 11,
+  "protocolActionCount": 10,
+  "cfsm": {
+    "role": "A",
+    "protocolName": "LongSequence",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n169"
+      },
+      {
+        "id": "s2",
+        "label": "n168"
+      },
+      {
+        "id": "s3",
+        "label": "n167"
+      },
+      {
+        "id": "s4",
+        "label": "n166"
+      },
+      {
+        "id": "s5",
+        "label": "n165"
+      },
+      {
+        "id": "s6",
+        "label": "n164"
+      },
+      {
+        "id": "s7",
+        "label": "n163"
+      },
+      {
+        "id": "s8",
+        "label": "n162"
+      },
+      {
+        "id": "s9",
+        "label": "n161"
+      },
+      {
+        "id": "s10",
+        "label": "n160"
+      },
+      {
+        "id": "s11",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "M1"
+          },
+          "label": "M1"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "B",
+          "message": {
+            "type": "Message",
+            "label": "M2"
+          },
+          "label": "M2"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "M3"
+          },
+          "label": "M3"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s3",
+        "to": "s4",
+        "action": {
+          "type": "receive",
+          "from": "B",
+          "message": {
+            "type": "Message",
+            "label": "M4"
+          },
+          "label": "M4"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s4",
+        "to": "s5",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "M5"
+          },
+          "label": "M5"
+        }
+      },
+      {
+        "id": "t5",
+        "from": "s5",
+        "to": "s6",
+        "action": {
+          "type": "receive",
+          "from": "B",
+          "message": {
+            "type": "Message",
+            "label": "M6"
+          },
+          "label": "M6"
+        }
+      },
+      {
+        "id": "t6",
+        "from": "s6",
+        "to": "s7",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "M7"
+          },
+          "label": "M7"
+        }
+      },
+      {
+        "id": "t7",
+        "from": "s7",
+        "to": "s8",
+        "action": {
+          "type": "receive",
+          "from": "B",
+          "message": {
+            "type": "Message",
+            "label": "M8"
+          },
+          "label": "M8"
+        }
+      },
+      {
+        "id": "t8",
+        "from": "s8",
+        "to": "s9",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "M9"
+          },
+          "label": "M9"
+        }
+      },
+      {
+        "id": "t9",
+        "from": "s9",
+        "to": "s10",
+        "action": {
+          "type": "receive",
+          "from": "B",
+          "message": {
+            "type": "Message",
+            "label": "M10"
+          },
+          "label": "M10"
+        }
+      },
+      {
+        "id": "t10",
+        "from": "s10",
+        "to": "s11",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s11"
+    ]
+  }
+}

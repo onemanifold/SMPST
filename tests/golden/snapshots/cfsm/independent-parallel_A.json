@@ -1,0 +1,136 @@
+{
+  "role": "A",
+  "protocolName": "IndependentParallel",
+  "stateCount": 5,
+  "transitionCount": 5,
+  "protocolActionCount": 4,
+  "cfsm": {
+    "role": "A",
+    "protocolName": "IndependentParallel",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n80"
+      },
+      {
+        "id": "s2",
+        "label": "par_s0_p0_s0"
+      },
+      {
+        "id": "s3",
+        "label": "par_s0_p1_s0"
+      },
+      {
+        "id": "s4",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "M1",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "M1",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s2",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": "C",
+          "message": {
+            "type": "Message",
+            "label": "M2",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "M2",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s0",
+        "to": "s3",
+        "action": {
+          "type": "send",
+          "to": "C",
+          "message": {
+            "type": "Message",
+            "label": "M2",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "M2",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s3",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "M1",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "M1",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s1",
+        "to": "s4",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s4"
+    ]
+  }
+}

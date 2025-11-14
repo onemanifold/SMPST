@@ -1,0 +1,1 @@
+"local protocol RequestResponse_Client at Client() {\n  Request(String) to Server;\n  Response(Int) from Server;\n}"

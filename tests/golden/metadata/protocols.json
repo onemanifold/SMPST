@@ -1,0 +1,472 @@
+{
+  "request-response": {
+    "description": "Basic request-response pattern",
+    "category": "simple",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Client",
+        "Server"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 2,
+      "stateCount": {
+        "Client": 4,
+        "Server": 4
+      }
+    },
+    "performance": {
+      "maxParseTimeMs": 50,
+      "maxProjectionTimeMs": 100
+    }
+  },
+  "ping-pong": {
+    "description": "Simple ping-pong protocol",
+    "category": "simple",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 2
+    },
+    "performance": {
+      "maxParseTimeMs": 50,
+      "maxProjectionTimeMs": 100
+    }
+  },
+  "three-party": {
+    "description": "Three-party circular communication",
+    "category": "simple",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B",
+        "C"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 3
+    },
+    "performance": {
+      "maxParseTimeMs": 50,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "simple-choice": {
+    "description": "Basic binary choice",
+    "category": "choice",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Client",
+        "Server"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 2
+    },
+    "performance": {
+      "maxParseTimeMs": 75,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "choice-with-continuation": {
+    "description": "Choice with different continuations",
+    "category": "choice",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 3
+    },
+    "performance": {
+      "maxParseTimeMs": 75,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "nested-choice": {
+    "description": "Nested choice structures",
+    "category": "choice",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Client",
+        "Server"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 4
+    },
+    "performance": {
+      "maxParseTimeMs": 100,
+      "maxProjectionTimeMs": 200
+    }
+  },
+  "simple-multicast": {
+    "description": "Basic multicast/broadcast",
+    "category": "multicast",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Pub",
+        "Sub1",
+        "Sub2"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 1
+    },
+    "performance": {
+      "maxParseTimeMs": 50,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "pub-sub": {
+    "description": "Pub-sub with acknowledgments",
+    "category": "multicast",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Publisher",
+        "Sub1",
+        "Sub2",
+        "Sub3"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 4
+    },
+    "performance": {
+      "maxParseTimeMs": 75,
+      "maxProjectionTimeMs": 200
+    }
+  },
+  "multicast-choice": {
+    "description": "Multicast combined with choice",
+    "category": "multicast",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Leader",
+        "F1",
+        "F2"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 2
+    },
+    "performance": {
+      "maxParseTimeMs": 75,
+      "maxProjectionTimeMs": 200
+    }
+  },
+  "simple-recursion": {
+    "description": "Basic recursion with termination",
+    "category": "recursion",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Producer",
+        "Consumer"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 3
+    },
+    "performance": {
+      "maxParseTimeMs": 100,
+      "maxProjectionTimeMs": 200
+    }
+  },
+  "streaming": {
+    "description": "Infinite streaming protocol",
+    "category": "recursion",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Server",
+        "Client"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 2
+    },
+    "performance": {
+      "maxParseTimeMs": 75,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "nested-recursion": {
+    "description": "Nested recursion structures",
+    "category": "recursion",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 6
+    },
+    "performance": {
+      "maxParseTimeMs": 150,
+      "maxProjectionTimeMs": 300
+    }
+  },
+  "independent-parallel": {
+    "description": "Independent parallel actions",
+    "category": "parallel",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B",
+        "C"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": true,
+      "messageCount": 2
+    },
+    "performance": {
+      "maxParseTimeMs": 75,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "parallel-collection": {
+    "description": "Parallel result collection",
+    "category": "parallel",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Coordinator",
+        "W1",
+        "W2"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": true,
+      "messageCount": 3
+    },
+    "performance": {
+      "maxParseTimeMs": 100,
+      "maxProjectionTimeMs": 200
+    }
+  },
+  "two-buyer": {
+    "description": "Classic two-buyer protocol",
+    "category": "complex",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Seller",
+        "Buyer1",
+        "Buyer2"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 5
+    },
+    "performance": {
+      "maxParseTimeMs": 100,
+      "maxProjectionTimeMs": 300
+    }
+  },
+  "three-buyer": {
+    "description": "Three-buyer with circular sharing",
+    "category": "complex",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Seller",
+        "B1",
+        "B2",
+        "B3"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 7
+    },
+    "performance": {
+      "maxParseTimeMs": 150,
+      "maxProjectionTimeMs": 400
+    }
+  },
+  "two-phase-commit": {
+    "description": "Two-phase commit protocol",
+    "category": "complex",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Coordinator",
+        "P1",
+        "P2"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": true,
+      "messageCount": 5
+    },
+    "performance": {
+      "maxParseTimeMs": 150,
+      "maxProjectionTimeMs": 300
+    }
+  },
+  "oauth-flow": {
+    "description": "OAuth-like authentication flow",
+    "category": "complex",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Client",
+        "AuthServer",
+        "ResourceServer"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 5
+    },
+    "performance": {
+      "maxParseTimeMs": 150,
+      "maxProjectionTimeMs": 300
+    }
+  },
+  "simple-types": {
+    "description": "Simple type examples",
+    "category": "types",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 3
+    },
+    "performance": {
+      "maxParseTimeMs": 50,
+      "maxProjectionTimeMs": 100
+    }
+  },
+  "parametric-types": {
+    "description": "Parametric type examples",
+    "category": "types",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Client",
+        "Server"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 2
+    },
+    "performance": {
+      "maxParseTimeMs": 75,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "nested-parametric": {
+    "description": "Nested parametric types",
+    "category": "types",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 2
+    },
+    "performance": {
+      "maxParseTimeMs": 75,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "complex-nesting": {
+    "description": "Complex deeply nested types",
+    "category": "types",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "Client",
+        "Server"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 2
+    },
+    "performance": {
+      "maxParseTimeMs": 100,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "unused-role": {
+    "description": "Protocol with unused role C",
+    "category": "edge-cases",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B",
+        "C"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 1
+    },
+    "performance": {
+      "maxParseTimeMs": 50,
+      "maxProjectionTimeMs": 150
+    }
+  },
+  "many-roles": {
+    "description": "Protocol with many roles",
+    "category": "edge-cases",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 5
+    },
+    "performance": {
+      "maxParseTimeMs": 100,
+      "maxProjectionTimeMs": 250
+    }
+  },
+  "long-sequence": {
+    "description": "Long message sequence",
+    "category": "edge-cases",
+    "expectedValid": true,
+    "expectedProperties": {
+      "roles": [
+        "A",
+        "B"
+      ],
+      "hasDeadlock": false,
+      "hasRaces": false,
+      "messageCount": 10
+    },
+    "performance": {
+      "maxParseTimeMs": 100,
+      "maxProjectionTimeMs": 200
+    }
+  }
+}

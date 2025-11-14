@@ -1,0 +1,12 @@
+{
+  "nodeCount": 6,
+  "edgeCount": 5,
+  "roles": [
+    "Publisher",
+    "Sub1",
+    "Sub2",
+    "Sub3"
+  ],
+  "protocolName": "PubSub",
+  "structureHash": "c236a0b1b37e1261c52795a3313b7e5846b086f55158dda1748e51ab7aef48ec"
+}

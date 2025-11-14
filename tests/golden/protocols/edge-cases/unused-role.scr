@@ -1,0 +1,3 @@
+protocol UnusedRole(role A, role B, role C) {
+  A -> B: Message(String);
+}

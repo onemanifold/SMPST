@@ -1,0 +1,11 @@
+{
+  "nodeCount": 6,
+  "edgeCount": 6,
+  "roles": [
+    "A",
+    "B",
+    "C"
+  ],
+  "protocolName": "IndependentParallel",
+  "structureHash": "fb806b9c1f0bb580d99078701771f86909a3c17f09d2e8dcf3963a4a4e7d4a31"
+}

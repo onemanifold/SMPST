@@ -1,0 +1,98 @@
+{
+  "role": "A",
+  "protocolName": "ChoiceWithContinuation",
+  "stateCount": 5,
+  "transitionCount": 5,
+  "protocolActionCount": 3,
+  "cfsm": {
+    "role": "A",
+    "protocolName": "ChoiceWithContinuation",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n24"
+      },
+      {
+        "id": "s2",
+        "label": "n25"
+      },
+      {
+        "id": "s3",
+        "label": "n23"
+      },
+      {
+        "id": "s4",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "Yes"
+          },
+          "label": "Yes"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s0",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "No"
+          },
+          "label": "No"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "receive",
+          "from": "B",
+          "message": {
+            "type": "Message",
+            "label": "Confirm"
+          },
+          "label": "Confirm"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s2",
+        "to": "s4",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s3",
+        "to": "s4",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s4"
+    ]
+  }
+}

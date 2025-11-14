@@ -1,0 +1,10 @@
+{
+  "nodeCount": 8,
+  "edgeCount": 9,
+  "roles": [
+    "Consumer",
+    "Producer"
+  ],
+  "protocolName": "SimpleRecursion",
+  "structureHash": "7cb9e861297bc781ab0d7870a87d4bb95be777a87a4eaf177aa504d7c0440bd3"
+}

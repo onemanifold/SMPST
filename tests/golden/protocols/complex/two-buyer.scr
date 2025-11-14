@@ -1,0 +1,10 @@
+protocol TwoBuyer(role Seller, role Buyer1, role Buyer2) {
+  Seller -> Buyer1, Buyer2: Quote(Int);
+  Buyer1 -> Buyer2: Share(Int);
+  choice at Buyer2 {
+    Buyer2 -> Seller: Accept();
+    Seller -> Buyer1, Buyer2: Confirm(Bool);
+  } or {
+    Buyer2 -> Seller: Reject();
+  }
+}

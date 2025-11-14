@@ -1,0 +1,13 @@
+{
+  "nodeCount": 7,
+  "edgeCount": 6,
+  "roles": [
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5"
+  ],
+  "protocolName": "ManyRoles",
+  "structureHash": "b98ac2a13bbf2973becdd28b9886c227e18f8e436fd1b62040af58a75266f5f5"
+}

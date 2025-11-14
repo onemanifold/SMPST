@@ -1,0 +1,1 @@
+"local protocol LongSequence_B at B() {\n  M1() from A;\n  M2() to A;\n  M3() from A;\n  M4() to A;\n  M5() from A;\n  M6() to A;\n  M7() from A;\n  M8() to A;\n  M9() from A;\n  M10() to A;\n}"

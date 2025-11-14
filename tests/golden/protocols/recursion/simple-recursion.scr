@@ -1,0 +1,11 @@
+protocol SimpleRecursion(role Producer, role Consumer) {
+  rec Loop {
+    Producer -> Consumer: Data(String);
+    choice at Consumer {
+      Consumer -> Producer: Continue();
+      continue Loop;
+    } or {
+      Consumer -> Producer: Stop();
+    }
+  }
+}

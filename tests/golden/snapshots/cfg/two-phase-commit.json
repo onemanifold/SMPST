@@ -1,0 +1,11 @@
+{
+  "nodeCount": 11,
+  "edgeCount": 12,
+  "roles": [
+    "Coordinator",
+    "P1",
+    "P2"
+  ],
+  "protocolName": "TwoPhaseCommit",
+  "structureHash": "5700c00aaf810ec189cb6d9cf618a5b3e873bed9ae9feef3c9c0be4e856d5d5e"
+}

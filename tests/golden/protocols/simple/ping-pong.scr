@@ -1,0 +1,4 @@
+protocol PingPong(role A, role B) {
+  A -> B: Ping();
+  B -> A: Pong();
+}

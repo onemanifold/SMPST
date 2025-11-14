@@ -1,0 +1,3 @@
+protocol SimpleMulticast(role Pub, role Sub1, role Sub2) {
+  Pub -> Sub1, Sub2: Event(String);
+}

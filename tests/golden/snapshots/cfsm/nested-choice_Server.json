@@ -1,0 +1,132 @@
+{
+  "role": "Server",
+  "protocolName": "NestedChoice",
+  "stateCount": 6,
+  "transitionCount": 7,
+  "protocolActionCount": 4,
+  "cfsm": {
+    "role": "Server",
+    "protocolName": "NestedChoice",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n34"
+      },
+      {
+        "id": "s2",
+        "label": "n35"
+      },
+      {
+        "id": "s3",
+        "label": "n32"
+      },
+      {
+        "id": "s4",
+        "label": "n33"
+      },
+      {
+        "id": "s5",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "Client",
+          "message": {
+            "type": "Message",
+            "label": "Login",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "Login",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s0",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "Client",
+          "message": {
+            "type": "Message",
+            "label": "Cancel"
+          },
+          "label": "Cancel"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "send",
+          "to": "Client",
+          "message": {
+            "type": "Message",
+            "label": "Success"
+          },
+          "label": "Success"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s1",
+        "to": "s4",
+        "action": {
+          "type": "send",
+          "to": "Client",
+          "message": {
+            "type": "Message",
+            "label": "Failure"
+          },
+          "label": "Failure"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s2",
+        "to": "s5",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t5",
+        "from": "s3",
+        "to": "s5",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t6",
+        "from": "s4",
+        "to": "s5",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s5"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "nodeCount": 12,
+  "edgeCount": 11,
+  "roles": [
+    "A",
+    "B"
+  ],
+  "protocolName": "LongSequence",
+  "structureHash": "e304896f21c653ef2e737bfb19667cefae7a72a76ac86bd04f0821cec8d5b0c7"
+}

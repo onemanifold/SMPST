@@ -1,0 +1,207 @@
+{
+  "role": "Coordinator",
+  "protocolName": "TwoPhaseCommit",
+  "stateCount": 8,
+  "transitionCount": 9,
+  "protocolActionCount": 7,
+  "cfsm": {
+    "role": "Coordinator",
+    "protocolName": "TwoPhaseCommit",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n121"
+      },
+      {
+        "id": "s2",
+        "label": "n117"
+      },
+      {
+        "id": "s3",
+        "label": "par_s1_p0_s0"
+      },
+      {
+        "id": "s4",
+        "label": "par_s1_p1_s0"
+      },
+      {
+        "id": "s5",
+        "label": "n115"
+      },
+      {
+        "id": "s6",
+        "label": "n116"
+      },
+      {
+        "id": "s7",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": [
+            "P1",
+            "P2"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Prepare"
+          },
+          "label": "Prepare"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "receive",
+          "from": "P1",
+          "message": {
+            "type": "Message",
+            "label": "Vote1",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Bool"
+              }
+            }
+          },
+          "label": "Vote1",
+          "payloadType": "Bool"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s3",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "P2",
+          "message": {
+            "type": "Message",
+            "label": "Vote2",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Bool"
+              }
+            }
+          },
+          "label": "Vote2",
+          "payloadType": "Bool"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s1",
+        "to": "s4",
+        "action": {
+          "type": "receive",
+          "from": "P2",
+          "message": {
+            "type": "Message",
+            "label": "Vote2",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Bool"
+              }
+            }
+          },
+          "label": "Vote2",
+          "payloadType": "Bool"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s4",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "P1",
+          "message": {
+            "type": "Message",
+            "label": "Vote1",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Bool"
+              }
+            }
+          },
+          "label": "Vote1",
+          "payloadType": "Bool"
+        }
+      },
+      {
+        "id": "t5",
+        "from": "s2",
+        "to": "s5",
+        "action": {
+          "type": "send",
+          "to": [
+            "P1",
+            "P2"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Commit"
+          },
+          "label": "Commit"
+        }
+      },
+      {
+        "id": "t6",
+        "from": "s2",
+        "to": "s6",
+        "action": {
+          "type": "send",
+          "to": [
+            "P1",
+            "P2"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Abort"
+          },
+          "label": "Abort"
+        }
+      },
+      {
+        "id": "t7",
+        "from": "s5",
+        "to": "s7",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t8",
+        "from": "s6",
+        "to": "s7",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s7"
+    ]
+  }
+}

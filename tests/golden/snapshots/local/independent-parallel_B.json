@@ -1,0 +1,1 @@
+"local protocol IndependentParallel_B at B() {\n  M1(Int) from A;\n}"

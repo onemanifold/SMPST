@@ -1,0 +1,7 @@
+protocol IndependentParallel(role A, role B, role C) {
+  par {
+    A -> B: M1(Int);
+  } and {
+    A -> C: M2(String);
+  }
+}

@@ -1,0 +1,1 @@
+"local protocol PubSub_Publisher at Publisher() {\n  Publish(Int) to Sub1, Sub2, Sub3;\n  Ack1() from Sub1;\n  Ack2() from Sub2;\n  Ack3() from Sub3;\n}"

@@ -1,0 +1,1 @@
+"local protocol NestedChoice_Client at Client() {\n  choice {\n    Login(String) to Server;\n    choice {\n      Success() from Server;\n    } or {\n      Failure() from Server;\n    }\n  } or {\n    Cancel() to Server;\n  }\n}"

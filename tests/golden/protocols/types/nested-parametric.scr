@@ -1,0 +1,4 @@
+protocol NestedParametric(role A, role B) {
+  A -> B: Data(Map<String, List<Int>>);
+  B -> A: Response(List<Map<String, Bool>>);
+}

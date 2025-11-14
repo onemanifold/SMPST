@@ -1,0 +1,11 @@
+{
+  "nodeCount": 5,
+  "edgeCount": 4,
+  "roles": [
+    "A",
+    "B",
+    "C"
+  ],
+  "protocolName": "ThreeParty",
+  "structureHash": "47f2bc8ea291ad977ae0963ae614f23e56ea610c3117a5c01cf5b6ee2e577345"
+}

@@ -1,0 +1,72 @@
+{
+  "role": "R5",
+  "protocolName": "ManyRoles",
+  "stateCount": 4,
+  "transitionCount": 3,
+  "protocolActionCount": 2,
+  "cfsm": {
+    "role": "R5",
+    "protocolName": "ManyRoles",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n154"
+      },
+      {
+        "id": "s2",
+        "label": "n153"
+      },
+      {
+        "id": "s3",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "R4",
+          "message": {
+            "type": "Message",
+            "label": "M4"
+          },
+          "label": "M4"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "R1",
+          "message": {
+            "type": "Message",
+            "label": "M5"
+          },
+          "label": "M5"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s3"
+    ]
+  }
+}

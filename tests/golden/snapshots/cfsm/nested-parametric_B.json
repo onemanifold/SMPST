@@ -1,0 +1,120 @@
+{
+  "role": "B",
+  "protocolName": "NestedParametric",
+  "stateCount": 4,
+  "transitionCount": 3,
+  "protocolActionCount": 2,
+  "cfsm": {
+    "role": "B",
+    "protocolName": "NestedParametric",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n143"
+      },
+      {
+        "id": "s2",
+        "label": "n142"
+      },
+      {
+        "id": "s3",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "A",
+          "message": {
+            "type": "Message",
+            "label": "Data",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "ParametricType",
+                "name": "Map",
+                "arguments": [
+                  {
+                    "type": "SimpleType",
+                    "name": "String"
+                  },
+                  {
+                    "type": "ParametricType",
+                    "name": "List",
+                    "arguments": [
+                      {
+                        "type": "SimpleType",
+                        "name": "Int"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "label": "Data",
+          "payloadType": "Map"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "A",
+          "message": {
+            "type": "Message",
+            "label": "Response",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "ParametricType",
+                "name": "List",
+                "arguments": [
+                  {
+                    "type": "ParametricType",
+                    "name": "Map",
+                    "arguments": [
+                      {
+                        "type": "SimpleType",
+                        "name": "String"
+                      },
+                      {
+                        "type": "SimpleType",
+                        "name": "Bool"
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          "label": "Response",
+          "payloadType": "List"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s3"
+    ]
+  }
+}

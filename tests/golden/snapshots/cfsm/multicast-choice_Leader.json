@@ -1,0 +1,86 @@
+{
+  "role": "Leader",
+  "protocolName": "MulticastChoice",
+  "stateCount": 4,
+  "transitionCount": 4,
+  "protocolActionCount": 2,
+  "cfsm": {
+    "role": "Leader",
+    "protocolName": "MulticastChoice",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n49"
+      },
+      {
+        "id": "s2",
+        "label": "n50"
+      },
+      {
+        "id": "s3",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": [
+            "F1",
+            "F2"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Commit"
+          },
+          "label": "Commit"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s0",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": [
+            "F1",
+            "F2"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Abort"
+          },
+          "label": "Abort"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s3"
+    ]
+  }
+}

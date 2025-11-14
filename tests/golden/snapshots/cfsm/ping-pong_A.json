@@ -1,0 +1,72 @@
+{
+  "role": "A",
+  "protocolName": "PingPong",
+  "stateCount": 4,
+  "transitionCount": 3,
+  "protocolActionCount": 2,
+  "cfsm": {
+    "role": "A",
+    "protocolName": "PingPong",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n7"
+      },
+      {
+        "id": "s2",
+        "label": "n6"
+      },
+      {
+        "id": "s3",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": "B",
+          "message": {
+            "type": "Message",
+            "label": "Ping"
+          },
+          "label": "Ping"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "receive",
+          "from": "B",
+          "message": {
+            "type": "Message",
+            "label": "Pong"
+          },
+          "label": "Pong"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s3"
+    ]
+  }
+}

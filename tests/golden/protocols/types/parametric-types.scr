@@ -1,0 +1,4 @@
+protocol ParametricTypes(role Client, role Server) {
+  Client -> Server: ListRequest(List<String>);
+  Server -> Client: MapResponse(Map<String, Int>);
+}

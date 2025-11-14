@@ -1,0 +1,87 @@
+{
+  "structural": {
+    "valid": true,
+    "errors": [],
+    "warnings": []
+  },
+  "deadlock": {
+    "hasDeadlock": false,
+    "cycles": []
+  },
+  "liveness": {
+    "isLive": true,
+    "violations": []
+  },
+  "parallelDeadlock": {
+    "hasDeadlock": false,
+    "conflicts": []
+  },
+  "raceConditions": {
+    "hasRaces": true,
+    "races": [
+      {
+        "parallelId": "par1",
+        "conflictingActions": [
+          "n88",
+          "n89"
+        ],
+        "resource": "Coordinator",
+        "description": "Race condition: Role \"Coordinator\" involved in concurrent operations across parallel branches. Branch 1: [W1 → Coordinator: Result1], Branch 2: [W2 → Coordinator: Result2]. This may cause non-deterministic behavior."
+      }
+    ]
+  },
+  "progress": {
+    "canProgress": true,
+    "blockedNodes": []
+  },
+  "choiceDeterminism": {
+    "isDeterministic": true,
+    "violations": []
+  },
+  "choiceMergeability": {
+    "isMergeable": true,
+    "violations": []
+  },
+  "connectedness": {
+    "isConnected": true,
+    "orphanedRoles": []
+  },
+  "nestedRecursion": {
+    "isValid": true,
+    "violations": []
+  },
+  "recursionInParallel": {
+    "isValid": true,
+    "violations": []
+  },
+  "forkJoinStructure": {
+    "isValid": true,
+    "violations": []
+  },
+  "multicast": {
+    "isValid": true,
+    "warnings": [
+      {
+        "actionNodeId": "n90",
+        "sender": "Coordinator",
+        "receivers": [
+          "W1",
+          "W2"
+        ],
+        "description": "Multicast message from Coordinator to [W1, W2] - verify all receivers handle message"
+      }
+    ]
+  },
+  "selfCommunication": {
+    "isValid": true,
+    "violations": []
+  },
+  "emptyChoiceBranch": {
+    "isValid": true,
+    "violations": []
+  },
+  "mergeReachability": {
+    "isValid": true,
+    "violations": []
+  }
+}

@@ -1,0 +1,7 @@
+protocol SimpleChoice(role Client, role Server) {
+  choice at Client {
+    Client -> Server: Accept();
+  } or {
+    Client -> Server: Reject();
+  }
+}

@@ -1,0 +1,1 @@
+"local protocol MulticastChoice_F1 at F1() {\n  choice {\n    Commit() from Leader;\n  } or {\n    Abort() from Leader;\n  }\n}"

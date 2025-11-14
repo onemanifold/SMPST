@@ -1,0 +1,7 @@
+protocol Streaming(role Server, role Client) {
+  rec Stream {
+    Server -> Client: Chunk(Int);
+    Client -> Server: Ack();
+    continue Stream;
+  }
+}

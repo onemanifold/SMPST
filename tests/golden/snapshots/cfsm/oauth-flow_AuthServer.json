@@ -1,0 +1,114 @@
+{
+  "role": "AuthServer",
+  "protocolName": "OAuth",
+  "stateCount": 5,
+  "transitionCount": 5,
+  "protocolActionCount": 3,
+  "cfsm": {
+    "role": "AuthServer",
+    "protocolName": "OAuth",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n130"
+      },
+      {
+        "id": "s2",
+        "label": "n128"
+      },
+      {
+        "id": "s3",
+        "label": "n129"
+      },
+      {
+        "id": "s4",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "Client",
+          "message": {
+            "type": "Message",
+            "label": "AuthRequest",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "AuthRequest",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "Client",
+          "message": {
+            "type": "Message",
+            "label": "AuthToken",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "AuthToken",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s1",
+        "to": "s3",
+        "action": {
+          "type": "send",
+          "to": "Client",
+          "message": {
+            "type": "Message",
+            "label": "AuthDenied"
+          },
+          "label": "AuthDenied"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s3",
+        "to": "s4",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s2",
+        "to": "s4",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s4"
+    ]
+  }
+}

@@ -1,0 +1,1 @@
+"local protocol TwoPhaseCommit_P1 at P1() {\n  Prepare() from Coordinator;\n  Vote1(Bool) to Coordinator;\n  choice {\n    Commit() from Coordinator;\n  } or {\n    Abort() from Coordinator;\n  }\n}"

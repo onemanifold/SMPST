@@ -1,0 +1,1 @@
+"local protocol Streaming_Server at Server() {\n  choice {\n    Chunk(Int) to Client;\n    Ack() from Client;\n  } or {\n  }\n}"

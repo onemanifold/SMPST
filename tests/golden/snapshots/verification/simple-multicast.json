@@ -1,0 +1,77 @@
+{
+  "structural": {
+    "valid": true,
+    "errors": [],
+    "warnings": []
+  },
+  "deadlock": {
+    "hasDeadlock": false,
+    "cycles": []
+  },
+  "liveness": {
+    "isLive": true,
+    "violations": []
+  },
+  "parallelDeadlock": {
+    "hasDeadlock": false,
+    "conflicts": []
+  },
+  "raceConditions": {
+    "hasRaces": false,
+    "races": []
+  },
+  "progress": {
+    "canProgress": true,
+    "blockedNodes": []
+  },
+  "choiceDeterminism": {
+    "isDeterministic": true,
+    "violations": []
+  },
+  "choiceMergeability": {
+    "isMergeable": true,
+    "violations": []
+  },
+  "connectedness": {
+    "isConnected": true,
+    "orphanedRoles": []
+  },
+  "nestedRecursion": {
+    "isValid": true,
+    "violations": []
+  },
+  "recursionInParallel": {
+    "isValid": true,
+    "violations": []
+  },
+  "forkJoinStructure": {
+    "isValid": true,
+    "violations": []
+  },
+  "multicast": {
+    "isValid": true,
+    "warnings": [
+      {
+        "actionNodeId": "n38",
+        "sender": "Pub",
+        "receivers": [
+          "Sub1",
+          "Sub2"
+        ],
+        "description": "Multicast message from Pub to [Sub1, Sub2] - verify all receivers handle message"
+      }
+    ]
+  },
+  "selfCommunication": {
+    "isValid": true,
+    "violations": []
+  },
+  "emptyChoiceBranch": {
+    "isValid": true,
+    "violations": []
+  },
+  "mergeReachability": {
+    "isValid": true,
+    "violations": []
+  }
+}

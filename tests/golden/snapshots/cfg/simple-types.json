@@ -1,0 +1,10 @@
+{
+  "nodeCount": 5,
+  "edgeCount": 4,
+  "roles": [
+    "A",
+    "B"
+  ],
+  "protocolName": "SimpleTypes",
+  "structureHash": "d16f8b989c13d166b783c6519dfbe21922fd2a23c4b92f793c836c49589c25bb"
+}

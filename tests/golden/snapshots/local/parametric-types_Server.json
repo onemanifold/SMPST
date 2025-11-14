@@ -1,0 +1,1 @@
+"local protocol ParametricTypes_Server at Server() {\n  ListRequest(List<String>) from Client;\n  MapResponse(Map<String, Int>) to Client;\n}"

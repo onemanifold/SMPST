@@ -1,0 +1,12 @@
+protocol LongSequence(role A, role B) {
+  A -> B: M1();
+  B -> A: M2();
+  A -> B: M3();
+  B -> A: M4();
+  A -> B: M5();
+  B -> A: M6();
+  A -> B: M7();
+  B -> A: M8();
+  A -> B: M9();
+  B -> A: M10();
+}

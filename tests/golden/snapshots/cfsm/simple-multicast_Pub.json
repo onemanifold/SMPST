@@ -1,0 +1,65 @@
+{
+  "role": "Pub",
+  "protocolName": "SimpleMulticast",
+  "stateCount": 3,
+  "transitionCount": 2,
+  "protocolActionCount": 1,
+  "cfsm": {
+    "role": "Pub",
+    "protocolName": "SimpleMulticast",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n38"
+      },
+      {
+        "id": "s2",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "send",
+          "to": [
+            "Sub1",
+            "Sub2"
+          ],
+          "message": {
+            "type": "Message",
+            "label": "Event",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "String"
+              }
+            }
+          },
+          "label": "Event",
+          "payloadType": "String"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s2"
+    ]
+  }
+}

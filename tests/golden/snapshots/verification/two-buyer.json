@@ -1,0 +1,103 @@
+{
+  "structural": {
+    "valid": true,
+    "errors": [],
+    "warnings": []
+  },
+  "deadlock": {
+    "hasDeadlock": false,
+    "cycles": []
+  },
+  "liveness": {
+    "isLive": true,
+    "violations": []
+  },
+  "parallelDeadlock": {
+    "hasDeadlock": false,
+    "conflicts": []
+  },
+  "raceConditions": {
+    "hasRaces": false,
+    "races": []
+  },
+  "progress": {
+    "canProgress": true,
+    "blockedNodes": []
+  },
+  "choiceDeterminism": {
+    "isDeterministic": true,
+    "violations": []
+  },
+  "choiceMergeability": {
+    "isMergeable": false,
+    "violations": [
+      {
+        "branchNodeId": "n94",
+        "role": "Buyer1",
+        "description": "Choice mergeability violation: Role \"Buyer1\" participates in choice branches [branch1] but not in [branch2]. After a choice, all roles must have a consistent view of the protocol state. Either include \"Buyer1\" in all branches with equivalent actions, or remove it from all branches. Branch participation: {\"branch1\": {Buyer2, Seller, Buyer1}, \"branch2\": {Buyer2, Seller}}.",
+        "branches": {
+          "branch1": [
+            "Buyer2",
+            "Seller",
+            "Buyer1"
+          ],
+          "branch2": [
+            "Buyer2",
+            "Seller"
+          ]
+        }
+      }
+    ]
+  },
+  "connectedness": {
+    "isConnected": true,
+    "orphanedRoles": []
+  },
+  "nestedRecursion": {
+    "isValid": true,
+    "violations": []
+  },
+  "recursionInParallel": {
+    "isValid": true,
+    "violations": []
+  },
+  "forkJoinStructure": {
+    "isValid": true,
+    "violations": []
+  },
+  "multicast": {
+    "isValid": true,
+    "warnings": [
+      {
+        "actionNodeId": "n99",
+        "sender": "Seller",
+        "receivers": [
+          "Buyer1",
+          "Buyer2"
+        ],
+        "description": "Multicast message from Seller to [Buyer1, Buyer2] - verify all receivers handle message"
+      },
+      {
+        "actionNodeId": "n95",
+        "sender": "Seller",
+        "receivers": [
+          "Buyer1",
+          "Buyer2"
+        ],
+        "description": "Multicast message from Seller to [Buyer1, Buyer2] - verify all receivers handle message"
+      }
+    ]
+  },
+  "selfCommunication": {
+    "isValid": true,
+    "violations": []
+  },
+  "emptyChoiceBranch": {
+    "isValid": true,
+    "violations": []
+  },
+  "mergeReachability": {
+    "isValid": true,
+    "violations": []
+  }
+}

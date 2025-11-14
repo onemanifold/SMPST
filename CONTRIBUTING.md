@@ -314,6 +314,136 @@ describe('Feature Name', () => {
 - **@testing-library/svelte**: Component testing (when UI implemented)
 - **Coverage**: V8 coverage reports
 
+### Golden Tests (Regression Testing)
+
+**Golden tests** ensure that language evolution doesn't break existing functionality by using snapshot-based testing.
+
+#### What are Golden Tests?
+
+Golden tests compare the output of the compiler pipeline against known-correct "golden" snapshots:
+- **CFG structure**: Control flow graph nodes and edges
+- **Verification results**: Deadlock, liveness, race condition detection
+- **CFSM projections**: State machines for each role
+- **Local protocols**: Serialized Scribble text
+
+#### Running Golden Tests
+
+```bash
+# Run all golden tests
+npm run test:golden
+
+# Watch mode for development
+npm run test:golden:watch
+
+# View test results
+npm run test:golden 2>&1 | grep -E "Test Files|Tests|Duration"
+```
+
+#### When Golden Tests Fail
+
+Golden tests failing means **something changed in the compiler output**:
+
+1. **Review the diff**:
+   ```bash
+   npm run test:golden
+   # CI will show the diff in the output
+   ```
+
+2. **Determine if the change is intentional**:
+   - ✅ **Intentional** (new feature, bug fix): Update snapshots
+   - ❌ **Unintentional** (regression): Fix the code
+
+3. **Update snapshots** (only if intentional):
+   ```bash
+   npm run test:golden:update
+   # Review changes, then commit
+   git add tests/golden/snapshots/
+   git commit -m "Update golden snapshots for [feature/fix]"
+   ```
+
+#### Adding New Golden Protocols
+
+To add a new protocol to the golden test suite:
+
+1. **Edit the generator script**:
+   ```typescript
+   // scripts/generate-golden-protocols.ts
+   const protocols: ProtocolSpec[] = [
+     // ... existing protocols
+     {
+       name: 'my-new-protocol',
+       category: 'complex',  // or simple, choice, multicast, recursion, parallel, types, edge-cases
+       source: `
+         protocol MyProtocol(role A, role B) {
+           A -> B: Message(String);
+         }
+       `,
+       description: 'Description of what this protocol tests',
+       expectedValid: true,
+       expectedProperties: {
+         roles: ['A', 'B'],
+         hasDeadlock: false,
+         hasRaces: false,
+         messageCount: 1,
+       },
+       performance: {
+         maxParseTimeMs: 100,
+         maxProjectionTimeMs: 200,
+       },
+     },
+   ];
+   ```
+
+2. **Regenerate protocols and metadata**:
+   ```bash
+   npm run generate:golden
+   ```
+
+3. **Run tests to create snapshots**:
+   ```bash
+   npm run test:golden
+   ```
+
+4. **Review and commit**:
+   ```bash
+   git add tests/golden/
+   git commit -m "Add golden test for [protocol feature]"
+   ```
+
+#### Why Golden Tests Matter
+
+Golden tests are **critical for safe language evolution**:
+
+- **Breaking Change Detection**: Immediately catch unintended changes
+- **Refactoring Confidence**: Verify outputs remain identical after refactoring
+- **Performance Regression**: Track projection/verification time
+- **Documentation**: Serve as living examples of all language features
+- **Feature Development**: See exactly what changes when adding new features
+
+**Example workflow when adding refinement types:**
+
+1. Add test protocol with refinement: `Age(Int{x > 0})`
+2. Run golden tests → many fail (expected)
+3. Review diffs → CFSM now includes refinement AST
+4. Verify other tests still pass (no unintended changes)
+5. Update snapshots
+6. Commit with clear message
+
+#### Golden Test Categories
+
+Current test suite covers:
+
+- **simple**: Basic request-response, ping-pong (3 protocols)
+- **choice**: Binary choice, nested choice (3 protocols)
+- **multicast**: Broadcast, pub-sub (3 protocols)
+- **recursion**: Loops, streaming, nested recursion (3 protocols)
+- **parallel**: Independent actions, result collection (2 protocols)
+- **complex**: TwoBuyer, ThreeBuyer, 2PC, OAuth (4 protocols)
+- **types**: Simple, parametric, nested parametric (4 protocols)
+- **edge-cases**: Unused roles, many roles, long sequences (3 protocols)
+
+**Total: 25 golden protocols** covering all language features.
+
 ---
 
 ## Documentation

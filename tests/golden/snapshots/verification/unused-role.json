@@ -1,0 +1,70 @@
+{
+  "structural": {
+    "valid": true,
+    "errors": [],
+    "warnings": []
+  },
+  "deadlock": {
+    "hasDeadlock": false,
+    "cycles": []
+  },
+  "liveness": {
+    "isLive": true,
+    "violations": []
+  },
+  "parallelDeadlock": {
+    "hasDeadlock": false,
+    "conflicts": []
+  },
+  "raceConditions": {
+    "hasRaces": false,
+    "races": []
+  },
+  "progress": {
+    "canProgress": true,
+    "blockedNodes": []
+  },
+  "choiceDeterminism": {
+    "isDeterministic": true,
+    "violations": []
+  },
+  "choiceMergeability": {
+    "isMergeable": true,
+    "violations": []
+  },
+  "connectedness": {
+    "isConnected": false,
+    "orphanedRoles": [
+      "C"
+    ],
+    "description": "Connectedness violation: Role [C] is declared in the protocol signature but never participate in any message exchange. All declared roles must be involved in the protocol."
+  },
+  "nestedRecursion": {
+    "isValid": true,
+    "violations": []
+  },
+  "recursionInParallel": {
+    "isValid": true,
+    "violations": []
+  },
+  "forkJoinStructure": {
+    "isValid": true,
+    "violations": []
+  },
+  "multicast": {
+    "isValid": true,
+    "warnings": []
+  },
+  "selfCommunication": {
+    "isValid": true,
+    "violations": []
+  },
+  "emptyChoiceBranch": {
+    "isValid": true,
+    "violations": []
+  },
+  "mergeReachability": {
+    "isValid": true,
+    "violations": []
+  }
+}

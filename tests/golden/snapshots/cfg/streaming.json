@@ -1,0 +1,10 @@
+{
+  "nodeCount": 5,
+  "edgeCount": 5,
+  "roles": [
+    "Client",
+    "Server"
+  ],
+  "protocolName": "Streaming",
+  "structureHash": "1c012f40703e9045a4eb44a067338c5246e19ba12304497caf32bee30207d1e3"
+}

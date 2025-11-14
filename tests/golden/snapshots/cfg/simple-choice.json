@@ -1,0 +1,10 @@
+{
+  "nodeCount": 6,
+  "edgeCount": 6,
+  "roles": [
+    "Client",
+    "Server"
+  ],
+  "protocolName": "SimpleChoice",
+  "structureHash": "9336b216d8ab2c3a7e9833bc193f52e49d28b7e0ca828179f2015d00941b24e7"
+}

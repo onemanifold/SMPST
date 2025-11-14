@@ -1,0 +1,148 @@
+{
+  "role": "B1",
+  "protocolName": "ThreeBuyer",
+  "stateCount": 6,
+  "transitionCount": 6,
+  "protocolActionCount": 4,
+  "cfsm": {
+    "role": "B1",
+    "protocolName": "ThreeBuyer",
+    "parameters": [],
+    "states": [
+      {
+        "id": "s0",
+        "label": "initial"
+      },
+      {
+        "id": "s1",
+        "label": "n110"
+      },
+      {
+        "id": "s2",
+        "label": "n109"
+      },
+      {
+        "id": "s3",
+        "label": "n107"
+      },
+      {
+        "id": "s4",
+        "label": "n104"
+      },
+      {
+        "id": "s5",
+        "label": "terminal"
+      }
+    ],
+    "transitions": [
+      {
+        "id": "t0",
+        "from": "s0",
+        "to": "s1",
+        "action": {
+          "type": "receive",
+          "from": "Seller",
+          "message": {
+            "type": "Message",
+            "label": "Quote",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Quote",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t1",
+        "from": "s1",
+        "to": "s2",
+        "action": {
+          "type": "send",
+          "to": "B2",
+          "message": {
+            "type": "Message",
+            "label": "Share1",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Share1",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t2",
+        "from": "s2",
+        "to": "s3",
+        "action": {
+          "type": "receive",
+          "from": "B3",
+          "message": {
+            "type": "Message",
+            "label": "Share3",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Int"
+              }
+            }
+          },
+          "label": "Share3",
+          "payloadType": "Int"
+        }
+      },
+      {
+        "id": "t3",
+        "from": "s3",
+        "to": "s4",
+        "action": {
+          "type": "receive",
+          "from": "Seller",
+          "message": {
+            "type": "Message",
+            "label": "Confirm",
+            "payload": {
+              "type": "Payload",
+              "payloadType": {
+                "type": "SimpleType",
+                "name": "Bool"
+              }
+            }
+          },
+          "label": "Confirm",
+          "payloadType": "Bool"
+        }
+      },
+      {
+        "id": "t4",
+        "from": "s3",
+        "to": "s5",
+        "action": {
+          "type": "tau"
+        }
+      },
+      {
+        "id": "t5",
+        "from": "s4",
+        "to": "s5",
+        "action": {
+          "type": "tau"
+        }
+      }
+    ],
+    "initialState": "s0",
+    "terminalStates": [
+      "s5"
+    ]
+  }
+}

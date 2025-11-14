@@ -1,0 +1,1 @@
+"local protocol ThreeParty_C at C() {\n  M2(String) from B;\n  M3(Bool) to A;\n}"

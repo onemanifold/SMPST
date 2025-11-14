@@ -1,0 +1,1 @@
+"local protocol ThreeBuyer_Seller at Seller() {\n  Quote(Int) to B1, B2, B3;\n  choice {\n    Buy(String) from B3;\n    Confirm(Bool) to B1, B2, B3;\n  } or {\n    Quit() from B3;\n  }\n}"
