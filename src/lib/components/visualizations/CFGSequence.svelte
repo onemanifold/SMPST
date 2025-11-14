@@ -20,6 +20,7 @@
     label: string;
     nodeId: string;
     visited: boolean;
+    isCurrent: boolean;
   }
 
   function extractMessages(): Message[] {
@@ -27,6 +28,11 @@
 
     const messages: Message[] = [];
     const visitedNodes = new Set($executionState?.visitedNodes || []);
+    const currentNodeId = $executionState
+      ? (typeof $executionState.currentNode === 'string'
+          ? $executionState.currentNode
+          : $executionState.currentNode[0])
+      : null;
 
     // Extract messages from CFG action nodes
     for (const node of $currentCFG.nodes) {
@@ -37,7 +43,8 @@
           to: action.to,
           label: action.message.label,
           nodeId: node.id,
-          visited: visitedNodes.has(node.id)
+          visited: visitedNodes.has(node.id),
+          isCurrent: node.id === currentNodeId
         });
       }
     }
@@ -115,11 +122,34 @@
       const fromX = laneX.get(msg.from)!;
       const y = LANE_TOP_MARGIN + index * MESSAGE_SPACING + MESSAGE_SPACING / 2;
 
-      // Color based on visited status
-      const isVisited = msg.visited;
-      const strokeColor = isVisited ? '#4EC9B0' : '#007acc';
-      const strokeWidth = isVisited ? 3 : 2;
-      const arrowMarker = isVisited ? 'url(#arrowhead-visited)' : 'url(#arrowhead-blue)';
+      // Color based on status: current > visited > unvisited
+      let strokeColor, strokeWidth, arrowMarker, labelColor, labelWeight, opacity;
+
+      if (msg.isCurrent) {
+        // Current message: bright yellow/orange with pulsing
+        strokeColor = '#FFA500';
+        strokeWidth = 4;
+        arrowMarker = 'url(#arrowhead-current)';
+        labelColor = '#FFA500';
+        labelWeight = 'bold';
+        opacity = 1;
+      } else if (msg.visited) {
+        // Visited message: green
+        strokeColor = '#4EC9B0';
+        strokeWidth = 3;
+        arrowMarker = 'url(#arrowhead-visited)';
+        labelColor = '#4EC9B0';
+        labelWeight = 'bold';
+        opacity = 1;
+      } else {
+        // Unvisited message: blue, dimmed
+        strokeColor = '#007acc';
+        strokeWidth = 2;
+        arrowMarker = 'url(#arrowhead-blue)';
+        labelColor = '#9CDCFE';
+        labelWeight = 'normal';
+        opacity = 0.6;
+      }
 
       // Handle multicast: draw arrow to each recipient
       const recipients = Array.isArray(msg.to) ? msg.to : [msg.to];
@@ -128,7 +158,7 @@
         const toX = laneX.get(recipient)!;
 
         // Message arrow
-        svg
+        const line = svg
           .append('line')
           .attr('x1', fromX)
           .attr('y1', y)
@@ -137,7 +167,17 @@
           .attr('stroke', strokeColor)
           .attr('stroke-width', strokeWidth)
           .attr('marker-end', arrowMarker)
-          .attr('opacity', isVisited ? 1 : 0.6);
+          .attr('opacity', opacity);
+
+        // Add pulsing animation for current message
+        if (msg.isCurrent) {
+          line
+            .append('animate')
+            .attr('attributeName', 'opacity')
+            .attr('values', '1;0.5;1')
+            .attr('dur', '1.5s')
+            .attr('repeatCount', 'indefinite');
+        }
       });
 
       // Message label (show once, centered)
@@ -146,15 +186,25 @@
       const labelX = (fromX + toX) / 2;
       const labelY = y - 8;
 
-      svg
+      const label = svg
         .append('text')
         .attr('x', labelX)
         .attr('y', labelY)
         .attr('text-anchor', 'middle')
-        .attr('font-size', 12)
-        .attr('fill', isVisited ? '#4EC9B0' : '#9CDCFE')
-        .attr('font-weight', isVisited ? 'bold' : 'normal')
+        .attr('font-size', msg.isCurrent ? 13 : 12)
+        .attr('fill', labelColor)
+        .attr('font-weight', labelWeight)
         .text(msg.label);
+
+      // Add pulsing animation for current message label
+      if (msg.isCurrent) {
+        label
+          .append('animate')
+          .attr('attributeName', 'opacity')
+          .attr('values', '1;0.7;1')
+          .attr('dur', '1.5s')
+          .attr('repeatCount', 'indefinite');
+      }
     });
 
     // Define arrowhead markers
@@ -185,6 +235,19 @@
       .append('polygon')
       .attr('points', '0 0, 10 3, 0 6')
       .attr('fill', '#4EC9B0');
+
+    // Orange arrowhead for current
+    defs
+      .append('marker')
+      .attr('id', 'arrowhead-current')
+      .attr('markerWidth', 12)
+      .attr('markerHeight', 12)
+      .attr('refX', 10)
+      .attr('refY', 3)
+      .attr('orient', 'auto')
+      .append('polygon')
+      .attr('points', '0 0, 12 3, 0 6')
+      .attr('fill', '#FFA500');
   }
 
   // Re-render on CFG or execution state change
@@ -208,7 +271,7 @@
       <h3>📊 CFG Sequence Diagram</h3>
       <p>Parse a protocol to see the message sequence diagram</p>
       <p class="note">Messages flow from top to bottom over time</p>
-      <p class="note">Executed messages are highlighted in green</p>
+      <p class="note">🟠 Orange: Current message | 🟢 Green: Executed | 🔵 Blue: Pending</p>
     </div>
   {:else}
     <svg bind:this={svgElement}></svg>
