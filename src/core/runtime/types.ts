@@ -225,7 +225,6 @@ export interface SimulatorConfig {
     timeout?: number;
     strictMode?: boolean;
     recordTrace?: boolean;  // Enable trace recording
-    stepDelay?: number;  // Delay in ms between steps (for interactive debugging/pause support)
   };
 }
 

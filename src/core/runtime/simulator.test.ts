@@ -392,23 +392,20 @@ describe('Protocol Simulator - Interactive Control', () => {
     const cfg = buildCFG(parse(source).declarations[0]);
     const { cfsms } = projectAll(cfg);
 
-    const simulator = new Simulator({
-      roles: cfsms,
-      options: { stepDelay: 15 },  // Delay between steps to allow pause() to execute
-    });
+    const simulator = new Simulator({ roles: cfsms });
 
     // Start running
     const runPromise = simulator.run();
 
-    // Pause after a bit
-    setTimeout(() => simulator.pause(), 10);
+    // Pause immediately (setImmediate runs after run() starts but before step completes)
+    setImmediate(() => simulator.pause());
 
     await runPromise;
 
-    // Should not have completed
+    // Should have paused (not completed)
     expect(simulator.getState().completed).toBe(false);
 
-    // Resume
+    // Resume by calling run() again
     const result = await simulator.run();
     expect(result.completed).toBe(true);
   });
