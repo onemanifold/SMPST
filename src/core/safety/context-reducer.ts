@@ -33,6 +33,8 @@ import type {
   ReceiveAction,
 } from '../projection/types';
 
+import { applyTauTransitions } from './utils';
+
 /**
  * ContextReducer - Advances typing contexts through protocol execution
  *
@@ -108,49 +110,10 @@ export class ContextReducer {
     };
 
     // Apply tau transitions eagerly for all roles
-    newContext = this.applyTauTransitions(newContext);
+    // Uses shared function from utils to ensure consistent tau handling
+    newContext = applyTauTransitions(newContext);
 
     return newContext;
-  }
-
-  /**
-   * Apply all enabled tau transitions eagerly for all roles
-   *
-   * Tau transitions represent internal actions (e.g., after a choice is resolved).
-   * They must be applied immediately to reach the next stable state.
-   *
-   * @param context - Context to apply tau transitions to
-   * @returns New context with all tau transitions applied
-   */
-  private applyTauTransitions(context: TypingContext): TypingContext {
-    let current = context;
-    let changed = true;
-
-    // Keep applying tau transitions until none are enabled
-    while (changed) {
-      changed = false;
-      const newCFSMs = new Map(current.cfsms);
-
-      for (const [role, instance] of current.cfsms) {
-        const tauTrans = this.getEnabledTauTransition(instance.machine, instance.currentState);
-        if (tauTrans) {
-          newCFSMs.set(role, {
-            machine: instance.machine,
-            currentState: tauTrans.to,
-          });
-          changed = true;
-        }
-      }
-
-      if (changed) {
-        current = {
-          session: current.session,
-          cfsms: newCFSMs,
-        };
-      }
-    }
-
-    return current;
   }
 
   /**
@@ -289,22 +252,6 @@ export class ContextReducer {
   private getEnabledSends(cfsm: CFSM, state: string): CFSMTransition[] {
     return cfsm.transitions.filter(
       (t) => t.from === state && t.action.type === 'send'
-    );
-  }
-
-  /**
-   * Get enabled tau transition from a state (if any)
-   *
-   * Tau transitions are internal actions that must be applied eagerly.
-   * At most one tau transition should be enabled from a given state.
-   *
-   * @param cfsm - CFSM to check
-   * @param state - Current state
-   * @returns Tau transition if enabled, undefined otherwise
-   */
-  private getEnabledTauTransition(cfsm: CFSM, state: string): CFSMTransition | undefined {
-    return cfsm.transitions.find(
-      (t) => t.from === state && t.action.type === 'tau'
     );
   }
 

@@ -3,16 +3,75 @@
  */
 
 import type { TypingContext, CFSMInstance } from './types';
-import type { CFSM } from '../projection/types';
+import type { CFSM, CFSMTransition } from '../projection/types';
+
+/**
+ * Apply all enabled tau transitions eagerly for all roles
+ *
+ * Tau transitions represent internal actions (e.g., after a choice is resolved).
+ * They must be applied immediately to reach the next stable state.
+ *
+ * This implements tau-closure (τ*) from weak transition semantics.
+ *
+ * @param context - Context to apply tau transitions to
+ * @returns New context with all tau transitions applied
+ */
+export function applyTauTransitions(context: TypingContext): TypingContext {
+  let current = context;
+  let changed = true;
+
+  // Keep applying tau transitions until none are enabled
+  while (changed) {
+    changed = false;
+    const newCFSMs = new Map(current.cfsms);
+
+    for (const [role, instance] of current.cfsms) {
+      const tauTrans = getEnabledTauTransition(instance.machine, instance.currentState);
+      if (tauTrans) {
+        newCFSMs.set(role, {
+          machine: instance.machine,
+          currentState: tauTrans.to,
+        });
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      current = {
+        session: current.session,
+        cfsms: newCFSMs,
+      };
+    }
+  }
+
+  return current;
+}
+
+/**
+ * Get enabled tau transition from a state (if any)
+ *
+ * Tau transitions are internal actions that must be applied eagerly.
+ * At most one tau transition should be enabled from a given state.
+ *
+ * @param cfsm - CFSM to check
+ * @param state - Current state
+ * @returns Tau transition if enabled, undefined otherwise
+ */
+function getEnabledTauTransition(cfsm: CFSM, state: string): CFSMTransition | undefined {
+  return cfsm.transitions.find(
+    (t) => t.from === state && t.action.type === 'tau'
+  );
+}
 
 /**
  * Create initial typing context from CFSMs
  *
- * Sets all CFSMs to their initial states.
+ * Sets all CFSMs to their initial states, then applies tau-closure
+ * to reach the stable initial state (consistent with weak semantics).
  *
  * @param cfsms - Map of role names to CFSMs
  * @param sessionName - Optional session name (defaults to 'session')
- * @returns Initial typing context with all roles at initial states
+ * @returns Initial typing context with all roles at stable initial states
  */
 export function createInitialContext(
   cfsms: Map<string, CFSM>,
@@ -27,10 +86,17 @@ export function createInitialContext(
     });
   }
 
-  return {
+  let context: TypingContext = {
     session: sessionName,
     cfsms: instances,
   };
+
+  // Apply tau-closure to reach stable initial state
+  // This is consistent with weak semantics where the observable initial state
+  // is after all internal transitions from the syntactic initial state
+  context = applyTauTransitions(context);
+
+  return context;
 }
 
 /**
