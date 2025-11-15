@@ -46,6 +46,16 @@ export interface CFSMSimulatorConfig {
    * Optional - if not provided, a default one will be created with history disabled
    */
   executionHistory?: ICFSMExecutionHistory;
+
+  /**
+   * Message transport for async message passing
+   * Optional - if not provided, uses internal buffers (legacy mode)
+   * When provided, enables decentralized execution:
+   * - Sends go directly to transport
+   * - Receives pull from transport
+   * - No coordinator message delivery needed
+   */
+  transport?: any; // Will be MessageTransport from runtime/types
 }
 
 /**
