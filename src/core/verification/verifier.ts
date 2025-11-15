@@ -1434,3 +1434,176 @@ export function verifyProtocol(
       : { isValid: true, violations: [] },
   };
 }
+
+/**
+ * Convert CompleteVerification to a simple {isValid, errors} format
+ * This is useful for tests and simple validation checks
+ */
+export function summarizeVerification(verification: CompleteVerification): {
+  isValid: boolean;
+  errors: { message: string; type?: string; location?: any }[];
+  warnings: { message: string; type?: string }[];
+} {
+  const errors: { message: string; type?: string; location?: any }[] = [];
+  const warnings: { message: string; type?: string }[] = [];
+
+  // Check structural errors
+  if (!verification.structural.valid) {
+    errors.push(...verification.structural.errors);
+  }
+  warnings.push(...verification.structural.warnings);
+
+  // Check deadlock
+  if (verification.deadlock.hasDeadlock) {
+    verification.deadlock.cycles.forEach(cycle => {
+      errors.push({
+        type: 'deadlock',
+        message: cycle.description,
+      });
+    });
+  }
+
+  // Check liveness
+  if (!verification.liveness.isLive) {
+    verification.liveness.violations.forEach(v => {
+      errors.push({
+        type: 'liveness',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check parallel deadlock
+  if (verification.parallelDeadlock.hasDeadlock) {
+    verification.parallelDeadlock.conflicts.forEach(c => {
+      errors.push({
+        type: 'parallel-deadlock',
+        message: c.description,
+      });
+    });
+  }
+
+  // Check race conditions
+  if (verification.raceConditions.hasRaces) {
+    verification.raceConditions.races.forEach(r => {
+      errors.push({
+        type: 'race-condition',
+        message: r.description,
+      });
+    });
+  }
+
+  // Check progress
+  if (!verification.progress.canProgress) {
+    verification.progress.blockedNodes.forEach(node => {
+      errors.push({
+        type: 'progress',
+        message: `Node ${node} cannot progress`,
+      });
+    });
+  }
+
+  // Check choice determinism
+  if (!verification.choiceDeterminism.isDeterministic) {
+    verification.choiceDeterminism.violations.forEach(v => {
+      errors.push({
+        type: 'choice-determinism',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check choice mergeability
+  if (!verification.choiceMergeability.isMergeable) {
+    verification.choiceMergeability.violations.forEach(v => {
+      errors.push({
+        type: 'choice-mergeability',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check connectedness
+  if (!verification.connectedness.isConnected) {
+    errors.push({
+      type: 'connectedness',
+      message: `Protocol is not connected. Orphaned roles: ${verification.connectedness.orphanedRoles.join(', ')}`,
+    });
+  }
+
+  // Check nested recursion
+  if (!verification.nestedRecursion.isValid) {
+    verification.nestedRecursion.violations.forEach(v => {
+      errors.push({
+        type: 'nested-recursion',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check recursion in parallel
+  if (!verification.recursionInParallel.isValid) {
+    verification.recursionInParallel.violations.forEach(v => {
+      errors.push({
+        type: 'recursion-in-parallel',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check fork-join structure
+  if (!verification.forkJoinStructure.isValid) {
+    verification.forkJoinStructure.violations.forEach(v => {
+      errors.push({
+        type: 'fork-join',
+        message: v.description,
+      });
+    });
+  }
+
+  // Multicast warnings (not errors)
+  if (!verification.multicast.isValid) {
+    verification.multicast.warnings.forEach(w => {
+      warnings.push({
+        type: 'multicast',
+        message: w.description,
+      });
+    });
+  }
+
+  // Check self-communication
+  if (!verification.selfCommunication.isValid) {
+    verification.selfCommunication.violations.forEach(v => {
+      errors.push({
+        type: 'self-communication',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check empty choice branches
+  if (!verification.emptyChoiceBranch.isValid) {
+    verification.emptyChoiceBranch.violations.forEach(v => {
+      errors.push({
+        type: 'empty-choice-branch',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check merge reachability
+  if (!verification.mergeReachability.isValid) {
+    verification.mergeReachability.violations.forEach(v => {
+      errors.push({
+        type: 'merge-reachability',
+        message: v.description,
+      });
+    });
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}

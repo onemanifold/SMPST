@@ -14,7 +14,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parse } from '../../src/core/parser/parser';
 import { buildCFG } from '../../src/core/cfg/builder';
-import { verifyProtocol } from '../../src/core/verification/verifier';
+import { verifyProtocol, summarizeVerification } from '../../src/core/verification/verifier';
 import { project } from '../../src/core/projection/projector';
 import { checkSafeProtocolUpdate } from '../../src/core/verification/dmst/safe-update';
 import { verifyTraceEquivalence } from '../../src/core/verification/dmst/trace-equivalence';
@@ -150,7 +150,13 @@ describe('DMst Examples Validation', () => {
           cfg = buildCFG(protocol);
         }
 
-        const result = verifyProtocol(cfg);
+        const verification = verifyProtocol(cfg);
+        const result = summarizeVerification(verification);
+
+        if (!result.isValid) {
+          console.error(`Verification errors for ${name}:`, result.errors);
+        }
+
         expect(result.errors).toHaveLength(0);
         expect(result.isValid).toBe(true);
       });
@@ -262,7 +268,8 @@ describe('DMst Examples Validation', () => {
             (d: any) => d.type === 'GlobalProtocolDeclaration'
           );
           const cfg = buildCFG(protocol);
-          const result = verifyProtocol(cfg);
+          const verification = verifyProtocol(cfg);
+          const result = summarizeVerification(verification);
 
           if (result.isValid) {
             passCount++;
