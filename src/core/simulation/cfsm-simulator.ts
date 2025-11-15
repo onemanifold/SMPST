@@ -316,7 +316,7 @@ export class CFSMSimulator {
 
     const transition = enabled[transitionIndex];
 
-    // Fire the transition (async!)
+    // Fire the transition
     this.stepCount++;
     const result = await this.fireTransition(transition);
 
@@ -326,7 +326,7 @@ export class CFSMSimulator {
   }
 
   /**
-   * Fire a specific transition (async!)
+   * Fire a specific transition
    */
   private async fireTransition(transition: CFSMTransition): Promise<CFSMStepResult> {
     const action = transition.action;
@@ -339,7 +339,7 @@ export class CFSMSimulator {
       action,
     });
 
-    // Execute action (await async actions)
+    // Execute action
     switch (action.type) {
       case 'send':
         return await this.executeSend(transition);
@@ -357,7 +357,7 @@ export class CFSMSimulator {
   }
 
   /**
-   * Execute send action (async!)
+   * Execute send action
    * Creates message and sends via transport (if available) or outgoing queue (legacy)
    */
   private async executeSend(transition: CFSMTransition): Promise<CFSMStepResult> {
@@ -376,8 +376,9 @@ export class CFSMSimulator {
     }));
 
     if (this.transport) {
-      // Transport mode: await send (applies configured delay)
+      // Transport mode: send directly via transport
       for (const msg of messages) {
+        // Await transport send - ensures delivery happens before continuing
         await this.transport.send(msg);
       }
     } else {
@@ -430,7 +431,7 @@ export class CFSMSimulator {
   }
 
   /**
-   * Execute receive action (async!)
+   * Execute receive action
    * Consumes message from transport or buffer (legacy)
    */
   private async executeReceive(transition: CFSMTransition): Promise<CFSMStepResult> {
@@ -440,7 +441,7 @@ export class CFSMSimulator {
     let msg: Message;
 
     if (this.transport) {
-      // Transport mode: await receive from transport (fully async!)
+      // Transport mode: receive from transport asynchronously
       const receivedMsg = await this.transport.receive(this.rootCFSM.role);
 
       if (!receivedMsg) {
@@ -817,9 +818,9 @@ export class CFSMSimulator {
   /**
    * Run to completion (or until deadlock/maxSteps)
    */
-  run(): CFSMRunResult {
+  async run(): Promise<CFSMRunResult> {
     while (!this.completed && !this.reachedMaxSteps) {
-      const result = this.step();
+      const result = await this.step();
 
       if (!result.success) {
         return {
@@ -935,9 +936,9 @@ export class CFSMSimulator {
    * Step forward (explicit stepping)
    * Same as step() but emits step-forward event
    */
-  stepForward(): CFSMStepResult {
+  async stepForward(): Promise<CFSMStepResult> {
     this.emit('step-forward', { stepCount: this.stepCount });
-    const result = this.step();
+    const result = await this.step();
 
     // Record snapshot after successful step
     if (result.success) {
@@ -987,18 +988,18 @@ export class CFSMSimulator {
    * Step into (for consistency with CFG simulator)
    * In CFSM context, this is the same as stepForward since there are no sub-protocols at this level
    */
-  stepInto(): CFSMStepResult {
+  async stepInto(): Promise<CFSMStepResult> {
     this.emit('step-into', { stepCount: this.stepCount });
-    return this.stepForward();
+    return await this.stepForward();
   }
 
   /**
    * Step out (for consistency with CFG simulator)
    * In CFSM context, this is the same as stepForward since there are no sub-protocols at this level
    */
-  stepOut(): CFSMStepResult {
+  async stepOut(): Promise<CFSMStepResult> {
     this.emit('step-out', { stepCount: this.stepCount });
-    return this.stepForward();
+    return await this.stepForward();
   }
 
   /**

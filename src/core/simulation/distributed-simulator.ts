@@ -151,7 +151,7 @@ export class DistributedSimulator {
   /**
    * Execute one global step (one role executes one transition)
    */
-  step(): DistributedStepResult {
+  async step(): Promise<DistributedStepResult> {
     // Check if done
     if (this.globalSteps >= this.config.maxSteps) {
       this.reachedMaxSteps = true;
@@ -190,7 +190,7 @@ export class DistributedSimulator {
 
     // Execute one step in selected role
     // Note: Role will send/receive messages via shared transport automatically
-    const result = simulator.step();
+    const result = await simulator.step();
 
     if (!result.success) {
       return {
@@ -290,7 +290,7 @@ export class DistributedSimulator {
   /**
    * Run to completion (or deadlock/maxSteps)
    */
-  run(): DistributedRunResult {
+  async run(): Promise<DistributedRunResult> {
     while (!this.deadlocked && !this.reachedMaxSteps) {
       const enabled = this.getEnabledRoles();
 
@@ -318,7 +318,7 @@ export class DistributedSimulator {
         }
       }
 
-      const result = this.step();
+      const result = await this.step();
 
       if (!result.success && result.error?.type !== 'deadlock') {
         return {
