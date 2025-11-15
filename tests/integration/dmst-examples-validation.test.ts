@@ -217,15 +217,18 @@ describe('DMst Examples Validation', () => {
 
       if (features.includes('updatable recursion')) {
         it('should verify safe protocol update (Definition 14)', () => {
-          if (!cfg) {
+          // Always rebuild CFG for safe update test using the LAST protocol
+          // This handles cases like map-reduce.smpst with MapTask (helper) and MapReduce (main)
+          if (!module) {
             module = parse(readFileSync(filePath, 'utf-8'));
-            protocol = module.declarations.find(
-              (d: any) => d.type === 'GlobalProtocolDeclaration'
-            );
-            cfg = buildCFG(protocol);
           }
+          const protocols = module.declarations.filter(
+            (d: any) => d.type === 'GlobalProtocolDeclaration'
+          );
+          const mainProtocol = protocols[protocols.length - 1];
+          const mainCfg = buildCFG(mainProtocol);
 
-          const safeUpdateResult = checkSafeProtocolUpdate(cfg);
+          const safeUpdateResult = checkSafeProtocolUpdate(mainCfg);
           expect(safeUpdateResult).toBeTruthy();
           expect(safeUpdateResult.isSafe).toBe(true);
           expect(safeUpdateResult.violations).toHaveLength(0);
