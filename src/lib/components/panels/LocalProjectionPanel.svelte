@@ -24,6 +24,48 @@
   onMount(() => {
     if (!editorContainer) return;
 
+    // Ensure Monaco language and theme are registered
+    const languages = monaco.languages.getLanguages();
+    const hasScribble = languages.some(lang => lang.id === 'scribble');
+
+    if (!hasScribble) {
+      // Register Scribble language
+      monaco.languages.register({ id: 'scribble' });
+
+      // Define Scribble syntax highlighting
+      monaco.languages.setMonarchTokensProvider('scribble', {
+        keywords: [
+          'protocol', 'role', 'choice', 'at', 'or', 'rec', 'continue', 'par', 'and', 'do', 'as', 'type', 'import'
+        ],
+        operators: ['(', ')', '{', '}', ';', ',', '<', '>', '->', ':'],
+        tokenizer: {
+          root: [
+            [/\b(protocol|role|choice|at|or|rec|continue|par|and|do|as|type|import)\b/, 'keyword'],
+            [/->/, 'keyword'],
+            [/\b[A-Z][a-zA-Z0-9]*\b/, 'type'],
+            [/\b[a-z][a-zA-Z0-9]*\b/, 'variable'],
+            [/[(){}\[\];,<>:]/, 'delimiter'],
+            [/\/\/.*$/, 'comment'],
+          ]
+        }
+      });
+
+      // Define Scribble theme
+      monaco.editor.defineTheme('scribble-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'keyword', foreground: 'C586C0' },
+          { token: 'type', foreground: '4EC9B0' },
+          { token: 'variable', foreground: '9CDCFE' },
+          { token: 'comment', foreground: '6A9955' },
+        ],
+        colors: {
+          'editor.background': '#1e1e1e',
+        }
+      });
+    }
+
     // Create read-only Monaco editor
     editor = monaco.editor.create(editorContainer, {
       value: localScribble,
