@@ -18,6 +18,9 @@ export const executionState = writable<CFGExecutionState | null>(null);
 // Current CFG being simulated
 export const currentCFG = writable<CFG | null>(null);
 
+// Playback speed (ms between steps in play mode)
+export const playbackSpeed = writable<number>(300);
+
 // Play mode interval
 let playInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -31,9 +34,9 @@ export async function initializeSimulation(cfg: CFG) {
   // Dynamic import to avoid bundling issues
   const { CFGSimulator } = await import('../../core/simulation/cfg-simulator');
 
-  // Create new simulator with random choice strategy for play mode
+  // Create new simulator with manual choice strategy (UI handles auto-selection in play mode)
   simulator = new CFGSimulator(cfg, {
-    choiceStrategy: 'random',
+    choiceStrategy: 'manual',
     maxSteps: 1000,
     recordTrace: true
   });
@@ -79,7 +82,8 @@ export function startPlaying() {
 
   simulationMode.set('playing');
 
-  // Auto-step every 500ms
+  // Auto-step at the current playback speed
+  const speed = get(playbackSpeed);
   playInterval = setInterval(() => {
     const state = get(executionState);
 
@@ -88,9 +92,9 @@ export function startPlaying() {
       return;
     }
 
-    // If at choice, make random selection (simulator handles this)
+    // UI will auto-select choices when in play mode
     stepSimulation();
-  }, 500);
+  }, speed);
 }
 
 /**

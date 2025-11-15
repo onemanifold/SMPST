@@ -22,7 +22,7 @@
   const statePositions = new Map<string, { x: number; y: number; role: string }>();
 
   // Get currently active message from execution state
-  function getCurrentMessage(): { from: string; to: string | string[]; label: string } | null {
+  function getCurrentMessage(): { from: string; to: string | string[]; label: string; nodeId: string } | null {
     if (!$currentCFG || !$executionState) return null;
 
     const currentNodeId = typeof $executionState.currentNode === 'string'
@@ -38,30 +38,44 @@
     return {
       from: action.from,
       to: action.to,
-      label: action.message.label
+      label: action.message.label,
+      nodeId: currentNodeId
     };
   }
 
-  // Check if a transition is currently active
-  function isTransitionActive(projection: typeof $projectionData[0], transition: any): boolean {
+  // Check if a specific transition matches the current execution point
+  function isExactTransitionActive(projection: typeof $projectionData[0], transition: any): boolean {
     const currentMsg = getCurrentMessage();
     if (!currentMsg) return false;
 
     const transitionLabel = transition.label;
+    const msgName = transitionLabel.replace(/^(send|recv) /, '');
 
-    // For send transitions
-    if (transitionLabel.includes('send ') && currentMsg.from === projection.role) {
-      const msgName = transitionLabel.replace('send ', '');
-      return msgName === currentMsg.label;
+    // Must match message name
+    if (msgName !== currentMsg.label) return false;
+
+    // For send transitions: must be from this role and FROM the transition's source state
+    if (transitionLabel.startsWith('send ') && currentMsg.from === projection.role) {
+      // Check if we're currently at the source state of this transition
+      const currentNodeId = typeof $executionState.currentNode === 'string'
+        ? $executionState.currentNode
+        : $executionState.currentNode[0];
+      // The transition should match if its "from" state is part of the current node ID
+      return currentNodeId.includes(transition.from);
     }
 
-    // For receive transitions
-    if (transitionLabel.includes('recv ') && (
-      currentMsg.to === projection.role ||
-      (Array.isArray(currentMsg.to) && currentMsg.to.includes(projection.role))
-    )) {
-      const msgName = transitionLabel.replace('recv ', '');
-      return msgName === currentMsg.label;
+    // For receive transitions: must be to this role and TO the transition's target state
+    if (transitionLabel.startsWith('recv ')) {
+      const isReceiver = currentMsg.to === projection.role ||
+        (Array.isArray(currentMsg.to) && currentMsg.to.includes(projection.role));
+
+      if (isReceiver) {
+        // Similar check for receive side
+        const currentNodeId = typeof $executionState.currentNode === 'string'
+          ? $executionState.currentNode
+          : $executionState.currentNode[0];
+        return currentNodeId.includes(transition.from);
+      }
     }
 
     return false;
@@ -89,7 +103,7 @@
     if (!$executionState) return false;
 
     for (const transition of projection.transitions) {
-      if (isTransitionActive(projection, transition) && transition.from === stateId) {
+      if (isExactTransitionActive(projection, transition) && transition.from === stateId) {
         return true;
       }
     }
@@ -102,7 +116,7 @@
     if (!$executionState) return false;
 
     for (const transition of projection.transitions) {
-      if (isTransitionActive(projection, transition) && transition.to === stateId) {
+      if (isExactTransitionActive(projection, transition) && transition.to === stateId) {
         return true;
       }
     }
@@ -267,6 +281,9 @@
       .attr('points', '0 0, 10 3, 0 6')
       .attr('fill', '#C586C0');
 
+    // Render message channels FIRST (behind CFSMs)
+    renderChannels(container);
+
     // Render each CFSM
     $projectionData.forEach((projection, index) => {
       const cfsmX = startX + index * (CFSM_WIDTH + CFSM_MARGIN);
@@ -274,9 +291,6 @@
 
       renderCFSM(container, projection, cfsmX, cfsmY, index);
     });
-
-    // Render message channels between CFSMs
-    renderChannels(container);
   }
 
   function renderCFSM(
@@ -329,7 +343,7 @@
       const to = localStatePositions.get(t.to);
       if (!from || !to) return;
 
-      const isActive = isTransitionActive(projection, t);
+      const isActive = isExactTransitionActive(projection, t);
       const strokeColor = isActive ? '#4EC9B0' : '#666';
       const strokeWidth = isActive ? 2.5 : 1.5;
       const labelColor = isActive ? '#4EC9B0' : '#9CDCFE';
@@ -480,6 +494,7 @@
 
   /**
    * Render message channels between CFSMs
+   * Only shows channels for the EXACT active send/receive transitions
    */
   function renderChannels(container: d3.Selection<SVGGElement, unknown, null, undefined>) {
     if (!$currentCFG) return;
@@ -487,122 +502,107 @@
     const currentMsg = getCurrentMessage();
     if (!currentMsg) return;
 
-    // Find matching send/recv state positions
-    $projectionData.forEach(projection => {
-      projection.transitions.forEach(transition => {
-        const label = transition.label;
+    // Find the exact send transition that's active
+    const senderProj = $projectionData.find(p => p.role === currentMsg.from);
+    if (!senderProj) return;
 
-        // Check if this is a send transition that matches current message
-        if (label.includes('send ') && projection.role === currentMsg.from) {
-          const msgName = label.replace('send ', '');
-          if (msgName === currentMsg.label) {
-            // Find receive side
-            const receivers = Array.isArray(currentMsg.to) ? currentMsg.to : [currentMsg.to];
+    const sendTransition = senderProj.transitions.find(t =>
+      t.label === `send ${currentMsg.label}` &&
+      isExactTransitionActive(senderProj, t)
+    );
 
-            receivers.forEach(receiver => {
-              const sendFrom = statePositions.get(`${projection.role}:${transition.from}`);
-              const recvProj = $projectionData.find(p => p.role === receiver);
+    if (!sendTransition) return;
 
-              if (!recvProj || !sendFrom) return;
+    // Get sender state position
+    const sendFromPos = statePositions.get(`${currentMsg.from}:${sendTransition.from}`);
+    if (!sendFromPos) return;
 
-              // Find matching receive transition
-              const recvTransition = recvProj.transitions.find(t =>
-                t.label === `recv ${msgName}`
-              );
+    // For each receiver
+    const receivers = Array.isArray(currentMsg.to) ? currentMsg.to : [currentMsg.to];
 
-              if (!recvTransition) return;
+    receivers.forEach(receiver => {
+      const recvProj = $projectionData.find(p => p.role === receiver);
+      if (!recvProj) return;
 
-              const recvTo = statePositions.get(`${receiver}:${recvTransition.to}`);
-              if (!recvTo) return;
+      // Find the exact receive transition
+      const recvTransition = recvProj.transitions.find(t =>
+        t.label === `recv ${currentMsg.label}` &&
+        isExactTransitionActive(recvProj, t)
+      );
 
-              // Draw channel
-              drawMessageChannel(container, sendFrom, recvTo, msgName, true);
-            });
-          }
-        }
-      });
+      if (!recvTransition) return;
+
+      // Get receiver state position
+      const recvToPos = statePositions.get(`${receiver}:${recvTransition.to}`);
+      if (!recvToPos) return;
+
+      // Draw channel with message in transit
+      drawMessageChannel(container, sendFromPos, recvToPos, currentMsg.label);
     });
   }
 
   /**
-   * Draw a message channel between two states (different CFSMs)
+   * Draw a message channel showing FIFO buffer visualization
    */
   function drawMessageChannel(
     container: d3.Selection<SVGGElement, unknown, null, undefined>,
     from: { x: number; y: number },
     to: { x: number; y: number },
-    label: string,
-    isActive: boolean
+    label: string
   ) {
     const channelGroup = container.append('g').attr('class', 'channel');
 
-    const strokeColor = isActive ? '#C586C0' : '#666';
-    const strokeWidth = isActive ? 2.5 : 1.5;
-    const dashArray = '5,5';
+    // Calculate channel line position
+    const midX = (from.x + to.x) / 2;
+    const midY = (from.y + to.y) / 2;
 
-    // Draw dashed line representing the channel
-    const path = channelGroup
+    // Draw dashed line representing the channel/buffer
+    channelGroup
       .append('line')
       .attr('x1', from.x)
       .attr('y1', from.y)
       .attr('x2', to.x)
       .attr('y2', to.y)
-      .attr('stroke', strokeColor)
-      .attr('stroke-width', strokeWidth)
-      .attr('stroke-dasharray', dashArray)
-      .attr('marker-end', 'url(#arrowhead-channel)')
-      .attr('opacity', 0.6);
+      .attr('stroke', '#C586C0')
+      .attr('stroke-width', 2)
+      .attr('stroke-dasharray', '5,5')
+      .attr('opacity', 0.7);
 
-    // Add label
-    const midX = (from.x + to.x) / 2;
-    const midY = (from.y + to.y) / 2;
-
+    // Channel label
     channelGroup
       .append('text')
       .attr('x', midX)
-      .attr('y', midY - 10)
+      .attr('y', midY - 15)
       .attr('text-anchor', 'middle')
       .attr('font-size', 11)
-      .attr('fill', strokeColor)
+      .attr('fill', '#C586C0')
       .attr('font-weight', 'bold')
       .text(label);
 
-    // Animate message in channel
-    if (isActive) {
-      const messageCircle = channelGroup
-        .append('circle')
-        .attr('r', 5)
-        .attr('fill', '#C586C0');
+    // Message in buffer (static for now, represents message in FIFO queue)
+    channelGroup
+      .append('circle')
+      .attr('cx', midX)
+      .attr('cy', midY)
+      .attr('r', 6)
+      .attr('fill', '#C586C0')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 1);
 
-      // Animate along the path
-      messageCircle
-        .append('animateMotion')
-        .attr('dur', '2s')
-        .attr('repeatCount', 'indefinite')
-        .append('mpath')
-        .attr('href', `#channel-path-${Math.random()}`);
-
-      // Since we can't easily animate along a line, use simple translation
-      messageCircle
-        .attr('cx', from.x)
-        .attr('cy', from.y)
-        .transition()
-        .duration(2000)
-        .ease(d3.easeLinear)
-        .attr('cx', to.x)
-        .attr('cy', to.y)
-        .on('end', function repeat() {
-          d3.select(this)
-            .attr('cx', from.x)
-            .attr('cy', from.y)
-            .transition()
-            .duration(2000)
-            .ease(d3.easeLinear)
-            .attr('cx', to.x)
-            .attr('cy', to.y)
-            .on('end', repeat);
-        });
-    }
+    // Pulsing animation on the message
+    channelGroup
+      .append('circle')
+      .attr('cx', midX)
+      .attr('cy', midY)
+      .attr('r', 6)
+      .attr('fill', 'none')
+      .attr('stroke', '#C586C0')
+      .attr('stroke-width', 2)
+      .append('animate')
+      .attr('attributeName', 'r')
+      .attr('values', '6;12;6')
+      .attr('dur', '1.5s')
+      .attr('repeatCount', 'indefinite');
   }
 
   function truncateLabel(label: string, maxLength = 15): string {
