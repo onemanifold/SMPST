@@ -14,7 +14,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { parse } from '../../src/core/parser/parser';
 import { buildCFG } from '../../src/core/cfg/builder';
-import { verifyProtocol } from '../../src/core/verification/verifier';
+import { verifyProtocol, summarizeVerification } from '../../src/core/verification/verifier';
 
 const DMST_EXAMPLES_DIR = join(__dirname, '../../examples/dmst');
 
@@ -52,7 +52,8 @@ describe('DMst Examples Smoke Test', () => {
         );
         expect(protocol).toBeDefined();
         const cfg = buildCFG(protocol as any);
-        const result = verifyProtocol(cfg);
+        const verification = verifyProtocol(cfg);
+        const result = summarizeVerification(verification);
 
         if (!result.isValid) {
           console.error(`Verification errors for ${filename}:`, result.errors);

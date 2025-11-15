@@ -12,6 +12,7 @@
     stepSimulation,
     resetSimulation,
     makeChoice,
+    playbackSpeed,
   } from '$lib/stores/simulation';
 
   let selectedChoice: number | null = null;
@@ -106,6 +107,20 @@
       {:else}
         <div class="status-badge idle">⏯ Ready</div>
       {/if}
+    </div>
+
+    <div class="speed-group">
+      <span class="speed-label">Speed:</span>
+      <input
+        type="range"
+        min="10"
+        max="1000"
+        step="10"
+        bind:value={$playbackSpeed}
+        class="speed-slider"
+        title="Playback speed: {$playbackSpeed}ms"
+      />
+      <span class="speed-value">{$playbackSpeed}ms</span>
     </div>
 
     {#if $isAtChoice}
@@ -249,6 +264,65 @@
   .status-badge.idle {
     background: #3d3d3d;
     color: #ccc;
+  }
+
+  .speed-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 6px;
+    border-left: 1px solid #555;
+  }
+
+  .speed-label {
+    color: #888;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .speed-slider {
+    width: 100px;
+    height: 4px;
+    background: #3d3d3d;
+    border-radius: 2px;
+    outline: none;
+    -webkit-appearance: none;
+  }
+
+  .speed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #007acc;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .speed-slider::-webkit-slider-thumb:hover {
+    background: #0098ff;
+  }
+
+  .speed-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #007acc;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .speed-slider::-moz-range-thumb:hover {
+    background: #0098ff;
+  }
+
+  .speed-value {
+    color: #ccc;
+    font-size: 11px;
+    font-family: monospace;
+    min-width: 42px;
+    text-align: right;
   }
 
   .choice-group {

@@ -8,8 +8,12 @@
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 
   // Auto-select first role when projection data updates
-  $: if ($projectionData.length > 0 && !selectedRole) {
-    selectedRole = $projectionData[0].role;
+  // Also reset if current role doesn't exist in new projection data
+  $: if ($projectionData.length > 0) {
+    const roleExists = $projectionData.some(p => p.role === selectedRole);
+    if (!selectedRole || !roleExists) {
+      selectedRole = $projectionData[0].role;
+    }
   }
 
   // Get serialized local protocol from projection data
@@ -18,11 +22,39 @@
 
   // Update editor content when selected role changes
   $: if (editor && localScribble !== editor.getValue()) {
-    editor.setValue(localScribble);
+    try {
+      const currentPosition = editor.getPosition();
+      editor.setValue(localScribble);
+      if (currentPosition) {
+        editor.setPosition(currentPosition);
+      }
+    } catch (e) {
+      console.error('Failed to update editor:', e);
+    }
   }
 
   onMount(() => {
     if (!editorContainer) return;
+
+    // Set up Monaco environment (needed for worker loading)
+    (window as any).MonacoEnvironment = (window as any).MonacoEnvironment || {
+      getWorkerUrl: function (_moduleId: string, label: string) {
+        const base = import.meta.env.BASE_URL || '/';
+        if (label === 'json') {
+          return `${base}monacoeditorwork/json.worker.bundle.js`;
+        }
+        if (label === 'css' || label === 'scss' || label === 'less') {
+          return `${base}monacoeditorwork/css.worker.bundle.js`;
+        }
+        if (label === 'html' || label === 'handlebars' || label === 'razor') {
+          return `${base}monacoeditorwork/html.worker.bundle.js`;
+        }
+        if (label === 'typescript' || label === 'javascript') {
+          return `${base}monacoeditorwork/ts.worker.bundle.js`;
+        }
+        return `${base}monacoeditorwork/editor.worker.bundle.js`;
+      }
+    };
 
     // Ensure Monaco language and theme are registered
     const languages = monaco.languages.getLanguages();
@@ -66,24 +98,33 @@
       });
     }
 
-    // Create read-only Monaco editor
-    editor = monaco.editor.create(editorContainer, {
-      value: localScribble,
-      language: 'scribble',
-      theme: 'scribble-dark',
-      automaticLayout: true,
-      minimap: { enabled: false },
-      fontSize: 13,
-      lineNumbers: 'on',
-      renderWhitespace: 'selection',
-      scrollBeyondLastLine: false,
-      readOnly: true,
-      domReadOnly: true,
-      contextmenu: false,
-      folding: false,
-      lineDecorationsWidth: 0,
-      lineNumbersMinChars: 3,
-    });
+    // Small delay to ensure container is fully rendered
+    setTimeout(() => {
+      if (!editorContainer) return;
+
+      try {
+        // Create read-only Monaco editor
+        editor = monaco.editor.create(editorContainer, {
+          value: localScribble,
+          language: 'scribble',
+          theme: 'scribble-dark',
+          automaticLayout: true,
+          minimap: { enabled: false },
+          fontSize: 13,
+          lineNumbers: 'on',
+          renderWhitespace: 'selection',
+          scrollBeyondLastLine: false,
+          readOnly: true,
+          domReadOnly: true,
+          contextmenu: false,
+          folding: false,
+          lineDecorationsWidth: 0,
+          lineNumbersMinChars: 3,
+        });
+      } catch (e) {
+        console.error('Failed to create Monaco editor:', e);
+      }
+    }, 100);
   });
 
   onDestroy(() => {
