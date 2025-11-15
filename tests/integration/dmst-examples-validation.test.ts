@@ -206,6 +206,12 @@ describe('DMst Examples Validation', () => {
 
         const traceResult = verifyTraceEquivalence(cfg, projections);
         expect(traceResult).toBeTruthy();
+        if (!traceResult.isEquivalent) {
+          console.log(`\n${name} trace mismatch:`);
+          console.log('  Reason:', traceResult.reason);
+          console.log('  Global:', traceResult.globalTrace);
+          console.log('  Composed:', traceResult.composedTrace);
+        }
         expect(traceResult.isEquivalent).toBe(true);
       });
 
