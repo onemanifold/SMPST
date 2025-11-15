@@ -1278,9 +1278,27 @@ export function checkMulticast(cfg: CFG): MulticastResult {
  * Check for self-communication (role sending to itself)
  * This is semantically questionable in session types
  */
+/**
+ * Check for self-communication patterns
+ *
+ * DMst Extension: Self-communication is ALLOWED for local actions
+ * (Definition 1: p -> p represents internal computation)
+ *
+ * For DMst protocols, self-communication is a valid pattern representing
+ * local processing without synchronization. This checker is disabled
+ * to support DMst local actions.
+ */
 export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
   const violations: SelfCommunicationViolation[] = [];
 
+  // DMst: Self-communication is explicitly allowed for local actions
+  // (Definition 1: A -> A: Msg represents internal computation at A)
+  // Classic MPST prohibits this, but DMst uses it for local processing
+  //
+  // Therefore, we do not flag self-communication as an error.
+  // Uncomment the code below to restore classic MPST behavior:
+
+  /*
   // Find all action nodes
   for (const node of cfg.nodes) {
     if (isActionNode(node) && isMessageAction(node.action)) {
@@ -1307,9 +1325,10 @@ export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
       }
     }
   }
+  */
 
   return {
-    isValid: violations.length === 0,
+    isValid: true, // DMst: Always valid (self-communication allowed)
     violations,
   };
 }
