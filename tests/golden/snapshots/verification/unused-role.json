@@ -37,7 +37,7 @@
     "orphanedRoles": [
       "C"
     ],
-    "description": "Connectedness violation: Role [C] is declared in the protocol signature but never participate in any message exchange. All declared roles must be involved in the protocol."
+    "description": "Connectedness violation: Role [C] is declared in the protocol signature but never participate in any message exchange, participant creation, or invitation. All declared roles must be involved in the protocol."
   },
   "nestedRecursion": {
     "isValid": true,

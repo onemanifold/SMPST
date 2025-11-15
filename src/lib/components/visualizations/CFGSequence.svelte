@@ -43,7 +43,8 @@
         messages.push({
           from: action.from,
           to: action.to,
-          label: action.message.label,
+          // Use label field (supports both old and new format)
+          label: action.label || action.message?.label || 'Unknown',
           nodeId: node.id,
           visited: visitedNodes.has(node.id),
           isCurrent: node.id === currentNodeId
