@@ -208,8 +208,9 @@ export class CFSMSimulator {
 
   /**
    * Execute one step (fire one enabled transition)
+   * Now fully async to support async message transport
    */
-  step(): CFSMStepResult {
+  async step(): Promise<CFSMStepResult> {
     this.emit('step-start', { stepCount: this.stepCount, currentState: this.currentState });
 
     // Check if completed
@@ -315,9 +316,9 @@ export class CFSMSimulator {
 
     const transition = enabled[transitionIndex];
 
-    // Fire the transition
+    // Fire the transition (async!)
     this.stepCount++;
-    const result = this.fireTransition(transition);
+    const result = await this.fireTransition(transition);
 
     this.emit('step-end', { stepCount: this.stepCount, result, state: this.getState() });
 
@@ -325,9 +326,9 @@ export class CFSMSimulator {
   }
 
   /**
-   * Fire a specific transition
+   * Fire a specific transition (async!)
    */
-  private fireTransition(transition: CFSMTransition): CFSMStepResult {
+  private async fireTransition(transition: CFSMTransition): Promise<CFSMStepResult> {
     const action = transition.action;
 
     // Emit transition-fired event
@@ -338,12 +339,12 @@ export class CFSMSimulator {
       action,
     });
 
-    // Execute action
+    // Execute action (await async actions)
     switch (action.type) {
       case 'send':
-        return this.executeSend(transition);
+        return await this.executeSend(transition);
       case 'receive':
-        return this.executeReceive(transition);
+        return await this.executeReceive(transition);
       case 'tau':
         return this.executeTau(transition);
       case 'choice':
@@ -356,10 +357,10 @@ export class CFSMSimulator {
   }
 
   /**
-   * Execute send action
+   * Execute send action (async!)
    * Creates message and sends via transport (if available) or outgoing queue (legacy)
    */
-  private executeSend(transition: CFSMTransition): CFSMStepResult {
+  private async executeSend(transition: CFSMTransition): Promise<CFSMStepResult> {
     const action = transition.action;
     if (action.type !== 'send') throw new Error('Expected send action');
 
@@ -375,12 +376,9 @@ export class CFSMSimulator {
     }));
 
     if (this.transport) {
-      // Transport mode: send directly via transport
+      // Transport mode: await send (applies configured delay)
       for (const msg of messages) {
-        // Fire and forget - transport handles delivery
-        this.transport.send(msg).catch((err: Error) => {
-          console.error(`Transport send error for message ${msg.id}:`, err);
-        });
+        await this.transport.send(msg);
       }
     } else {
       // Legacy mode: add to outgoing queue (coordinator will deliver)
@@ -432,21 +430,18 @@ export class CFSMSimulator {
   }
 
   /**
-   * Execute receive action
+   * Execute receive action (async!)
    * Consumes message from transport or buffer (legacy)
    */
-  private executeReceive(transition: CFSMTransition): CFSMStepResult {
+  private async executeReceive(transition: CFSMTransition): Promise<CFSMStepResult> {
     const action = transition.action;
     if (action.type !== 'receive') throw new Error('Expected receive action');
 
     let msg: Message;
 
     if (this.transport) {
-      // Transport mode: receive from transport synchronously
-      // Uses receiveSync for InMemoryTransport to avoid async complexity
-      const receivedMsg = this.transport.receiveSync
-        ? this.transport.receiveSync(this.rootCFSM.role)
-        : undefined;
+      // Transport mode: await receive from transport (fully async!)
+      const receivedMsg = await this.transport.receive(this.rootCFSM.role);
 
       if (!receivedMsg) {
         throw new Error(`No message available from transport for ${this.rootCFSM.role}`);

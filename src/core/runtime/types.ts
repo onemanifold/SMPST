@@ -86,6 +86,27 @@ export type ExecutionErrorType =
 // ============================================================================
 
 /**
+ * Delay configuration for simulating network latency
+ * Used by InMemoryTransport for realistic distributed simulation
+ */
+export interface TransportDelayConfig {
+  /**
+   * Message delivery delay in milliseconds
+   * - number: Fixed delay for all messages
+   * - [min, max]: Random delay between min and max
+   * - undefined/0: Synchronous (immediate delivery)
+   */
+  messageDelay?: number | [number, number];
+
+  /**
+   * Whether to use microtask delays (process.nextTick / Promise.resolve)
+   * Simulates async behavior without actual time delay
+   * Useful for testing async execution without slowing tests
+   */
+  useMicrotaskDelay?: boolean;
+}
+
+/**
  * Abstract message transport layer
  * Implementations: InMemoryTransport, WebSocketTransport, WebRTCTransport
  */
