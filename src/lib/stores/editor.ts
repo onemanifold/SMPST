@@ -96,11 +96,15 @@ export function setEditorContent(content: string) {
   parseError.set(null);
 }
 
-export function loadExample(example: ProtocolExample) {
+export async function loadExample(example: ProtocolExample) {
   selectedExample.set(example);
   editorContent.set(example.code);
   parseStatus.set('idle');
   parseError.set(null);
+
+  // Automatically parse the protocol
+  // This ensures parsing happens even when editor is not mounted (e.g., in simulation tab)
+  await parseProtocol(example.code);
 }
 
 export function clearEditor() {

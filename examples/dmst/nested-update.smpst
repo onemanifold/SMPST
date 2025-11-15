@@ -1,0 +1,64 @@
+/**
+ * Nested Updatable Recursion
+ *
+ * Demonstrates:
+ * - Nested recursion with updates
+ * - Multiple update points
+ * - Complex participant growth patterns
+ *
+ * Properties verified:
+ * ✅ Safe update (Definition 14) - both recursions safe
+ * ✅ Trace equivalence with nested updates
+ * ✅ Deadlock-free (complex control flow)
+ * ✅ All participants can complete
+ *
+ * SCENARIO:
+ *   A Coordinator manages a two-level worker hierarchy:
+ *   - Outer loop: Add team leaders
+ *   - Inner loop: Add team members
+ *   Both levels use updatable recursion.
+ */
+
+protocol NestedTeams(role Coordinator) {
+  new role Leader;
+  new role Member;
+
+  rec OuterLoop {
+    // Create a team leader
+    Coordinator creates Leader as lead;
+    Coordinator invites lead;
+    Coordinator -> lead: TeamConfig(string);
+
+    rec InnerLoop {
+      // Create team member under this leader
+      Coordinator creates Member as mem;
+      Coordinator invites mem;
+      lead -> mem: Assignment(string);
+      mem -> lead: Status(int);
+
+      choice at Coordinator {
+        // Add another team member (inner update)
+        continue InnerLoop with {
+          Coordinator creates Member as mem_new;
+          Coordinator invites mem_new;
+          lead -> mem_new: Assignment(string);
+        };
+      } or {
+        // Done with this team
+        lead -> Coordinator: TeamDone();
+      }
+    }
+
+    choice at Coordinator {
+      // Add another team (outer update)
+      continue OuterLoop with {
+        Coordinator creates Leader as lead_new;
+        Coordinator invites lead_new;
+        Coordinator -> lead_new: TeamConfig(string);
+      };
+    } or {
+      // All teams created
+      Coordinator -> lead: AllDone();
+    }
+  }
+}

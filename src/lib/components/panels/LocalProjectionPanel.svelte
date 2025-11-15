@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import { projectionData, parseStatus } from '$lib/stores/editor';
+  import * as monaco from 'monaco-editor';
 
   let selectedRole = '';
+  let editorContainer: HTMLDivElement;
+  let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 
   // Auto-select first role when projection data updates
   $: if ($projectionData.length > 0 && !selectedRole) {
@@ -11,6 +15,80 @@
   // Get serialized local protocol from projection data
   $: currentProjection = $projectionData.find(p => p.role === selectedRole);
   $: localScribble = currentProjection?.localProtocol || '';
+
+  // Update editor content when selected role changes
+  $: if (editor && localScribble !== editor.getValue()) {
+    editor.setValue(localScribble);
+  }
+
+  onMount(() => {
+    if (!editorContainer) return;
+
+    // Ensure Monaco language and theme are registered
+    const languages = monaco.languages.getLanguages();
+    const hasScribble = languages.some(lang => lang.id === 'scribble');
+
+    if (!hasScribble) {
+      // Register Scribble language
+      monaco.languages.register({ id: 'scribble' });
+
+      // Define Scribble syntax highlighting
+      monaco.languages.setMonarchTokensProvider('scribble', {
+        keywords: [
+          'protocol', 'role', 'choice', 'at', 'or', 'rec', 'continue', 'par', 'and', 'do', 'as', 'type', 'import'
+        ],
+        operators: ['(', ')', '{', '}', ';', ',', '<', '>', '->', ':'],
+        tokenizer: {
+          root: [
+            [/\b(protocol|role|choice|at|or|rec|continue|par|and|do|as|type|import)\b/, 'keyword'],
+            [/->/, 'keyword'],
+            [/\b[A-Z][a-zA-Z0-9]*\b/, 'type'],
+            [/\b[a-z][a-zA-Z0-9]*\b/, 'variable'],
+            [/[(){}\[\];,<>:]/, 'delimiter'],
+            [/\/\/.*$/, 'comment'],
+          ]
+        }
+      });
+
+      // Define Scribble theme
+      monaco.editor.defineTheme('scribble-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'keyword', foreground: 'C586C0' },
+          { token: 'type', foreground: '4EC9B0' },
+          { token: 'variable', foreground: '9CDCFE' },
+          { token: 'comment', foreground: '6A9955' },
+        ],
+        colors: {
+          'editor.background': '#1e1e1e',
+        }
+      });
+    }
+
+    // Create read-only Monaco editor
+    editor = monaco.editor.create(editorContainer, {
+      value: localScribble,
+      language: 'scribble',
+      theme: 'scribble-dark',
+      automaticLayout: true,
+      minimap: { enabled: false },
+      fontSize: 13,
+      lineNumbers: 'on',
+      renderWhitespace: 'selection',
+      scrollBeyondLastLine: false,
+      readOnly: true,
+      domReadOnly: true,
+      contextmenu: false,
+      folding: false,
+      lineDecorationsWidth: 0,
+      lineNumbersMinChars: 3,
+    });
+  });
+
+  onDestroy(() => {
+    editor?.dispose();
+  });
 </script>
 
 <div class="local-projection-panel">
@@ -32,7 +110,7 @@
     </div>
 
     <div class="projection-content">
-      <pre class="scribble-code">{localScribble}</pre>
+      <div class="editor-container" bind:this={editorContainer}></div>
     </div>
   {/if}
 </div>
@@ -86,15 +164,13 @@
 
   .projection-content {
     flex: 1;
-    overflow: auto;
-    padding: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
-  .scribble-code {
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.6;
-    color: #d4d4d4;
-    margin: 0;
+  .editor-container {
+    flex: 1;
+    overflow: hidden;
   }
 </style>

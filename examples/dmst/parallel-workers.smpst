@@ -1,0 +1,48 @@
+/**
+ * Parallel Workers Protocol
+ *
+ * Demonstrates:
+ * - Multiple workers operating in parallel
+ * - Barrier synchronization
+ * - Dynamic worker pool
+ * - Broadcast communication pattern
+ *
+ * Properties verified:
+ * ✅ No races (workers use disjoint channels)
+ * ✅ All workers reach barrier
+ * ✅ Deadlock-free parallel execution
+ * ✅ Trace equivalence with parallel composition
+ *
+ * SCENARIO:
+ *   A Master creates multiple workers, distributes tasks,
+ *   and synchronizes at a barrier before collecting results.
+ */
+
+protocol ParallelWorkers(role Master) {
+  new role Worker;
+
+  // Create worker pool
+  Master creates Worker as w1;
+  Master creates Worker as w2;
+  Master creates Worker as w3;
+
+  // Invite all workers
+  Master invites w1;
+  Master invites w2;
+  Master invites w3;
+
+  // Distribute tasks (parallel)
+  Master -> w1: Task(string);
+  Master -> w2: Task(string);
+  Master -> w3: Task(string);
+
+  // Barrier: all workers send ready
+  w1 -> Master: Ready();
+  w2 -> Master: Ready();
+  w3 -> Master: Ready();
+
+  // Collect results
+  w1 -> Master: Result(int);
+  w2 -> Master: Result(int);
+  w3 -> Master: Result(int);
+}

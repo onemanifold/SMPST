@@ -66,6 +66,7 @@ export interface ProtocolParameter {
 export interface RoleDeclaration {
   type: 'RoleDeclaration';
   name: string;
+  isDynamic?: boolean; // DMst: true if declared with 'new role'
   location?: SourceLocation;
 }
 
@@ -81,7 +82,12 @@ export type GlobalInteraction =
   | Try          // Exception handling
   | Throw        // Exception handling
   | TimedMessage // Timed types
-  | Timeout;     // Timed types
+  | Timeout      // Timed types
+  | DynamicRoleDeclaration  // DMst
+  | ProtocolCall            // DMst
+  | CreateParticipants      // DMst
+  | Invitation              // DMst
+  | UpdatableRecursion;     // DMst
 
 // ============================================================================
 // Local Protocol
@@ -253,6 +259,119 @@ export interface Do {
 }
 
 // ============================================================================
+// DMst - Dynamically Updatable MPST (Castro-Perez & Yoshida, ECOOP 2023)
+// ============================================================================
+
+/**
+ * Dynamic Role Declaration: new role Worker
+ *
+ * Declares a role that will be created dynamically at runtime.
+ * Unlike static roles (declared in protocol parameters), dynamic roles
+ * are instantiated during execution via CreateParticipants.
+ *
+ * From ECOOP 2023: Roles marked with `new` can be created multiple times,
+ * each instance getting a unique identity.
+ *
+ * Example:
+ *   protocol Pipeline(role Manager) {
+ *     new role Worker;  // Dynamic role declaration
+ *     Manager creates Worker;  // Creates instance
+ *   }
+ */
+export interface DynamicRoleDeclaration {
+  type: 'DynamicRoleDeclaration';
+  roleName: string; // Role type name (e.g., "Worker")
+  location?: SourceLocation;
+}
+
+/**
+ * Protocol Call: Coordinator calls SubTask(Worker)
+ *
+ * Calls a sub-protocol, creating a nested session.
+ * From ECOOP 2023 Definition 1: p ↪→ x⟨q⟩
+ *
+ * The combining operator ♢ interleaves the caller protocol with
+ * the called sub-protocol.
+ *
+ * Example:
+ *   A calls SubProtocol(B, C);
+ */
+export interface ProtocolCall {
+  type: 'ProtocolCall';
+  caller: string; // Role making the call
+  protocol: string; // Sub-protocol name
+  typeArguments?: Type[];
+  roleArguments: string[]; // Roles passed to sub-protocol
+  location?: SourceLocation;
+}
+
+/**
+ * Create Participants: Manager creates Worker as w1
+ *
+ * Creates a new instance of a dynamic role at runtime.
+ * The dynamic role must be declared with `new role` earlier.
+ *
+ * Example:
+ *   Manager creates Worker;
+ *   Manager creates Worker as w1;
+ */
+export interface CreateParticipants {
+  type: 'CreateParticipants';
+  creator: string; // Role creating the participant
+  roleName: string; // Dynamic role type to instantiate
+  instanceName?: string; // Optional instance name (e.g., "w1")
+  location?: SourceLocation;
+}
+
+/**
+ * Invitation: Manager invites Worker
+ *
+ * Synchronization point for dynamic participant creation.
+ * Ensures the created participant is ready before messages are sent.
+ *
+ * From ECOOP 2023: Invitation protocol prevents orphaned messages
+ * and ensures proper initialization.
+ *
+ * Example:
+ *   Manager invites Worker;
+ */
+export interface Invitation {
+  type: 'Invitation';
+  inviter: string; // Role sending invitation
+  invitee: string; // Dynamic participant being invited
+  location?: SourceLocation;
+}
+
+/**
+ * Updatable Recursion: continue Loop with { G_update }
+ *
+ * From ECOOP 2023 Definition 13:
+ * Allows recursive protocols to grow dynamically by adding new behavior
+ * in each iteration.
+ *
+ * Safety requirement (Definition 14): Must have safe 1-unfolding.
+ * The 1-unfolding G[X ↦ G ♢ G_update] must be well-formed.
+ *
+ * Example:
+ *   rec Loop {
+ *     A -> B: Work();
+ *     choice at A {
+ *       continue Loop with {
+ *         A -> C: Extra();  // Added in each iteration
+ *       };
+ *     } or {
+ *       A -> B: Done();
+ *     }
+ *   }
+ */
+export interface UpdatableRecursion {
+  type: 'UpdatableRecursion';
+  label: string; // Recursion variable (e.g., "Loop")
+  updateBody: GlobalProtocolBody | LocalProtocolBody; // New behavior to add
+  location?: SourceLocation;
+}
+
+// ============================================================================
 // Type System
 // ============================================================================
 
@@ -288,7 +407,12 @@ export function isGlobalInteraction(node: any): node is GlobalInteraction {
     node.type === 'Try' ||
     node.type === 'Throw' ||
     node.type === 'TimedMessage' ||
-    node.type === 'Timeout'
+    node.type === 'Timeout' ||
+    node.type === 'DynamicRoleDeclaration' ||
+    node.type === 'ProtocolCall' ||
+    node.type === 'CreateParticipants' ||
+    node.type === 'Invitation' ||
+    node.type === 'UpdatableRecursion'
   );
 }
 
@@ -464,4 +588,28 @@ export function isTimeout(node: any): node is Timeout {
 
 export function isProtocolExtension(node: any): node is ProtocolExtension {
   return node?.type === 'ProtocolExtension';
+}
+
+// ============================================================================
+// Type Guards for DMst
+// ============================================================================
+
+export function isDynamicRoleDeclaration(node: any): node is DynamicRoleDeclaration {
+  return node?.type === 'DynamicRoleDeclaration';
+}
+
+export function isProtocolCall(node: any): node is ProtocolCall {
+  return node?.type === 'ProtocolCall';
+}
+
+export function isCreateParticipants(node: any): node is CreateParticipants {
+  return node?.type === 'CreateParticipants';
+}
+
+export function isInvitation(node: any): node is Invitation {
+  return node?.type === 'Invitation';
+}
+
+export function isUpdatableRecursion(node: any): node is UpdatableRecursion {
+  return node?.type === 'UpdatableRecursion';
 }

@@ -36,6 +36,13 @@ export const Within = createToken({ name: 'Within', pattern: /within/ });
 export const Timeout = createToken({ name: 'Timeout', pattern: /timeout/ });
 export const Extends = createToken({ name: 'Extends', pattern: /extends/ });
 
+// DMst (Dynamically Updatable MPST) - Castro-Perez & Yoshida ECOOP 2023
+export const New = createToken({ name: 'New', pattern: /new/ });
+export const Calls = createToken({ name: 'Calls', pattern: /calls/ });
+export const With = createToken({ name: 'With', pattern: /with/ });
+export const Creates = createToken({ name: 'Creates', pattern: /creates/ });
+export const Invites = createToken({ name: 'Invites', pattern: /invites/ });
+
 // ============================================================================
 // Operators and Punctuation
 // ============================================================================
@@ -130,6 +137,13 @@ export const allTokens = [
   Within,
   Timeout,
   Extends,
+
+  // DMst keywords
+  New,
+  Calls,
+  With,
+  Creates,
+  Invites,
 
   // Operators (must come before single-char tokens)
   Arrow,
