@@ -8,8 +8,12 @@
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 
   // Auto-select first role when projection data updates
-  $: if ($projectionData.length > 0 && !selectedRole) {
-    selectedRole = $projectionData[0].role;
+  // Also reset if current role doesn't exist in new projection data
+  $: if ($projectionData.length > 0) {
+    const roleExists = $projectionData.some(p => p.role === selectedRole);
+    if (!selectedRole || !roleExists) {
+      selectedRole = $projectionData[0].role;
+    }
   }
 
   // Get serialized local protocol from projection data
@@ -17,7 +21,7 @@
   $: localScribble = currentProjection?.localProtocol || '';
 
   // Update editor content when selected role changes
-  $: if (editor && localScribble && localScribble !== editor.getValue()) {
+  $: if (editor && localScribble !== editor.getValue()) {
     try {
       const currentPosition = editor.getPosition();
       editor.setValue(localScribble);
