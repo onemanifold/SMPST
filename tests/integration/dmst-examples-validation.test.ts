@@ -141,6 +141,9 @@ describe('DMst Examples Validation', () => {
         });
       });
 
+      // DMst REQUIREMENT: Structural well-formedness
+      // While not explicitly in Definition 15, structural checks ensure
+      // the protocol is syntactically valid before checking projectability
       it('should pass verification', () => {
         if (!cfg) {
           module = parse(readFileSync(filePath, 'utf-8'));
@@ -161,6 +164,9 @@ describe('DMst Examples Validation', () => {
         expect(result.isValid).toBe(true);
       });
 
+      // DMst REQUIREMENT: Projectability (Definition 15)
+      // "A global type is well formed iff it is projectable" (ECOOP 2023, p. 6:14)
+      // This is THE core requirement for DMst verification!
       it('should project to valid CFSMs', () => {
         if (!cfg) {
           module = parse(readFileSync(filePath, 'utf-8'));
@@ -189,6 +195,9 @@ describe('DMst Examples Validation', () => {
         });
       });
 
+      // SUPPLEMENTARY: Trace equivalence checking (NOT required by DMst)
+      // Theorem 20 guarantees trace equivalence for projectable protocols
+      // We check it for bounded protocols as development validation only
       it('should verify trace equivalence', () => {
         if (!cfg) {
           module = parse(readFileSync(filePath, 'utf-8'));
