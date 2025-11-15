@@ -4,7 +4,7 @@
  */
 
 import type { CFG, Node, Edge, ForkNode, ActionNode, BranchNode, RecursiveNode } from '../cfg/types';
-import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode, isRecursiveNode } from '../cfg/types';
+import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode, isRecursiveNode, isCreateParticipantsAction, isInvitationAction, isDynamicRoleDeclarationAction } from '../cfg/types';
 import type {
   DeadlockResult,
   DeadlockCycle,
@@ -772,9 +772,24 @@ function findFirstMessageAction(cfg: CFG, startNodeId: string): Node | null {
 /**
  * Check if choice branches have consistent continuations for all roles
  * Per Honda et al. (2008): Projection requires "consistent endpoints" across choice branches
+ *
+ * DMst Extension: Allows conditional dynamic participants (different participant sets per branch)
+ * - Static roles (declared in protocol signature) must appear consistently
+ * - Dynamic roles and instances created within branches can be branch-specific
  */
 export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
   const violations: MergeabilityViolation[] = [];
+
+  // Collect all dynamic role names (declared with 'new role')
+  const dynamicRoles = new Set<string>();
+  for (const node of cfg.nodes) {
+    if (isActionNode(node) && isDynamicRoleDeclarationAction(node.action)) {
+      dynamicRoles.add(node.action.roleName);
+    }
+  }
+
+  // Static roles are those in cfg.roles (protocol signature)
+  const staticRoles = new Set(cfg.roles);
 
   // Find all branch nodes
   const branchNodes = cfg.nodes.filter(isBranchNode) as BranchNode[];
@@ -783,13 +798,15 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
     // Get all branches for this choice
     const branchEdges = cfg.edges.filter(e => e.from === branchNode.id && e.edgeType === 'branch');
 
-    // For each branch, collect the set of roles involved
+    // For each branch, collect roles involved and instances created
     const branchRoles = new Map<string, Set<string>>(); // branch label -> set of roles
+    const branchCreatedInstances = new Map<string, Set<string>>(); // branch label -> instances created in this branch
 
     for (const edge of branchEdges) {
       const label = edge.label || edge.to;
-      const roles = getRolesInPath(cfg, edge.to, branchNode.id);
+      const { roles, createdInstances } = getRolesAndInstancesInPath(cfg, edge.to, branchNode.id);
       branchRoles.set(label, roles);
+      branchCreatedInstances.set(label, createdInstances);
     }
 
     // Check if all branches have the same set of roles
@@ -801,6 +818,7 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
     }
 
     // For each role, check if it appears consistently across branches
+    // DMst: Only enforce consistency for STATIC roles
     for (const role of allRoles) {
       const branchesWithRole: string[] = [];
       const branchesWithoutRole: string[] = [];
@@ -813,8 +831,30 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
         }
       }
 
-      // If role appears in some branches but not all, it's a violation
+      // If role appears in some branches but not all
       if (branchesWithRole.length > 0 && branchesWithoutRole.length > 0) {
+        // DMst: Allow dynamic roles to be conditional (branch-specific)
+        if (dynamicRoles.has(role)) {
+          // This is OK! Dynamic roles can be conditionally created
+          continue;
+        }
+
+        // DMst: Check if this is an instance created within a branch
+        let isConditionallyCreated = false;
+        for (const [label, createdInstances] of branchCreatedInstances.entries()) {
+          if (createdInstances.has(role)) {
+            // This instance was created within this branch, so it's OK to be branch-specific
+            isConditionallyCreated = true;
+            break;
+          }
+        }
+
+        if (isConditionallyCreated) {
+          // This is OK! Conditionally created instances can be branch-specific
+          continue;
+        }
+
+        // Static roles must appear consistently
         const branchInfo: { [key: string]: string[] } = {};
         for (const [label, roles] of branchRoles.entries()) {
           branchInfo[label] = Array.from(roles);
@@ -841,10 +881,18 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
 }
 
 /**
- * Get all roles involved in a path (from a branch start until merge or terminal)
+ * Get all roles involved in a path and instances created within the path
+ * (from a branch start until merge or terminal)
+ *
+ * DMst Extension: Also tracks which instances are created within this path
  */
-function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Set<string> {
+function getRolesAndInstancesInPath(
+  cfg: CFG,
+  startNodeId: string,
+  branchNodeId: string
+): { roles: Set<string>; createdInstances: Set<string> } {
   const roles = new Set<string>();
+  const createdInstances = new Set<string>();
   const visited = new Set<string>();
   const queue: string[] = [startNodeId];
 
@@ -859,14 +907,22 @@ function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Se
     // Stop at merge nodes (but don't include roles after merge)
     if (node.type === 'merge') continue;
 
-    // If this is an action node with message action, collect roles
-    if (isActionNode(node) && isMessageAction(node.action)) {
+    if (isActionNode(node)) {
       const action = node.action;
-      roles.add(action.from);
-      if (typeof action.to === 'string') {
-        roles.add(action.to);
-      } else {
-        action.to.forEach(r => roles.add(r));
+
+      // Collect roles from message actions
+      if (isMessageAction(action)) {
+        roles.add(action.from);
+        if (typeof action.to === 'string') {
+          roles.add(action.to);
+        } else {
+          action.to.forEach(r => roles.add(r));
+        }
+      }
+
+      // DMst: Track instances created within this path
+      if (isCreateParticipantsAction(action) && action.instanceName) {
+        createdInstances.add(action.instanceName);
       }
     }
 
@@ -877,7 +933,15 @@ function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Se
     }
   }
 
-  return roles;
+  return { roles, createdInstances };
+}
+
+/**
+ * Get all roles involved in a path (from a branch start until merge or terminal)
+ * @deprecated Use getRolesAndInstancesInPath for DMst support
+ */
+function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Set<string> {
+  return getRolesAndInstancesInPath(cfg, startNodeId, branchNodeId).roles;
 }
 
 // ============================================================================
@@ -887,6 +951,9 @@ function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Se
 /**
  * Check if all declared roles participate in the protocol
  * Per Scribble spec 4.1.1: All declared roles should appear in the protocol
+ *
+ * DMst Extension: Also counts participation in creates/invites actions
+ * (Definition 12: Projection for Dynamic Participants)
  */
 export function checkConnectedness(cfg: CFG): ConnectednessResult {
   const declaredRoles = new Set(cfg.roles);
@@ -894,13 +961,32 @@ export function checkConnectedness(cfg: CFG): ConnectednessResult {
 
   // Collect all roles used in action nodes
   for (const node of cfg.nodes) {
-    if (isActionNode(node) && isMessageAction(node.action)) {
+    if (isActionNode(node)) {
       const action = node.action;
-      usedRoles.add(action.from);
-      if (typeof action.to === 'string') {
-        usedRoles.add(action.to);
-      } else {
-        action.to.forEach(r => usedRoles.add(r));
+
+      // Classic MPST: Message actions
+      if (isMessageAction(action)) {
+        usedRoles.add(action.from);
+        if (typeof action.to === 'string') {
+          usedRoles.add(action.to);
+        } else {
+          action.to.forEach(r => usedRoles.add(r));
+        }
+      }
+
+      // DMst: CreateParticipants actions (Definition 12)
+      // Both creator and created role are active participants
+      if (isCreateParticipantsAction(action)) {
+        usedRoles.add(action.creator);
+        // Note: roleName is the dynamic role type, not instance
+        // We still count it as participation
+      }
+
+      // DMst: Invitation actions (Definition 12)
+      // Both inviter and invitee are active participants
+      if (isInvitationAction(action)) {
+        usedRoles.add(action.inviter);
+        usedRoles.add(action.invitee);
       }
     }
   }
@@ -917,7 +1003,7 @@ export function checkConnectedness(cfg: CFG): ConnectednessResult {
     isConnected: orphanedRoles.length === 0,
     orphanedRoles,
     description: orphanedRoles.length > 0
-      ? `Connectedness violation: Role${orphanedRoles.length > 1 ? 's' : ''} [${orphanedRoles.join(', ')}] ${orphanedRoles.length > 1 ? 'are' : 'is'} declared in the protocol signature but never participate in any message exchange. All declared roles must be involved in the protocol.`
+      ? `Connectedness violation: Role${orphanedRoles.length > 1 ? 's' : ''} [${orphanedRoles.join(', ')}] ${orphanedRoles.length > 1 ? 'are' : 'is'} declared in the protocol signature but never participate in any message exchange, participant creation, or invitation. All declared roles must be involved in the protocol.`
       : undefined,
   };
 }
@@ -1192,9 +1278,27 @@ export function checkMulticast(cfg: CFG): MulticastResult {
  * Check for self-communication (role sending to itself)
  * This is semantically questionable in session types
  */
+/**
+ * Check for self-communication patterns
+ *
+ * DMst Extension: Self-communication is ALLOWED for local actions
+ * (Definition 1: p -> p represents internal computation)
+ *
+ * For DMst protocols, self-communication is a valid pattern representing
+ * local processing without synchronization. This checker is disabled
+ * to support DMst local actions.
+ */
 export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
   const violations: SelfCommunicationViolation[] = [];
 
+  // DMst: Self-communication is explicitly allowed for local actions
+  // (Definition 1: A -> A: Msg represents internal computation at A)
+  // Classic MPST prohibits this, but DMst uses it for local processing
+  //
+  // Therefore, we do not flag self-communication as an error.
+  // Uncomment the code below to restore classic MPST behavior:
+
+  /*
   // Find all action nodes
   for (const node of cfg.nodes) {
     if (isActionNode(node) && isMessageAction(node.action)) {
@@ -1221,9 +1325,10 @@ export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
       }
     }
   }
+  */
 
   return {
-    isValid: violations.length === 0,
+    isValid: true, // DMst: Always valid (self-communication allowed)
     violations,
   };
 }
@@ -1278,6 +1383,13 @@ export function checkEmptyChoiceBranch(cfg: CFG): EmptyChoiceBranchResult {
  * Check if all choice branches reach the same merge node
  * Structural correctness check for choice constructs
  */
+/**
+ * Check if choice branches converge at the same merge point
+ *
+ * DMst Extension: Allows non-converging branches for updatable recursion
+ * - Classic MPST: All branches must converge at same merge node
+ * - DMst: Branches with 'continue' (updatable recursion) don't need to merge
+ */
 export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
   const violations: MergeViolation[] = [];
 
@@ -1290,13 +1402,20 @@ export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
 
     // For each branch, find the merge node it reaches
     const branchMerges: { [branchLabel: string]: string } = {};
+    let hasContinueBranch = false;
 
     for (const edge of branchEdges) {
       const branchLabel = edge.label || edge.to;
-      const mergeNode = findMergeNode(cfg, edge.to);
+      const { mergeNode, hasContinue } = findMergeNodeAndContinue(cfg, edge.to);
+
+      if (hasContinue) {
+        hasContinueBranch = true;
+      }
 
       if (mergeNode) {
         branchMerges[branchLabel] = mergeNode.id;
+      } else if (hasContinue) {
+        branchMerges[branchLabel] = 'continue';
       } else {
         branchMerges[branchLabel] = 'none';
       }
@@ -1306,7 +1425,8 @@ export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
     const mergeIds = Object.values(branchMerges);
     const uniqueMerges = new Set(mergeIds);
 
-    if (uniqueMerges.size > 1) {
+    // DMst: If any branch has 'continue' (updatable recursion), allow non-convergence
+    if (uniqueMerges.size > 1 && !hasContinueBranch) {
       violations.push({
         branchNodeId: branchNode.id,
         description: `Choice branches do not converge at same merge node`,
@@ -1322,11 +1442,17 @@ export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
 }
 
 /**
- * Find the merge node reachable from a starting node
+ * Find the merge node reachable from a starting node and detect continue edges
+ *
+ * DMst Extension: Also detects if path contains 'continue' edges (updatable recursion)
  */
-function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
+function findMergeNodeAndContinue(
+  cfg: CFG,
+  startNodeId: string
+): { mergeNode: Node | null; hasContinue: boolean } {
   const visited = new Set<string>();
   const queue: string[] = [startNodeId];
+  let hasContinue = false;
 
   while (queue.length > 0) {
     const nodeId = queue.shift()!;
@@ -1338,12 +1464,19 @@ function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
 
     // If this is a merge node, return it
     if (node.type === 'merge') {
-      return node;
+      return { mergeNode: node, hasContinue };
     }
 
     // If this is a terminal node, no merge found
     if (isTerminalNode(node)) {
-      return null;
+      return { mergeNode: null, hasContinue };
+    }
+
+    // Check for continue edges (DMst updatable recursion)
+    const continueEdges = cfg.edges.filter(e => e.from === nodeId && e.edgeType === 'continue');
+    if (continueEdges.length > 0) {
+      hasContinue = true;
+      // Don't follow continue edges to avoid loops
     }
 
     // Follow outgoing edges (but not continue edges to avoid loops)
@@ -1353,7 +1486,15 @@ function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
     }
   }
 
-  return null;
+  return { mergeNode: null, hasContinue };
+}
+
+/**
+ * Find the merge node reachable from a starting node
+ * @deprecated Use findMergeNodeAndContinue for DMst support
+ */
+function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
+  return findMergeNodeAndContinue(cfg, startNodeId).mergeNode;
 }
 
 // ============================================================================
@@ -1410,5 +1551,178 @@ export function verifyProtocol(
     mergeReachability: opts.checkMergeReachability
       ? checkMergeReachability(cfg)
       : { isValid: true, violations: [] },
+  };
+}
+
+/**
+ * Convert CompleteVerification to a simple {isValid, errors} format
+ * This is useful for tests and simple validation checks
+ */
+export function summarizeVerification(verification: CompleteVerification): {
+  isValid: boolean;
+  errors: { message: string; type?: string; location?: any }[];
+  warnings: { message: string; type?: string }[];
+} {
+  const errors: { message: string; type?: string; location?: any }[] = [];
+  const warnings: { message: string; type?: string }[] = [];
+
+  // Check structural errors
+  if (!verification.structural.valid) {
+    errors.push(...verification.structural.errors);
+  }
+  warnings.push(...verification.structural.warnings);
+
+  // Check deadlock
+  if (verification.deadlock.hasDeadlock) {
+    verification.deadlock.cycles.forEach(cycle => {
+      errors.push({
+        type: 'deadlock',
+        message: cycle.description,
+      });
+    });
+  }
+
+  // Check liveness
+  if (!verification.liveness.isLive) {
+    verification.liveness.violations.forEach(v => {
+      errors.push({
+        type: 'liveness',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check parallel deadlock
+  if (verification.parallelDeadlock.hasDeadlock) {
+    verification.parallelDeadlock.conflicts.forEach(c => {
+      errors.push({
+        type: 'parallel-deadlock',
+        message: c.description,
+      });
+    });
+  }
+
+  // Check race conditions
+  if (verification.raceConditions.hasRaces) {
+    verification.raceConditions.races.forEach(r => {
+      errors.push({
+        type: 'race-condition',
+        message: r.description,
+      });
+    });
+  }
+
+  // Check progress
+  if (!verification.progress.canProgress) {
+    verification.progress.blockedNodes.forEach(node => {
+      errors.push({
+        type: 'progress',
+        message: `Node ${node} cannot progress`,
+      });
+    });
+  }
+
+  // Check choice determinism
+  if (!verification.choiceDeterminism.isDeterministic) {
+    verification.choiceDeterminism.violations.forEach(v => {
+      errors.push({
+        type: 'choice-determinism',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check choice mergeability
+  if (!verification.choiceMergeability.isMergeable) {
+    verification.choiceMergeability.violations.forEach(v => {
+      errors.push({
+        type: 'choice-mergeability',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check connectedness
+  if (!verification.connectedness.isConnected) {
+    errors.push({
+      type: 'connectedness',
+      message: `Protocol is not connected. Orphaned roles: ${verification.connectedness.orphanedRoles.join(', ')}`,
+    });
+  }
+
+  // Check nested recursion
+  if (!verification.nestedRecursion.isValid) {
+    verification.nestedRecursion.violations.forEach(v => {
+      errors.push({
+        type: 'nested-recursion',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check recursion in parallel
+  if (!verification.recursionInParallel.isValid) {
+    verification.recursionInParallel.violations.forEach(v => {
+      errors.push({
+        type: 'recursion-in-parallel',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check fork-join structure
+  if (!verification.forkJoinStructure.isValid) {
+    verification.forkJoinStructure.violations.forEach(v => {
+      errors.push({
+        type: 'fork-join',
+        message: v.description,
+      });
+    });
+  }
+
+  // Multicast warnings (not errors)
+  if (!verification.multicast.isValid) {
+    verification.multicast.warnings.forEach(w => {
+      warnings.push({
+        type: 'multicast',
+        message: w.description,
+      });
+    });
+  }
+
+  // Check self-communication
+  if (!verification.selfCommunication.isValid) {
+    verification.selfCommunication.violations.forEach(v => {
+      errors.push({
+        type: 'self-communication',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check empty choice branches
+  if (!verification.emptyChoiceBranch.isValid) {
+    verification.emptyChoiceBranch.violations.forEach(v => {
+      errors.push({
+        type: 'empty-choice-branch',
+        message: v.description,
+      });
+    });
+  }
+
+  // Check merge reachability
+  if (!verification.mergeReachability.isValid) {
+    verification.mergeReachability.violations.forEach(v => {
+      errors.push({
+        type: 'merge-reachability',
+        message: v.description,
+      });
+    });
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
   };
 }
