@@ -42,15 +42,18 @@ import type {
   CFSMExecutionTrace,
   MessageBuffer,
 } from './cfsm-simulator-types';
+import { InMemoryTransport } from '../runtime/transport';
 
 export class DistributedSimulator {
   private cfsms: Map<string, CFSM>;
   private simulators: Map<string, CFSMSimulator>;
   private config: Required<DistributedSimulatorConfig>;
 
+  // Message transport (shared among all roles)
+  private transport: InMemoryTransport;
+
   // Global state
   private globalSteps: number = 0;
-  private inFlightMessages: Message[] = []; // Sent but not yet delivered
   private reachedMaxSteps: boolean = false;
   private deadlocked: boolean = false;
 
@@ -69,7 +72,10 @@ export class DistributedSimulator {
       exploreAllInterleavings: config.exploreAllInterleavings ?? false,
     };
 
-    // Create simulators
+    // Create shared message transport (FIFO channels between all roles)
+    this.transport = new InMemoryTransport();
+
+    // Create simulators with shared transport
     this.simulators = new Map();
     for (const [role, cfsm] of cfsms) {
       this.simulators.set(
@@ -79,6 +85,7 @@ export class DistributedSimulator {
           maxBufferSize: config.maxBufferSize,
           recordTrace: config.recordTrace,
           transitionStrategy: 'first', // Distributed coordinator controls scheduling
+          transport: this.transport, // Share transport across all roles
         })
       );
       this.roleScheduleCount.set(role, 0);
@@ -104,11 +111,17 @@ export class DistributedSimulator {
     const allCompleted = Array.from(this.simulators.values()).every(sim => sim.isComplete());
     const anyCompleted = Array.from(this.simulators.values()).some(sim => sim.isComplete());
 
+    // Get in-flight messages from transport
+    const inFlightMessages: Message[] = [];
+    for (const role of this.cfsms.keys()) {
+      inFlightMessages.push(...this.transport.getPendingMessages(role));
+    }
+
     return {
       roleStates,
       roleSteps,
       globalSteps: this.globalSteps,
-      inFlightMessages: [...this.inFlightMessages],
+      inFlightMessages,
       roleBuffers,
       anyCompleted,
       allCompleted,
@@ -138,7 +151,7 @@ export class DistributedSimulator {
   /**
    * Execute one global step (one role executes one transition)
    */
-  step(): DistributedStepResult {
+  async step(): Promise<DistributedStepResult> {
     // Check if done
     if (this.globalSteps >= this.config.maxSteps) {
       this.reachedMaxSteps = true;
@@ -176,7 +189,8 @@ export class DistributedSimulator {
     const simulator = this.simulators.get(role)!;
 
     // Execute one step in selected role
-    const result = simulator.step();
+    // Note: Role will send/receive messages via shared transport automatically
+    const result = await simulator.step();
 
     if (!result.success) {
       return {
@@ -194,9 +208,8 @@ export class DistributedSimulator {
 
     this.globalSteps++;
 
-    // Collect and deliver outgoing messages
-    const messages = simulator.getOutgoingMessages();
-    this.deliverMessages(messages);
+    // Messages are now automatically delivered via transport
+    // No need to collect and deliver manually
 
     return {
       success: true,
@@ -273,46 +286,11 @@ export class DistributedSimulator {
     }
   }
 
-  /**
-   * Deliver messages to recipient buffers
-   */
-  private deliverMessages(messages: Message[]): void {
-    if (this.config.deliveryModel === 'fifo') {
-      // FIFO: deliver in order
-      for (const msg of messages) {
-        this.deliverMessage(msg);
-      }
-    } else {
-      // Unordered: can deliver in any order (for now just deliver all)
-      for (const msg of messages) {
-        this.deliverMessage(msg);
-      }
-    }
-  }
-
-  /**
-   * Deliver one message to recipient
-   */
-  private deliverMessage(message: Message): void {
-    const recipient = this.simulators.get(message.to);
-    if (!recipient) {
-      throw new Error(`Unknown recipient role: ${message.to}`);
-    }
-
-    try {
-      recipient.deliverMessage(message);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('Buffer overflow')) {
-        throw new Error(`Buffer overflow delivering message to ${message.to}`);
-      }
-      throw error;
-    }
-  }
 
   /**
    * Run to completion (or deadlock/maxSteps)
    */
-  run(): DistributedRunResult {
+  async run(): Promise<DistributedRunResult> {
     while (!this.deadlocked && !this.reachedMaxSteps) {
       const enabled = this.getEnabledRoles();
 
@@ -340,7 +318,7 @@ export class DistributedSimulator {
         }
       }
 
-      const result = this.step();
+      const result = await this.step();
 
       if (!result.success && result.error?.type !== 'deadlock') {
         return {
@@ -387,14 +365,15 @@ export class DistributedSimulator {
   }
 
   /**
-   * Reset all simulators
+   * Reset all simulators and transport
    */
   reset(): void {
     for (const sim of this.simulators.values()) {
       sim.reset();
     }
+    // Clear transport queues
+    this.transport.clear();
     this.globalSteps = 0;
-    this.inFlightMessages = [];
     this.reachedMaxSteps = false;
     this.deadlocked = false;
     this.lastScheduledRole = null;

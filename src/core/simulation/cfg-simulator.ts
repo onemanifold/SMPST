@@ -102,10 +102,14 @@ import type {
   EventCallback,
   EnhancedChoiceOption,
   ActionPreview,
+  CFGExecutionSnapshot,
+  ExecutionHistoryConfig,
+  IExecutionHistory,
 } from './types';
 import type { IProtocolRegistry } from '../protocol-registry/registry';
 import type { ICallStackManager } from './call-stack-types';
 import { buildCFG } from '../cfg/builder';
+import { ExecutionHistory } from './execution-history';
 
 /**
  * CFG Simulator - Orchestrated execution
@@ -115,11 +119,14 @@ import { buildCFG } from '../cfg/builder';
  */
 export class CFGSimulator {
   private cfg: CFG;
-  private config: Required<Omit<CFGSimulatorConfig, 'protocolRegistry' | 'callStackManager'>>;
+  private config: Required<Omit<CFGSimulatorConfig, 'protocolRegistry' | 'callStackManager' | 'executionHistory'>>;
 
   // Sub-protocol support (optional)
   private protocolRegistry?: IProtocolRegistry;
   private callStackManager?: ICallStackManager;
+
+  // Execution history (for backward stepping)
+  private executionHistory: IExecutionHistory;
 
   // Execution state
   private currentNode: string;
@@ -148,6 +155,10 @@ export class CFGSimulator {
   // Event subscription system
   private listeners: Map<SimulatorEventType, Set<EventCallback>> = new Map();
 
+  // Stepping mode state
+  private steppingMode: 'into' | 'over' | 'out' | null = null;
+  private stepOverDepth: number = 0; // Track call stack depth for step-over
+
   constructor(cfg: CFG, config: CFGSimulatorConfig = {}) {
     this.cfg = cfg;
     this.config = {
@@ -160,6 +171,12 @@ export class CFGSimulator {
     // Store optional sub-protocol support
     this.protocolRegistry = config.protocolRegistry;
     this.callStackManager = config.callStackManager;
+
+    // Initialize execution history
+    this.executionHistory = config.executionHistory || new ExecutionHistory({
+      enabled: false, // Disabled by default for performance
+      maxSnapshots: 1000,
+    });
 
     // Find initial node
     const initialNode = cfg.nodes.find(n => n.type === 'initial');
@@ -181,6 +198,9 @@ export class CFGSimulator {
 
     // Auto-advance to first meaningful state (action/choice/terminal)
     this.advanceToNextMeaningfulState();
+
+    // Record initial snapshot
+    this.recordSnapshot();
   }
 
   /**
@@ -625,6 +645,15 @@ export class CFGSimulator {
       roleMapping,
     });
 
+    // Emit step-into event
+    this.emit('step-into', {
+      protocol: action.protocol,
+      roleArguments: action.roleArguments,
+      nodeId: node.id,
+      frameId: frame.id,
+      depth: this.callStackManager.getDepth(),
+    });
+
     // Emit enter event
     if (this.config.recordTrace) {
       const enterEvent: SubProtocolEvent = {
@@ -678,6 +707,14 @@ export class CFGSimulator {
 
     // Pop frame from call stack
     this.callStackManager.pop();
+
+    // Emit step-out event
+    this.emit('step-out', {
+      protocol: action.protocol,
+      roleArguments: action.roleArguments,
+      nodeId: node.id,
+      depth: this.callStackManager?.getDepth() ?? 0,
+    });
 
     // Emit exit event
     if (this.config.recordTrace) {
@@ -1349,6 +1386,8 @@ export class CFGSimulator {
     this.parallelBranches = [];
     this.parallelBranchIndex = 0;
     this.recursionStack = [];
+    this.steppingMode = null;
+    this.stepOverDepth = 0;
 
     this.trace = {
       events: [],
@@ -1357,8 +1396,245 @@ export class CFGSimulator {
       totalSteps: 0,
     };
 
+    // Clear execution history
+    this.executionHistory.clear();
+
     // Auto-advance to first meaningful state
     this.advanceToNextMeaningfulState();
+
+    // Record initial snapshot
+    this.recordSnapshot();
+  }
+
+  // ============================================================================
+  // Execution History & Stepping Debugger
+  // ============================================================================
+
+  /**
+   * Record current execution state as a snapshot
+   */
+  private recordSnapshot(): void {
+    const snapshot: CFGExecutionSnapshot = {
+      stepNumber: this.stepCount,
+      currentNode: this.currentNode,
+      visitedNodes: [...this.visitedNodes],
+      pendingChoice: this.pendingChoice ? [...this.pendingChoice] : null,
+      selectedChoice: this.selectedChoice,
+      parallelState: {
+        inParallel: this.inParallel,
+        parallelBranches: this.parallelBranches.map(branch => [...branch]),
+        parallelBranchIndex: this.parallelBranchIndex,
+        parallelBranchesCompleted: new Set(this.parallelBranchesCompleted),
+        parallelJoinNode: this.parallelJoinNode,
+      },
+      recursionStack: this.recursionStack.map(ctx => ({ ...ctx })),
+      completed: this.completed,
+      reachedMaxSteps: this.reachedMaxSteps,
+      timestamp: Date.now(),
+    };
+
+    this.executionHistory.recordSnapshot(snapshot);
+  }
+
+  /**
+   * Restore execution state from a snapshot
+   */
+  private restoreSnapshot(snapshot: CFGExecutionSnapshot): void {
+    this.stepCount = snapshot.stepNumber;
+    this.currentNode = snapshot.currentNode;
+    this.visitedNodes = [...snapshot.visitedNodes];
+    this.pendingChoice = snapshot.pendingChoice ? [...snapshot.pendingChoice] : null;
+    this.selectedChoice = snapshot.selectedChoice;
+    this.inParallel = snapshot.parallelState.inParallel;
+    this.parallelBranches = snapshot.parallelState.parallelBranches.map(branch => [...branch]);
+    this.parallelBranchIndex = snapshot.parallelState.parallelBranchIndex;
+    this.parallelBranchesCompleted = new Set(snapshot.parallelState.parallelBranchesCompleted);
+    this.parallelJoinNode = snapshot.parallelState.parallelJoinNode;
+    this.recursionStack = snapshot.recursionStack.map(ctx => ({ ...ctx }));
+    this.completed = snapshot.completed;
+    this.reachedMaxSteps = snapshot.reachedMaxSteps;
+  }
+
+  /**
+   * Step forward (explicit stepping)
+   * Same as step() but emits step-forward event
+   */
+  stepForward(): CFGStepResult {
+    this.emit('step-forward', { stepCount: this.stepCount });
+    const result = this.step();
+
+    // Record snapshot after successful step
+    if (result.success) {
+      this.recordSnapshot();
+    }
+
+    return result;
+  }
+
+  /**
+   * Step backward (undo last step)
+   * Restores previous execution state from history
+   */
+  stepBackward(): CFGStepResult {
+    const previousSnapshot = this.executionHistory.getPreviousSnapshot();
+
+    if (!previousSnapshot) {
+      const error: CFGExecutionError = {
+        type: 'invalid-node',
+        message: 'No previous state available in history',
+        nodeId: this.currentNode,
+      };
+      this.emit('error', error);
+      return {
+        success: false,
+        error,
+        state: this.getState(),
+      };
+    }
+
+    // Restore state
+    this.restoreSnapshot(previousSnapshot);
+
+    // Emit step-back event
+    this.emit('step-back', {
+      stepCount: this.stepCount,
+      restoredState: this.getState(),
+    });
+
+    return {
+      success: true,
+      state: this.getState(),
+    };
+  }
+
+  /**
+   * Step into sub-protocol
+   * When at a sub-protocol call, steps into it instead of executing atomically
+   */
+  stepInto(): CFGStepResult {
+    this.steppingMode = 'into';
+    const result = this.step();
+    this.steppingMode = null;
+
+    // Record snapshot after successful step
+    if (result.success) {
+      this.recordSnapshot();
+    }
+
+    return result;
+  }
+
+  /**
+   * Step over sub-protocol
+   * When at a sub-protocol call, executes it atomically without stepping into it
+   */
+  stepOver(): CFGStepResult {
+    // Get current call stack depth
+    const currentDepth = this.callStackManager?.getDepth() ?? 0;
+    this.steppingMode = 'over';
+    this.stepOverDepth = currentDepth;
+
+    // Execute until we return to the same depth
+    const result = this.step();
+
+    // If we entered a sub-protocol, continue stepping until we exit
+    while (this.callStackManager && this.callStackManager.getDepth() > currentDepth && !this.completed) {
+      const stepResult = this.step();
+      if (!stepResult.success) {
+        this.steppingMode = null;
+        return stepResult;
+      }
+    }
+
+    this.steppingMode = null;
+    this.stepOverDepth = 0;
+
+    // Record snapshot after successful step over
+    if (result.success) {
+      this.recordSnapshot();
+    }
+
+    // Emit step-over event
+    this.emit('step-over', {
+      stepCount: this.stepCount,
+      state: this.getState(),
+    });
+
+    return result;
+  }
+
+  /**
+   * Step out of current sub-protocol
+   * Continues execution until the current call frame exits
+   */
+  stepOut(): CFGStepResult {
+    if (!this.callStackManager || this.callStackManager.isEmpty()) {
+      const error: CFGExecutionError = {
+        type: 'invalid-node',
+        message: 'Not in a sub-protocol - cannot step out',
+        nodeId: this.currentNode,
+      };
+      this.emit('error', error);
+      return {
+        success: false,
+        error,
+        state: this.getState(),
+      };
+    }
+
+    // Get current call stack depth
+    const currentDepth = this.callStackManager.getDepth();
+    this.steppingMode = 'out';
+
+    // Execute until we exit the current frame (depth decreases)
+    let result: CFGStepResult;
+    do {
+      result = this.step();
+      if (!result.success) {
+        this.steppingMode = null;
+        return result;
+      }
+    } while (this.callStackManager.getDepth() >= currentDepth && !this.completed);
+
+    this.steppingMode = null;
+
+    // Record snapshot after successful step out
+    if (result.success) {
+      this.recordSnapshot();
+    }
+
+    // Emit step-out event
+    this.emit('step-out', {
+      stepCount: this.stepCount,
+      state: this.getState(),
+    });
+
+    return result;
+  }
+
+  /**
+   * Enable execution history tracking
+   */
+  enableHistory(): void {
+    if (this.executionHistory instanceof ExecutionHistory) {
+      this.executionHistory.enable();
+    }
+  }
+
+  /**
+   * Disable execution history tracking
+   */
+  disableHistory(): void {
+    if (this.executionHistory instanceof ExecutionHistory) {
+      this.executionHistory.disable();
+    }
+  }
+
+  /**
+   * Get execution history
+   */
+  getExecutionHistory(): IExecutionHistory {
+    return this.executionHistory;
   }
 
   /**
