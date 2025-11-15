@@ -12,6 +12,35 @@
 import type { CFSM, CFSMTransition, CFSMAction } from '../projection/types';
 
 /**
+ * Call stack frame for sub-protocol execution
+ * Follows formal MPST semantics: Γ ::= [] | (P, σ, s_ret) :: Γ
+ *
+ * See docs/SUB_PROTOCOL_FORMAL_SEMANTICS.md for formal definition
+ */
+export interface CallStackFrame {
+  /**
+   * Parent CFSM to return to after sub-protocol completes
+   */
+  parentCFSM: CFSM;
+
+  /**
+   * State in parent CFSM to return to after completion
+   */
+  returnState: string;
+
+  /**
+   * Role substitution: formal parameter → actual role mapping
+   * σ: {p₁, ..., pₙ} → {r₁, ..., rₙ}
+   */
+  roleMapping: Record<string, string>;
+
+  /**
+   * Sub-protocol name being executed (for debugging/tracing)
+   */
+  protocol: string;
+}
+
+/**
  * Configuration for CFSM simulator
  */
 export interface CFSMSimulatorConfig {
@@ -56,6 +85,19 @@ export interface CFSMSimulatorConfig {
    * - No coordinator message delivery needed
    */
   transport?: any; // Will be MessageTransport from runtime/types
+
+  /**
+   * CFSM registry for sub-protocol execution
+   * Maps protocol name → (role → CFSM)
+   * Required for sub-protocol invocation support
+   *
+   * Example:
+   * {
+   *   "Auth": Map { "Client" => authClientCFSM, "Server" => authServerCFSM },
+   *   "Transfer": Map { "Sender" => transferSenderCFSM, "Receiver" => transferReceiverCFSM }
+   * }
+   */
+  cfsmRegistry?: Map<string, Map<string, CFSM>>;
 }
 
 /**
@@ -84,7 +126,7 @@ export interface MessageBuffer {
  */
 export interface CFSMExecutionState {
   /**
-   * Current control state
+   * Current control state (in current CFSM context)
    */
   currentState: string;
 
@@ -122,6 +164,16 @@ export interface CFSMExecutionState {
    * Pending transition selection (for manual mode)
    */
   pendingTransitionChoice: number | null;
+
+  /**
+   * Sub-protocol call stack (for nested protocol execution)
+   * Empty array [] = executing root protocol
+   * Non-empty = executing sub-protocol(s)
+   * Each frame represents a PARENT context to return to
+   *
+   * See docs/SUB_PROTOCOL_FORMAL_SEMANTICS.md Section 3
+   */
+  callStack: CallStackFrame[];
 }
 
 /**
