@@ -135,23 +135,30 @@
     // Assign layers using BFS from initial state
     const layers = new Map<string, number>();
     const queue: Array<{ state: string; layer: number }> = [];
+    const visited = new Set<string>(); // Track visited states to prevent infinite loops
 
     if (states.length > 0) {
       queue.push({ state: states[0], layer: 0 });
       layers.set(states[0], 0);
+      visited.add(states[0]);
     }
 
     while (queue.length > 0) {
       const { state, layer } = queue.shift()!;
 
       for (const next of outgoing.get(state) || []) {
-        const currentLayer = layers.get(next);
-        const newLayer = layer + 1;
-
-        // Only update if new layer is deeper (handles cycles)
-        if (currentLayer === undefined || newLayer > currentLayer) {
-          layers.set(next, newLayer);
-          queue.push({ state: next, layer: newLayer });
+        if (!visited.has(next)) {
+          // First time visiting this state
+          layers.set(next, layer + 1);
+          visited.add(next);
+          queue.push({ state: next, layer: layer + 1 });
+        } else {
+          // Already visited - just update layer if we found a longer path
+          const currentLayer = layers.get(next)!;
+          const newLayer = layer + 1;
+          if (newLayer > currentLayer) {
+            layers.set(next, newLayer);
+          }
         }
       }
     }
