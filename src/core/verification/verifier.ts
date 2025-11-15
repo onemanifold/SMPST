@@ -4,7 +4,7 @@
  */
 
 import type { CFG, Node, Edge, ForkNode, ActionNode, BranchNode, RecursiveNode } from '../cfg/types';
-import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode, isRecursiveNode } from '../cfg/types';
+import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode, isRecursiveNode, isCreateParticipantsAction, isInvitationAction } from '../cfg/types';
 import type {
   DeadlockResult,
   DeadlockCycle,
@@ -887,6 +887,9 @@ function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Se
 /**
  * Check if all declared roles participate in the protocol
  * Per Scribble spec 4.1.1: All declared roles should appear in the protocol
+ *
+ * DMst Extension: Also counts participation in creates/invites actions
+ * (Definition 12: Projection for Dynamic Participants)
  */
 export function checkConnectedness(cfg: CFG): ConnectednessResult {
   const declaredRoles = new Set(cfg.roles);
@@ -894,13 +897,32 @@ export function checkConnectedness(cfg: CFG): ConnectednessResult {
 
   // Collect all roles used in action nodes
   for (const node of cfg.nodes) {
-    if (isActionNode(node) && isMessageAction(node.action)) {
+    if (isActionNode(node)) {
       const action = node.action;
-      usedRoles.add(action.from);
-      if (typeof action.to === 'string') {
-        usedRoles.add(action.to);
-      } else {
-        action.to.forEach(r => usedRoles.add(r));
+
+      // Classic MPST: Message actions
+      if (isMessageAction(action)) {
+        usedRoles.add(action.from);
+        if (typeof action.to === 'string') {
+          usedRoles.add(action.to);
+        } else {
+          action.to.forEach(r => usedRoles.add(r));
+        }
+      }
+
+      // DMst: CreateParticipants actions (Definition 12)
+      // Both creator and created role are active participants
+      if (isCreateParticipantsAction(action)) {
+        usedRoles.add(action.creator);
+        // Note: roleName is the dynamic role type, not instance
+        // We still count it as participation
+      }
+
+      // DMst: Invitation actions (Definition 12)
+      // Both inviter and invitee are active participants
+      if (isInvitationAction(action)) {
+        usedRoles.add(action.inviter);
+        usedRoles.add(action.invitee);
       }
     }
   }
@@ -917,7 +939,7 @@ export function checkConnectedness(cfg: CFG): ConnectednessResult {
     isConnected: orphanedRoles.length === 0,
     orphanedRoles,
     description: orphanedRoles.length > 0
-      ? `Connectedness violation: Role${orphanedRoles.length > 1 ? 's' : ''} [${orphanedRoles.join(', ')}] ${orphanedRoles.length > 1 ? 'are' : 'is'} declared in the protocol signature but never participate in any message exchange. All declared roles must be involved in the protocol.`
+      ? `Connectedness violation: Role${orphanedRoles.length > 1 ? 's' : ''} [${orphanedRoles.join(', ')}] ${orphanedRoles.length > 1 ? 'are' : 'is'} declared in the protocol signature but never participate in any message exchange, participant creation, or invitation. All declared roles must be involved in the protocol.`
       : undefined,
   };
 }
