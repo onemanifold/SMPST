@@ -1383,6 +1383,13 @@ export function checkEmptyChoiceBranch(cfg: CFG): EmptyChoiceBranchResult {
  * Check if all choice branches reach the same merge node
  * Structural correctness check for choice constructs
  */
+/**
+ * Check if choice branches converge at the same merge point
+ *
+ * DMst Extension: Allows non-converging branches for updatable recursion
+ * - Classic MPST: All branches must converge at same merge node
+ * - DMst: Branches with 'continue' (updatable recursion) don't need to merge
+ */
 export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
   const violations: MergeViolation[] = [];
 
@@ -1395,13 +1402,20 @@ export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
 
     // For each branch, find the merge node it reaches
     const branchMerges: { [branchLabel: string]: string } = {};
+    let hasContinueBranch = false;
 
     for (const edge of branchEdges) {
       const branchLabel = edge.label || edge.to;
-      const mergeNode = findMergeNode(cfg, edge.to);
+      const { mergeNode, hasContinue } = findMergeNodeAndContinue(cfg, edge.to);
+
+      if (hasContinue) {
+        hasContinueBranch = true;
+      }
 
       if (mergeNode) {
         branchMerges[branchLabel] = mergeNode.id;
+      } else if (hasContinue) {
+        branchMerges[branchLabel] = 'continue';
       } else {
         branchMerges[branchLabel] = 'none';
       }
@@ -1411,7 +1425,8 @@ export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
     const mergeIds = Object.values(branchMerges);
     const uniqueMerges = new Set(mergeIds);
 
-    if (uniqueMerges.size > 1) {
+    // DMst: If any branch has 'continue' (updatable recursion), allow non-convergence
+    if (uniqueMerges.size > 1 && !hasContinueBranch) {
       violations.push({
         branchNodeId: branchNode.id,
         description: `Choice branches do not converge at same merge node`,
@@ -1427,11 +1442,17 @@ export function checkMergeReachability(cfg: CFG): MergeReachabilityResult {
 }
 
 /**
- * Find the merge node reachable from a starting node
+ * Find the merge node reachable from a starting node and detect continue edges
+ *
+ * DMst Extension: Also detects if path contains 'continue' edges (updatable recursion)
  */
-function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
+function findMergeNodeAndContinue(
+  cfg: CFG,
+  startNodeId: string
+): { mergeNode: Node | null; hasContinue: boolean } {
   const visited = new Set<string>();
   const queue: string[] = [startNodeId];
+  let hasContinue = false;
 
   while (queue.length > 0) {
     const nodeId = queue.shift()!;
@@ -1443,12 +1464,19 @@ function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
 
     // If this is a merge node, return it
     if (node.type === 'merge') {
-      return node;
+      return { mergeNode: node, hasContinue };
     }
 
     // If this is a terminal node, no merge found
     if (isTerminalNode(node)) {
-      return null;
+      return { mergeNode: null, hasContinue };
+    }
+
+    // Check for continue edges (DMst updatable recursion)
+    const continueEdges = cfg.edges.filter(e => e.from === nodeId && e.edgeType === 'continue');
+    if (continueEdges.length > 0) {
+      hasContinue = true;
+      // Don't follow continue edges to avoid loops
     }
 
     // Follow outgoing edges (but not continue edges to avoid loops)
@@ -1458,7 +1486,15 @@ function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
     }
   }
 
-  return null;
+  return { mergeNode: null, hasContinue };
+}
+
+/**
+ * Find the merge node reachable from a starting node
+ * @deprecated Use findMergeNodeAndContinue for DMst support
+ */
+function findMergeNode(cfg: CFG, startNodeId: string): Node | null {
+  return findMergeNodeAndContinue(cfg, startNodeId).mergeNode;
 }
 
 // ============================================================================
