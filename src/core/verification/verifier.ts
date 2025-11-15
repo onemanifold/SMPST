@@ -1275,30 +1275,22 @@ export function checkMulticast(cfg: CFG): MulticastResult {
 // ============================================================================
 
 /**
- * Check for self-communication (role sending to itself)
- * This is semantically questionable in session types
- */
-/**
  * Check for self-communication patterns
  *
- * DMst Extension: Self-communication is ALLOWED for local actions
- * (Definition 1: p -> p represents internal computation)
+ * Classic MPST prohibits self-communication (p -> p) as communication
+ * is defined between distinct roles (Honda, Yoshida, Carbone 2008).
  *
- * For DMst protocols, self-communication is a valid pattern representing
- * local processing without synchronization. This checker is disabled
- * to support DMst local actions.
+ * Note: Internal computation should be modeled as τ-transitions (silent steps),
+ * not as self-communication. Some actor-based session type variants allow
+ * self-messages, but this is not standard MPST/DMst.
+ *
+ * References:
+ * - Honda et al. POPL 2008: MPST communication between distinct roles
+ * - Castro-Perez & Yoshida ECOOP 2023: DMst uses τ-transitions, not p -> p
  */
 export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
   const violations: SelfCommunicationViolation[] = [];
 
-  // DMst: Self-communication is explicitly allowed for local actions
-  // (Definition 1: A -> A: Msg represents internal computation at A)
-  // Classic MPST prohibits this, but DMst uses it for local processing
-  //
-  // Therefore, we do not flag self-communication as an error.
-  // Uncomment the code below to restore classic MPST behavior:
-
-  /*
   // Find all action nodes
   for (const node of cfg.nodes) {
     if (isActionNode(node) && isMessageAction(node.action)) {
@@ -1325,10 +1317,9 @@ export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
       }
     }
   }
-  */
 
   return {
-    isValid: true, // DMst: Always valid (self-communication allowed)
+    isValid: violations.length === 0,
     violations,
   };
 }
