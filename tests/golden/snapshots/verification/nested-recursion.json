@@ -61,24 +61,7 @@
     "violations": []
   },
   "mergeReachability": {
-    "isValid": false,
-    "violations": [
-      {
-        "branchNodeId": "n73",
-        "description": "Choice branches do not converge at same merge node",
-        "branches": {
-          "branch1": "none",
-          "branch2": "n72"
-        }
-      },
-      {
-        "branchNodeId": "n68",
-        "description": "Choice branches do not converge at same merge node",
-        "branches": {
-          "branch1": "none",
-          "branch2": "n67"
-        }
-      }
-    ]
+    "isValid": true,
+    "violations": []
   }
 }
