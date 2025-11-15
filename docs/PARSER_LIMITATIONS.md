@@ -71,7 +71,9 @@ When analyzing nested `rec` blocks with choice branches containing minimal conte
 
 **Attempted Fixes**:
 - ✗ Increasing `maxLookahead` from 4 to 7: Did not resolve (confirms it's not a lookahead depth issue)
-- The issue is fundamental to the grammar structure, not lookahead configuration
+- ✗ OPTION + MANY pattern (recommended approach): Did not resolve Chevrotain's static analysis issue
+- ✗ GATE predicate with lookahead check: Did not resolve the fundamental grammar analysis problem
+- The issue is fundamental to how Chevrotain analyzes grammar, not a simple configuration fix
 
 ### What Works
 
