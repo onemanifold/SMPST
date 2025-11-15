@@ -4,7 +4,7 @@
  */
 
 import type { CFG, Node, Edge, ForkNode, ActionNode, BranchNode, RecursiveNode } from '../cfg/types';
-import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode, isRecursiveNode, isCreateParticipantsAction, isInvitationAction } from '../cfg/types';
+import { isForkNode, isJoinNode, isActionNode, isMessageAction, isTerminalNode, isBranchNode, isRecursiveNode, isCreateParticipantsAction, isInvitationAction, isDynamicRoleDeclarationAction } from '../cfg/types';
 import type {
   DeadlockResult,
   DeadlockCycle,
@@ -772,9 +772,24 @@ function findFirstMessageAction(cfg: CFG, startNodeId: string): Node | null {
 /**
  * Check if choice branches have consistent continuations for all roles
  * Per Honda et al. (2008): Projection requires "consistent endpoints" across choice branches
+ *
+ * DMst Extension: Allows conditional dynamic participants (different participant sets per branch)
+ * - Static roles (declared in protocol signature) must appear consistently
+ * - Dynamic roles and instances created within branches can be branch-specific
  */
 export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
   const violations: MergeabilityViolation[] = [];
+
+  // Collect all dynamic role names (declared with 'new role')
+  const dynamicRoles = new Set<string>();
+  for (const node of cfg.nodes) {
+    if (isActionNode(node) && isDynamicRoleDeclarationAction(node.action)) {
+      dynamicRoles.add(node.action.roleName);
+    }
+  }
+
+  // Static roles are those in cfg.roles (protocol signature)
+  const staticRoles = new Set(cfg.roles);
 
   // Find all branch nodes
   const branchNodes = cfg.nodes.filter(isBranchNode) as BranchNode[];
@@ -783,13 +798,15 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
     // Get all branches for this choice
     const branchEdges = cfg.edges.filter(e => e.from === branchNode.id && e.edgeType === 'branch');
 
-    // For each branch, collect the set of roles involved
+    // For each branch, collect roles involved and instances created
     const branchRoles = new Map<string, Set<string>>(); // branch label -> set of roles
+    const branchCreatedInstances = new Map<string, Set<string>>(); // branch label -> instances created in this branch
 
     for (const edge of branchEdges) {
       const label = edge.label || edge.to;
-      const roles = getRolesInPath(cfg, edge.to, branchNode.id);
+      const { roles, createdInstances } = getRolesAndInstancesInPath(cfg, edge.to, branchNode.id);
       branchRoles.set(label, roles);
+      branchCreatedInstances.set(label, createdInstances);
     }
 
     // Check if all branches have the same set of roles
@@ -801,6 +818,7 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
     }
 
     // For each role, check if it appears consistently across branches
+    // DMst: Only enforce consistency for STATIC roles
     for (const role of allRoles) {
       const branchesWithRole: string[] = [];
       const branchesWithoutRole: string[] = [];
@@ -813,8 +831,30 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
         }
       }
 
-      // If role appears in some branches but not all, it's a violation
+      // If role appears in some branches but not all
       if (branchesWithRole.length > 0 && branchesWithoutRole.length > 0) {
+        // DMst: Allow dynamic roles to be conditional (branch-specific)
+        if (dynamicRoles.has(role)) {
+          // This is OK! Dynamic roles can be conditionally created
+          continue;
+        }
+
+        // DMst: Check if this is an instance created within a branch
+        let isConditionallyCreated = false;
+        for (const [label, createdInstances] of branchCreatedInstances.entries()) {
+          if (createdInstances.has(role)) {
+            // This instance was created within this branch, so it's OK to be branch-specific
+            isConditionallyCreated = true;
+            break;
+          }
+        }
+
+        if (isConditionallyCreated) {
+          // This is OK! Conditionally created instances can be branch-specific
+          continue;
+        }
+
+        // Static roles must appear consistently
         const branchInfo: { [key: string]: string[] } = {};
         for (const [label, roles] of branchRoles.entries()) {
           branchInfo[label] = Array.from(roles);
@@ -841,10 +881,18 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
 }
 
 /**
- * Get all roles involved in a path (from a branch start until merge or terminal)
+ * Get all roles involved in a path and instances created within the path
+ * (from a branch start until merge or terminal)
+ *
+ * DMst Extension: Also tracks which instances are created within this path
  */
-function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Set<string> {
+function getRolesAndInstancesInPath(
+  cfg: CFG,
+  startNodeId: string,
+  branchNodeId: string
+): { roles: Set<string>; createdInstances: Set<string> } {
   const roles = new Set<string>();
+  const createdInstances = new Set<string>();
   const visited = new Set<string>();
   const queue: string[] = [startNodeId];
 
@@ -859,14 +907,22 @@ function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Se
     // Stop at merge nodes (but don't include roles after merge)
     if (node.type === 'merge') continue;
 
-    // If this is an action node with message action, collect roles
-    if (isActionNode(node) && isMessageAction(node.action)) {
+    if (isActionNode(node)) {
       const action = node.action;
-      roles.add(action.from);
-      if (typeof action.to === 'string') {
-        roles.add(action.to);
-      } else {
-        action.to.forEach(r => roles.add(r));
+
+      // Collect roles from message actions
+      if (isMessageAction(action)) {
+        roles.add(action.from);
+        if (typeof action.to === 'string') {
+          roles.add(action.to);
+        } else {
+          action.to.forEach(r => roles.add(r));
+        }
+      }
+
+      // DMst: Track instances created within this path
+      if (isCreateParticipantsAction(action) && action.instanceName) {
+        createdInstances.add(action.instanceName);
       }
     }
 
@@ -877,7 +933,15 @@ function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Se
     }
   }
 
-  return roles;
+  return { roles, createdInstances };
+}
+
+/**
+ * Get all roles involved in a path (from a branch start until merge or terminal)
+ * @deprecated Use getRolesAndInstancesInPath for DMst support
+ */
+function getRolesInPath(cfg: CFG, startNodeId: string, branchNodeId: string): Set<string> {
+  return getRolesAndInstancesInPath(cfg, startNodeId, branchNodeId).roles;
 }
 
 // ============================================================================
