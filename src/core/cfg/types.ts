@@ -230,6 +230,7 @@ export interface CFG {
   nodes: Node[];
   edges: Edge[];
   roles: string[]; // All roles participating in the protocol
+  initialNode: string; // ID of the initial node
 
   // ENRICHED: Protocol metadata for code generation and serialization
   protocolName: string;

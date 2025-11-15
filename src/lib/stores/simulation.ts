@@ -24,6 +24,23 @@ export const playbackSpeed = writable<number>(300);
 // Play mode interval
 let playInterval: ReturnType<typeof setInterval> | null = null;
 
+// Subscribe to playback speed changes and restart interval if playing
+playbackSpeed.subscribe(speed => {
+  const mode = get(simulationMode);
+  if (mode === 'playing' && playInterval) {
+    // Restart interval with new speed
+    clearInterval(playInterval);
+    playInterval = setInterval(() => {
+      const state = get(executionState);
+      if (!state || state.completed) {
+        stopPlaying();
+        return;
+      }
+      stepSimulation();
+    }, speed);
+  }
+});
+
 /**
  * Initialize simulator with a CFG
  */

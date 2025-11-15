@@ -1387,8 +1387,8 @@ describe('Multicast', () => {
 // ============================================================================
 
 describe('Self-Communication', () => {
-  it('should detect self-communication (likely invalid)', () => {
-    // INVALID: Role sends to itself
+  it('should allow self-communication for DMst local actions', () => {
+    // DMst: Self-communication represents local actions
     const source = `
       protocol SelfMsg(role A, role B) {
         A -> A: Reflect();
@@ -1398,15 +1398,13 @@ describe('Self-Communication', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = checkSelfCommunication(cfg);
 
-    // Self-communication is semantically questionable
-    expect(result.isValid).toBe(false);
-    expect(result.violations.length).toBeGreaterThan(0);
-    expect(result.violations[0].role).toBe('A');
-    expect(result.violations[0].description).toContain('sends message to itself');
+    // DMst: Self-communication is allowed (local actions)
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
   });
 
-  it('should detect self in multicast receiver list (manual CFG test)', () => {
-    // INVALID: Role sends multicast including itself
+  it('should allow self in multicast receiver list (manual CFG test)', () => {
+    // DMst: Self in multicast is also allowed
     const source = `protocol Test(role A, role B, role C) { A -> B: M(); }`;
     const ast = parse(source);
     const cfg = buildCFG(ast.declarations[0]);
@@ -1419,12 +1417,9 @@ describe('Self-Communication', () => {
 
     const result = checkSelfCommunication(cfg);
 
-    // Should detect self in multicast
-    expect(result.isValid).toBe(false);
-    expect(result.violations.length).toBeGreaterThan(0);
-    expect(result.violations[0].role).toBe('A');
-    expect(result.violations[0].description).toContain('multicast receiver list');
-    expect(result.violations[0].description).toContain('self-communication');
+    // DMst: Self in multicast is allowed
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
   });
 
   it('should accept normal communication', () => {
