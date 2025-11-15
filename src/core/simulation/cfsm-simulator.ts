@@ -45,18 +45,34 @@ import type {
   CFSMExecutionSnapshot,
   CFSMExecutionHistoryConfig,
   ICFSMExecutionHistory,
+  CallStackFrame,
 } from './cfsm-simulator-types';
 import { CFSMExecutionHistory } from './execution-history';
 
 export class CFSMSimulator {
-  private cfsm: CFSM;
-  private config: Required<Omit<CFSMSimulatorConfig, 'executionHistory' | 'transport'>>;
+  private rootCFSM: CFSM;  // Root CFSM (never changes)
+  private config: Required<Omit<CFSMSimulatorConfig, 'executionHistory' | 'transport' | 'cfsmRegistry'>>;
 
   // Execution history (for backward stepping)
   private executionHistory: ICFSMExecutionHistory;
 
   // Message transport (optional - for decentralized execution)
   private transport?: any; // MessageTransport from runtime/types
+
+  // CFSM registry for sub-protocol execution
+  // Maps protocol name → (role → CFSM)
+  private cfsmRegistry: Map<string, Map<string, CFSM>>;
+
+  // Call stack for sub-protocol execution
+  // Empty = executing root protocol
+  // Non-empty = executing sub-protocol(s)
+  // Each frame represents a PARENT context to return to
+  private callStack: CallStackFrame[] = [];
+
+  // Current CFSM being executed
+  // If callStack empty: this is rootCFSM
+  // If callStack non-empty: this is the sub-protocol's CFSM
+  private currentCFSM: CFSM;
 
   // Execution state
   private currentState: string;
@@ -86,7 +102,13 @@ export class CFSMSimulator {
   private messageIdCounter: number = 0;
 
   constructor(cfsm: CFSM, config: CFSMSimulatorConfig = {}) {
-    this.cfsm = cfsm;
+    // Store root CFSM
+    this.rootCFSM = cfsm;
+
+    // Initialize current CFSM (starts at root)
+    this.currentCFSM = cfsm;
+
+    // Initialize config
     this.config = {
       maxSteps: config.maxSteps ?? 1000,
       maxBufferSize: config.maxBufferSize ?? 0, // 0 = unbounded
@@ -103,6 +125,12 @@ export class CFSMSimulator {
 
     // Store transport if provided
     this.transport = config.transport;
+
+    // Initialize CFSM registry for sub-protocol support
+    this.cfsmRegistry = config.cfsmRegistry || new Map();
+
+    // Initialize call stack (empty = root protocol)
+    this.callStack = [];
 
     // Initialize at initial state
     this.currentState = cfsm.initialState;
@@ -134,6 +162,7 @@ export class CFSMSimulator {
       buffer: this.cloneBuffer(),
       enabledTransitions: this.getEnabledTransitions(),
       pendingTransitionChoice: this.pendingTransitionChoice,
+      callStack: [...this.callStack],  // Include call stack in state
     };
   }
 
@@ -145,9 +174,10 @@ export class CFSMSimulator {
    * - Receive: Message available in buffer/transport
    * - Tau: Always
    * - Choice: Always
+   * - SubProtocol: Always (invocation check happens at execution)
    */
   getEnabledTransitions(): CFSMTransition[] {
-    const transitions = this.cfsm.transitions.filter(t => t.from === this.currentState);
+    const transitions = this.currentCFSM.transitions.filter(t => t.from === this.currentState);
 
     return transitions.filter(t => {
       if (t.action.type === 'receive') {
@@ -159,7 +189,7 @@ export class CFSMSimulator {
           // Note: We can't peek at message label without consuming it,
           // so we just check if ANY message is available
           // The actual label matching happens during execution
-          return this.transport.hasMessage(this.cfsm.role);
+          return this.transport.hasMessage(this.rootCFSM.role);
         } else {
           // Legacy mode: check buffer
           const queue = this.buffer.channels.get(from);
@@ -209,14 +239,36 @@ export class CFSMSimulator {
     const enabled = this.getEnabledTransitions();
 
     if (enabled.length === 0) {
-      // No enabled transitions - deadlock or completion
-      if (this.cfsm.terminalStates.includes(this.currentState)) {
-        // Reached terminal - normal completion
+      // No enabled transitions - check if terminal or deadlock
+      if (this.currentCFSM.terminalStates.includes(this.currentState)) {
+        // Reached terminal state
+
+        // Rule [RETURN]: If in sub-protocol, pop from call stack and return to parent
+        if (this.callStack.length > 0) {
+          const frame = this.callStack.pop()!;
+
+          // Emit step-out event
+          this.emit('step-out', {
+            protocol: frame.protocol,
+            depth: this.callStack.length,  // Depth after popping
+          });
+
+          // Return to parent CFSM and state
+          this.currentCFSM = frame.parentCFSM;
+          this.currentState = frame.returnState;
+          this.visitedStates.push(this.currentState);
+
+          // Continue execution in parent context
+          // Don't increment stepCount here - the return is part of the sub-protocol step
+          return { success: true, state: this.getState() };
+        }
+
+        // Root protocol completed
         this.completed = true;
         this.trace.completed = true;
         this.trace.endTime = Date.now();
         this.trace.totalSteps = this.stepCount;
-        this.emit('complete', { role: this.cfsm.role, steps: this.stepCount });
+        this.emit('complete', { role: this.rootCFSM.role, steps: this.stepCount });
         return { success: true, state: this.getState() };
       } else {
         // Deadlock - no transitions enabled and not terminal
@@ -225,7 +277,7 @@ export class CFSMSimulator {
           message: `No enabled transitions at state ${this.currentState}`,
           stateId: this.currentState,
         };
-        this.emit('deadlock', { role: this.cfsm.role, state: this.currentState });
+        this.emit('deadlock', { role: this.rootCFSM.role, state: this.currentState });
         return { success: false, error, state: this.getState() };
       }
     }
@@ -296,6 +348,8 @@ export class CFSMSimulator {
         return this.executeTau(transition);
       case 'choice':
         return this.executeChoice(transition);
+      case 'subprotocol':
+        return this.executeSubProtocol(transition);
       default:
         throw new Error(`Unknown action type: ${(action as any).type}`);
     }
@@ -312,8 +366,8 @@ export class CFSMSimulator {
     // Create message(s)
     const recipients = typeof action.to === 'string' ? [action.to] : action.to;
     const messages: Message[] = recipients.map(to => ({
-      id: `${this.cfsm.role}-msg-${this.messageIdCounter++}`,
-      from: this.cfsm.role,
+      id: `${this.rootCFSM.role}-msg-${this.messageIdCounter++}`,
+      from: this.rootCFSM.role,
       to,
       label: action.label,
       payloadType: action.payloadType,
@@ -361,12 +415,12 @@ export class CFSMSimulator {
     this.visitedStates.push(this.currentState);
 
     // Check if reached terminal
-    if (this.cfsm.terminalStates.includes(this.currentState)) {
+    if (this.currentCFSM.terminalStates.includes(this.currentState)) {
       this.completed = true;
       this.trace.completed = true;
       this.trace.endTime = Date.now();
       this.trace.totalSteps = this.stepCount;
-      this.emit('complete', { role: this.cfsm.role, steps: this.stepCount });
+      this.emit('complete', { role: this.rootCFSM.role, steps: this.stepCount });
     }
 
     return {
@@ -391,11 +445,11 @@ export class CFSMSimulator {
       // Transport mode: receive from transport synchronously
       // Uses receiveSync for InMemoryTransport to avoid async complexity
       const receivedMsg = this.transport.receiveSync
-        ? this.transport.receiveSync(this.cfsm.role)
+        ? this.transport.receiveSync(this.rootCFSM.role)
         : undefined;
 
       if (!receivedMsg) {
-        throw new Error(`No message available from transport for ${this.cfsm.role}`);
+        throw new Error(`No message available from transport for ${this.rootCFSM.role}`);
       }
 
       msg = receivedMsg;
@@ -467,12 +521,12 @@ export class CFSMSimulator {
     this.visitedStates.push(this.currentState);
 
     // Check if reached terminal
-    if (this.cfsm.terminalStates.includes(this.currentState)) {
+    if (this.currentCFSM.terminalStates.includes(this.currentState)) {
       this.completed = true;
       this.trace.completed = true;
       this.trace.endTime = Date.now();
       this.trace.totalSteps = this.stepCount;
-      this.emit('complete', { role: this.cfsm.role, steps: this.stepCount });
+      this.emit('complete', { role: this.rootCFSM.role, steps: this.stepCount });
     }
 
     return {
@@ -506,12 +560,12 @@ export class CFSMSimulator {
     this.visitedStates.push(this.currentState);
 
     // Check if reached terminal
-    if (this.cfsm.terminalStates.includes(this.currentState)) {
+    if (this.currentCFSM.terminalStates.includes(this.currentState)) {
       this.completed = true;
       this.trace.completed = true;
       this.trace.endTime = Date.now();
       this.trace.totalSteps = this.stepCount;
-      this.emit('complete', { role: this.cfsm.role, steps: this.stepCount });
+      this.emit('complete', { role: this.rootCFSM.role, steps: this.stepCount });
     }
 
     return {
@@ -546,12 +600,100 @@ export class CFSMSimulator {
     this.visitedStates.push(this.currentState);
 
     // Check if reached terminal
-    if (this.cfsm.terminalStates.includes(this.currentState)) {
+    if (this.currentCFSM.terminalStates.includes(this.currentState)) {
       this.completed = true;
       this.trace.completed = true;
       this.trace.endTime = Date.now();
       this.trace.totalSteps = this.stepCount;
-      this.emit('complete', { role: this.cfsm.role, steps: this.stepCount });
+      this.emit('complete', { role: this.rootCFSM.role, steps: this.stepCount });
+    }
+
+    return {
+      success: true,
+      transition,
+      action,
+      state: this.getState(),
+    };
+  }
+
+  /**
+   * Execute sub-protocol invocation
+   * Follows formal semantics: Rule [CALL] from docs/SUB_PROTOCOL_FORMAL_SEMANTICS.md
+   *
+   * Pushes current context onto call stack and transitions to sub-protocol
+   */
+  private executeSubProtocol(transition: CFSMTransition): CFSMStepResult {
+    const action = transition.action;
+    if (action.type !== 'subprotocol') throw new Error('Expected subprotocol action');
+
+    // Look up sub-protocol CFSM from registry
+    const protocolCFSMs = this.cfsmRegistry.get(action.protocol);
+    if (!protocolCFSMs) {
+      const error = {
+        type: 'invalid-state' as const,
+        message: `Sub-protocol '${action.protocol}' not found in registry`,
+        stateId: this.currentState,
+      };
+      return { success: false, error, state: this.getState() };
+    }
+
+    // Map this role to the sub-protocol's formal parameter using role mapping
+    // The roleMapping maps: formalRole → actualRole (e.g., {Client: 'Alice', Server: 'Bob'})
+    // We need to find which formal role corresponds to this executor's actual role
+    const formalRole = Object.entries(action.roleMapping)
+      .find(([formal, actual]) => actual === this.rootCFSM.role)?.[0];
+
+    if (!formalRole) {
+      const error = {
+        type: 'invalid-state' as const,
+        message: `Role '${this.rootCFSM.role}' not found in role mapping for sub-protocol '${action.protocol}'`,
+        stateId: this.currentState,
+      };
+      return { success: false, error, state: this.getState() };
+    }
+
+    // Get the CFSM for the formal role in the sub-protocol
+    const subProtocolCFSM = protocolCFSMs.get(formalRole);
+    if (!subProtocolCFSM) {
+      const error = {
+        type: 'invalid-state' as const,
+        message: `CFSM for role '${formalRole}' not found in sub-protocol '${action.protocol}'`,
+        stateId: this.currentState,
+      };
+      return { success: false, error, state: this.getState() };
+    }
+
+    // Create call stack frame for parent context
+    const frame: CallStackFrame = {
+      parentCFSM: this.currentCFSM,        // Current CFSM becomes parent
+      returnState: action.returnState,      // Where to return after sub-protocol completes
+      roleMapping: action.roleMapping,
+      protocol: action.protocol,
+    };
+
+    // Push parent frame onto call stack
+    this.callStack.push(frame);
+
+    // Switch to sub-protocol execution context
+    this.currentCFSM = subProtocolCFSM;
+    this.currentState = subProtocolCFSM.initialState;
+    this.visitedStates.push(this.currentState);
+
+    // Emit step-into event
+    this.emit('step-into', {
+      protocol: action.protocol,
+      depth: this.callStack.length,
+      roleMapping: action.roleMapping,
+    });
+
+    // Record in trace
+    if (this.config.recordTrace) {
+      this.trace.events.push({
+        type: 'subprotocol-call',
+        timestamp: Date.now(),
+        protocol: action.protocol,
+        stateId: this.currentState,
+      } as any);  // TODO: Add proper trace event type
     }
 
     return {
@@ -577,7 +719,7 @@ export class CFSMSimulator {
     if (this.config.maxBufferSize > 0) {
       const queue = this.buffer.channels.get(from) || [];
       if (queue.length >= this.config.maxBufferSize) {
-        throw new Error(`Buffer overflow: ${this.cfsm.role} cannot accept message from ${from}`);
+        throw new Error(`Buffer overflow: ${this.rootCFSM.role} cannot accept message from ${from}`);
       }
     }
 
@@ -725,8 +867,13 @@ export class CFSMSimulator {
    * Reset to initial state
    */
   reset(): void {
-    this.currentState = this.cfsm.initialState;
-    this.visitedStates = [this.cfsm.initialState];
+    // Reset to root CFSM
+    this.currentCFSM = this.rootCFSM;
+    this.callStack = [];
+
+    // Reset state
+    this.currentState = this.rootCFSM.initialState;
+    this.visitedStates = [this.rootCFSM.initialState];
     this.stepCount = 0;
     this.completed = false;
     this.reachedMaxSteps = false;
@@ -736,7 +883,7 @@ export class CFSMSimulator {
     this.messageIdCounter = 0;
 
     this.trace = {
-      role: this.cfsm.role,
+      role: this.rootCFSM.role,
       events: [],
       startTime: Date.now(),
       totalSteps: 0,
