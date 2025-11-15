@@ -65,10 +65,26 @@ export function checkSafeProtocolUpdate(cfg: CFG): SafeUpdateResult {
       // Check if 1-unfolding is well-formed
       const verificationResult = verifyProtocol(unfolding);
 
-      if (verificationResult.errors.length > 0) {
+      // Aggregate errors from all verification checks
+      const errors: string[] = [];
+
+      if (!verificationResult.structural.valid) {
+        errors.push(...verificationResult.structural.errors.map(e => e.message));
+      }
+      if (verificationResult.deadlock.hasDeadlock) {
+        errors.push('Deadlock detected in 1-unfolding');
+      }
+      if (!verificationResult.connectedness.isConnected) {
+        errors.push('1-unfolding is not connected');
+      }
+      if (verificationResult.raceConditions.hasRaces) {
+        errors.push(`Race conditions detected: ${verificationResult.raceConditions.races.length} races`);
+      }
+
+      if (errors.length > 0) {
         violations.push({
           label: recAction.label,
-          reason: `1-unfolding is not well-formed: ${verificationResult.errors.map(e => e.message).join(', ')}`,
+          reason: `1-unfolding is not well-formed: ${errors.join(', ')}`,
           location: recAction.location,
         });
       }
@@ -164,24 +180,15 @@ function findUpdatableRecursions(cfg: CFG): Array<{
  * Extract recursion body and update body from CFG.
  *
  * Given a recursion label X, extract:
- * 1. Recursion body G: all nodes reachable from recursion point to continue
- * 2. Update body G_update: subgraph built during CFG construction
+ * 1. Recursion body G: nodes from recursive node to updatable-recursion node
+ * 2. Update body G_update: nodes from updatable-recursion node back to recursive node
  *
- * ALGORITHM:
- * 1. Find recursion node with label X
- * 2. Find updatable-recursion action node
- * 3. Extract reachable nodes between recursion and update
- * 4. Extract update body nodes (marked during CFG build)
+ * ALGORITHM (Definition 14, ECOOP 2023):
+ * For rec X { G; continue X with { G_update } }:
+ * - Recursion body G: subgraph from rec X to continue X with
+ * - Update body G_update: subgraph inside continue X with { ... }
  *
- * NOTE: This is a simplified implementation. A full implementation would:
- * - Traverse CFG to build subgraphs
- * - Handle nested recursions
- * - Preserve metadata
- *
- * For now, we return the entire CFG as both bodies (conservative).
- * This is sound but may report false positives.
- *
- * TODO: Implement proper subgraph extraction
+ * These must be combined via ♢ operator to form 1-unfolding: G ♢ G_update
  *
  * @param cfg - Full CFG
  * @param label - Recursion label
@@ -191,19 +198,159 @@ function extractBodies(
   cfg: CFG,
   label: string
 ): { recursionBody: CFG; updateBody: CFG } {
-  // Conservative implementation: return full CFG for both
-  // This ensures we check the entire protocol for safety
-  //
-  // A more precise implementation would:
-  // 1. Find recursion node labeled X
-  // 2. Extract subgraph from recursion to updatable-recursion node
-  // 3. Extract update body subgraph (stored during CFG build)
-  //
-  // For safe update verification, being conservative (checking more) is safe
+  // Find the recursive node with this label
+  const recursiveNode = cfg.nodes.find(
+    n => n.type === 'recursive' && (n as any).label === label
+  );
+
+  if (!recursiveNode) {
+    throw new Error(`No recursive node found with label: ${label}`);
+  }
+
+  // Find the updatable-recursion action node with this label
+  const updateActionNode = cfg.nodes.find(
+    n => n.type === 'action' &&
+    (n as any).action?.kind === 'updatable-recursion' &&
+    (n as any).action?.label === label
+  );
+
+  if (!updateActionNode) {
+    throw new Error(`No updatable-recursion action found with label: ${label}`);
+  }
+
+  // Extract recursion body: from recursive node to updatable-recursion node
+  const recursionBodyNodes = extractSubgraph(
+    cfg,
+    recursiveNode.id,
+    updateActionNode.id,
+    false // Don't include end node
+  );
+
+  // Extract update body: from updatable-recursion node back to recursive node
+  const updateBodyNodes = extractSubgraph(
+    cfg,
+    updateActionNode.id,
+    recursiveNode.id,
+    false // Don't include end node (would create cycle)
+  );
+
+  // Build CFG for recursion body
+  const recursionBody = buildSubgraphCFG(cfg, recursionBodyNodes, recursiveNode.id);
+
+  // Build CFG for update body
+  const updateBody = buildSubgraphCFG(cfg, updateBodyNodes, updateActionNode.id);
+
   return {
-    recursionBody: cfg,
-    updateBody: cfg,
+    recursionBody,
+    updateBody,
   };
+}
+
+/**
+ * Extract subgraph from startNode to endNode using BFS.
+ *
+ * Returns all node IDs reachable from startNode up to (but not including) endNode.
+ *
+ * @param cfg - Full CFG
+ * @param startNodeId - Starting node ID
+ * @param endNodeId - Ending node ID (not included in result)
+ * @param includeEnd - Whether to include the end node
+ * @returns Set of node IDs in the subgraph
+ */
+function extractSubgraph(
+  cfg: CFG,
+  startNodeId: string,
+  endNodeId: string,
+  includeEnd: boolean
+): Set<string> {
+  const subgraphNodes = new Set<string>();
+  const queue: string[] = [startNodeId];
+  const visited = new Set<string>();
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+
+    if (visited.has(currentId)) continue;
+    visited.add(currentId);
+
+    // Stop at end node
+    if (currentId === endNodeId) {
+      if (includeEnd) {
+        subgraphNodes.add(currentId);
+      }
+      continue;
+    }
+
+    subgraphNodes.add(currentId);
+
+    // Find outgoing edges from current node
+    const outgoingEdges = cfg.edges.filter(e => e.from === currentId);
+
+    for (const edge of outgoingEdges) {
+      if (!visited.has(edge.to)) {
+        queue.push(edge.to);
+      }
+    }
+  }
+
+  return subgraphNodes;
+}
+
+/**
+ * Build a CFG from a set of nodes.
+ *
+ * Creates a new CFG containing only the specified nodes and edges between them.
+ *
+ * @param cfg - Original CFG
+ * @param nodeIds - Set of node IDs to include
+ * @param initialNodeId - ID of the initial node in this subgraph
+ * @returns New CFG with only the specified nodes
+ */
+function buildSubgraphCFG(
+  cfg: CFG,
+  nodeIds: Set<string>,
+  initialNodeId: string
+): CFG {
+  // Filter nodes
+  const nodes = cfg.nodes.filter(n => nodeIds.has(n.id));
+
+  // Filter edges (only include edges where both endpoints are in the subgraph)
+  const edges = cfg.edges.filter(
+    e => nodeIds.has(e.from) && nodeIds.has(e.to)
+  );
+
+  // Find terminal nodes (nodes with no outgoing edges within the subgraph)
+  const nodesWithOutgoing = new Set(edges.map(e => e.from));
+  const terminalNodeIds = nodes
+    .filter(n => !nodesWithOutgoing.has(n.id) && n.type !== 'terminal')
+    .map(n => n.id);
+
+  // If no terminal nodes found, add a synthetic terminal
+  if (terminalNodeIds.length === 0 && nodes.length > 0) {
+    // This can happen for update bodies that loop back
+    // Add the last nodes as terminals
+    const lastNodes = nodes.filter(n => {
+      const outgoing = edges.filter(e => e.from === n.id);
+      return outgoing.length === 0 || outgoing.every(e => !nodeIds.has(e.to));
+    });
+    terminalNodeIds.push(...lastNodes.map(n => n.id));
+  }
+
+  return {
+    nodes,
+    edges,
+    roles: cfg.roles,
+    initialNode: initialNodeId,
+    protocolName: `${cfg.protocolName}_subgraph`,
+    parameters: cfg.parameters,
+    // Additional properties for combining operator compatibility
+    id: `${cfg.protocolName}_${initialNodeId}_subgraph`,
+    terminalNodes: terminalNodeIds,
+    metadata: {
+      isSubgraph: true,
+      sourceProtocol: cfg.protocolName,
+    },
+  } as any; // Cast to any to avoid type errors with extended CFG
 }
 
 // ============================================================================

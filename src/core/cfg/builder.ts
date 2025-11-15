@@ -216,6 +216,7 @@ export function buildCFG(protocol: GlobalProtocolDeclaration): CFG {
     nodes: sortedNodes,
     edges: ctx.edges,
     roles: ctx.roles,
+    initialNode: initial.id,
     // ENRICHED: Protocol metadata for code generation
     protocolName: protocol.name,
     parameters: protocol.parameters,
