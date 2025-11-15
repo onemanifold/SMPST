@@ -46,21 +46,32 @@ but found: ')'
 
 ### Why This Happens
 
-The Chevrotain parser's grammar rules **should** support nested recursion:
+**Root Cause Identified**: Chevrotain's static analysis detects a violation of its fundamental requirement:
 
-1. **`recursion` rule** calls `globalProtocolBody`
-2. **`globalProtocolBody`** uses `MANY()` (zero or more interactions)
-3. **`globalInteraction`** includes `recursion` as an alternative
+> **"A repetition must consume at least one token in each iteration, as entering an iteration while failing to do so would cause an infinite loop"** - Chevrotain Documentation
 
-However, there appears to be an issue with how Chevrotain handles the combination of:
-- Nested recursion blocks
-- `continue` statements inside choice branches
-- Empty or minimal interaction sequences
+The grammar structure causing the issue:
 
-This may be due to:
-- Grammar ambiguity in certain contexts
-- Chevrotain's lookahead limitations
-- Error recovery interfering with correct parsing
+1. **`choice` rule** (line 348 in parser.ts) uses `AT_LEAST_ONE` for `or` branches
+2. Each branch calls `globalProtocolBody` which uses `MANY()` (zero or more)
+3. **`globalProtocolBody`** can be empty (MANY allows zero iterations)
+4. In nested recursion contexts, Chevrotain's analysis sees paths where `globalProtocolBody` might not consume tokens
+
+**Specific Problem**:
+```typescript
+this.AT_LEAST_ONE(() => {              // Must have at least one 'or' branch
+  this.CONSUME(tokens.Or);
+  this.CONSUME2(tokens.LCurly);
+  this.SUBRULE2(this.globalProtocolBody, { LABEL: 'branch' });  ← Can be empty!
+  this.CONSUME2(tokens.RCurly);
+});
+```
+
+When analyzing nested `rec` blocks with choice branches containing minimal content (like `continue Inner;`), Chevrotain cannot statically verify that `globalProtocolBody` will always consume tokens, triggering the "expecting at least one iteration" error.
+
+**Attempted Fixes**:
+- ✗ Increasing `maxLookahead` from 4 to 7: Did not resolve (confirms it's not a lookahead depth issue)
+- The issue is fundamental to the grammar structure, not lookahead configuration
 
 ### What Works
 
@@ -157,27 +168,78 @@ global protocol Outer(role A, role B) {
 
 ## Future Work
 
-To fix this limitation, we would need to:
+To fix this limitation, we would need to address Chevrotain's requirement that MANY iterations consume tokens:
 
-1. **Investigate Chevrotain Grammar**
-   - Analyze why nested `rec` blocks fail to parse
-   - Check for grammar ambiguities or conflicts
-   - Review Chevrotain's lookahead and backtracking behavior
+### Potential Solutions
 
-2. **Enhance Parser Rules**
-   - Potentially restructure the `recursion` rule
-   - Add explicit handling for nested contexts
-   - Improve error recovery for complex nesting
+1. **Refactor Grammar to Guarantee Token Consumption**
+   - Change `globalProtocolBody` from `MANY` to ensure at least one interaction is always present in choice branches
+   - Add explicit markers/tokens for empty branches
+   - Restructure choice branches to avoid potentially empty `globalProtocolBody` calls
 
-3. **Add Tests**
-   - Parser-level tests for nested recursion
-   - Grammar validation tests
-   - Edge case coverage for deeply nested structures
+   **Pros**: Aligns with Chevrotain's requirements
+   **Cons**: May change protocol syntax, breaks backward compatibility
 
-4. **Consider Alternative Approaches**
-   - Use a different parser generator (ANTLR, PEG.js)
-   - Hand-write a recursive descent parser for complex cases
-   - Preprocess nested recursion before parsing
+2. **Use OPTION Instead of MANY for Specific Contexts**
+   ```typescript
+   // Instead of:
+   this.MANY(() => this.SUBRULE(this.globalInteraction));
+
+   // Use:
+   this.OPTION(() => {
+     this.SUBRULE(this.globalInteraction);
+     this.MANY(() => this.SUBRULE2(this.globalInteraction));
+   });
+   ```
+   This explicitly handles the "zero" case separately from the "one or more" case.
+
+   **Pros**: Satisfies Chevrotain's token consumption requirement
+   **Cons**: More complex grammar, needs careful analysis
+
+3. **Add Gate Predicates for Empty Branches**
+   Use Chevrotain's GATE feature to handle nested recursion specially:
+   ```typescript
+   this.MANY({
+     GATE: () => this.LA(1).tokenType !== tokens.RCurly,
+     DEF: () => this.SUBRULE(this.globalInteraction)
+   });
+   ```
+
+   **Pros**: Explicit control over when to enter MANY loop
+   **Cons**: Runtime overhead, may not fix static analysis issue
+
+4. **Switch to Different Parser Generator**
+   - **ANTLR**: Better handling of complex grammars with ALL(*) lookahead
+   - **PEG.js**: Handles nested structures more naturally with ordered choice
+   - **Tree-sitter**: Designed for ambiguous grammars with error recovery
+
+   **Pros**: May handle nested recursion naturally
+   **Cons**: Complete rewrite of parser, loss of Chevrotain benefits
+
+### Recommended Approach
+
+The most promising fix is **Option 2** (restructure with OPTION + MANY):
+
+```typescript
+private globalProtocolBody = this.RULE('globalProtocolBody', () => {
+  this.OPTION(() => {
+    // First interaction (if any)
+    this.SUBRULE(this.globalInteraction);
+    // Subsequent interactions
+    this.MANY(() => {
+      this.SUBRULE2(this.globalInteraction);
+    });
+  });
+});
+```
+
+This ensures:
+- Empty bodies are explicitly handled by OPTION
+- MANY iterations always consume at least one interaction (satisfying Chevrotain's requirement)
+- Backward compatible (same protocols accepted)
+
+**Effort**: Medium (requires testing all existing protocols)
+**Risk**: Low (well-understood Chevrotain pattern)
 
 ## Testing
 
