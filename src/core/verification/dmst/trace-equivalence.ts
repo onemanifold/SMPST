@@ -692,20 +692,32 @@ function tracesEqual(trace1: TraceEvent[], trace2: TraceEvent[]): boolean {
 // ============================================================================
 
 /**
- * Verify Theorem 20 (Trace Equivalence) for a DMst protocol.
+ * Bounded trace equivalence checking for DMst protocols.
  *
- * Uses all-branches trace extraction to check that every global trace
- * has a corresponding composed local trace, and vice versa.
+ * IMPORTANT: This is SUPPLEMENTARY VALIDATION, not required by DMst.
  *
- * This provides complete coverage for protocols with choices/branches,
- * as recommended by research on MPST verification tools.
+ * According to Castro-Perez & Yoshida (ECOOP 2023):
+ * - Trace equivalence is guaranteed by Theorem 20 (proven by induction)
+ * - For well-formed (projectable) protocols, traces are equivalent
+ * - GoScr implementation only checks projectability (Definition 15)
+ * - No algorithmic trace checking is performed
  *
- * NOTE: Depth limited to 2 to avoid exponential explosion.
- * Full verification requires bisimulation (see research).
+ * This function provides bounded trace enumeration (depth=2) for:
+ * - Early error detection during development
+ * - Validation of non-recursive or bounded protocols
+ * - Debugging trace mismatches
+ *
+ * LIMITATIONS:
+ * - Exponential explosion: 2^depth traces (impractical for depth > 5)
+ * - Cannot verify unbounded recursive protocols completely
+ * - False negatives possible for complex recursion patterns
+ *
+ * For protocols with updatable recursion, trace equivalence is guaranteed
+ * by Theorem 20, not by this bounded checking.
  *
  * @param cfg - Global protocol CFG
  * @param projections - Local projections for all roles
- * @returns Verification result
+ * @returns Verification result (bounded to depth=2)
  */
 export function verifyTraceEquivalence(
   cfg: CFG,
