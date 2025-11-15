@@ -38,7 +38,7 @@ describe('CFSM Simulator - Basic Operations', () => {
     expect(state.completed).toBe(false);
   });
 
-  it('should execute send action (always enabled)', () => {
+  it('should execute send action (always enabled)', async () => {
     const cfsm: CFSM = {
       role: 'A',
       states: [
@@ -65,7 +65,7 @@ describe('CFSM Simulator - Basic Operations', () => {
     expect(enabled[0].action.type).toBe('send');
 
     // Execute send
-    const result = sim.step();
+    const result = await sim.step();
 
     expect(result.success).toBe(true);
     expect(result.action?.type).toBe('send');
@@ -80,7 +80,7 @@ describe('CFSM Simulator - Basic Operations', () => {
     expect(messages[0].label).toBe('Hello');
   });
 
-  it('should execute receive action when message in buffer', () => {
+  it('should execute receive action when message in buffer', async () => {
     const cfsm: CFSM = {
       role: 'B',
       states: [
@@ -121,7 +121,7 @@ describe('CFSM Simulator - Basic Operations', () => {
     expect(enabled[0].action.type).toBe('receive');
 
     // Execute receive
-    const result = sim.step();
+    const result = await sim.step();
 
     expect(result.success).toBe(true);
     expect(result.action?.type).toBe('receive');
