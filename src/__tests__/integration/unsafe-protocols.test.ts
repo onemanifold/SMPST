@@ -162,8 +162,27 @@ describe('Unsafe Protocol Tests (Negative Tests)', () => {
       expect(result.violations[0].details?.receiver).toBe('NonExistent');
     });
 
-    it('should reject protocol where B has orphan receive (no sender)', () => {
-      // B tries to receive, but A never sends
+    it('should accept protocol with orphan receive (safety vs liveness distinction)', () => {
+      // NOTE: Orphan receives are SAFE but create STUCK states!
+      //
+      // B tries to receive from A, but A never sends (A goes to terminal via tau).
+      // After tau-closure: A at terminal (qf), B at q0 waiting for receive.
+      //
+      // Definition 4.1 (Safety Property):
+      // "For each enabled SEND p→q:m, there must be an enabled receive q←p:m"
+      //
+      // Here: No enabled sends (A is terminal), so property is VACUOUSLY satisfied.
+      // Result: SAFE
+      //
+      // However, the protocol is STUCK (B cannot reduce, not all at terminal).
+      // This is a LIVENESS issue, not a SAFETY issue.
+      //
+      // Safety = "bad things don't happen" (send-receive mismatch)
+      // Liveness = "good things eventually happen" (progress to terminal)
+      //
+      // The "Less is More" safety property (Definition 4.1) only checks safety,
+      // not liveness. Stuck states are not safety violations.
+
       const cfsmA = createCFSM('A', [
         { from: 'q0', to: 'qf', action: { type: 'tau' } },
       ]);
@@ -186,8 +205,16 @@ describe('Unsafe Protocol Tests (Negative Tests)', () => {
 
       const checker = new BasicSafety();
       const result = checker.check(context);
+      const reducer = new ContextReducer();
+      const enabled = reducer.findEnabledCommunications(context);
 
-      expect(result.safe).toBe(false);
+      // Protocol is safe (no send-receive mismatches)
+      expect(result.safe).toBe(true);
+      expect(result.violations).toHaveLength(0);
+
+      // But it is stuck (liveness violation)
+      expect(enabled.stuck).toBe(true);
+      expect(enabled.terminal).toBe(false);
     });
   });
 

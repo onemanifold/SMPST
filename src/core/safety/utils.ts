@@ -50,17 +50,29 @@ export function applyTauTransitions(context: TypingContext): TypingContext {
 /**
  * Get enabled tau transition from a state (if any)
  *
- * Tau transitions are internal actions that must be applied eagerly.
- * At most one tau transition should be enabled from a given state.
+ * Tau transitions are internal actions that should be applied eagerly
+ * ONLY when deterministic (no other transitions from the same state).
+ *
+ * When a state has both tau and non-tau transitions, the tau represents
+ * a choice branch (e.g., "this role is not involved in this branch"),
+ * not a mandatory internal action. Eagerly applying it would eliminate
+ * the other branches, making the protocol unsafe.
+ *
+ * CRITICAL: Only apply tau when it's the SOLE transition from a state.
  *
  * @param cfsm - CFSM to check
  * @param state - Current state
- * @returns Tau transition if enabled, undefined otherwise
+ * @returns Tau transition if it's the only transition, undefined otherwise
  */
 function getEnabledTauTransition(cfsm: CFSM, state: string): CFSMTransition | undefined {
-  return cfsm.transitions.find(
-    (t) => t.from === state && t.action.type === 'tau'
-  );
+  const transitionsFromState = cfsm.transitions.filter(t => t.from === state);
+
+  // Only apply tau if it's the ONLY transition from this state
+  if (transitionsFromState.length === 1 && transitionsFromState[0].action.type === 'tau') {
+    return transitionsFromState[0];
+  }
+
+  return undefined;
 }
 
 /**
