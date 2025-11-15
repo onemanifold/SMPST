@@ -43,6 +43,12 @@ export interface CFGSimulatorConfig {
    * Required for sub-protocol execution support
    */
   callStackManager?: any; // Will be typed as ICallStackManager when imported
+
+  /**
+   * Execution history manager for backward stepping
+   * Optional - if not provided, a default one will be created with history disabled
+   */
+  executionHistory?: IExecutionHistory;
 }
 
 /**
@@ -363,7 +369,12 @@ export type SimulatorEventType =
   | 'recursion-continue'   // Continue executed
   | 'recursion-exit'       // Exiting rec
   | 'complete'             // Reached terminal
-  | 'error';               // Error occurred
+  | 'error'                // Error occurred
+  | 'step-into'            // Stepping into sub-protocol
+  | 'step-out'             // Stepping out of sub-protocol
+  | 'step-over'            // Stepping over sub-protocol (atomic execution)
+  | 'step-back'            // Stepping backward (undo)
+  | 'step-forward';        // Stepping forward (explicit)
 
 /**
  * Event callback function signature
@@ -399,4 +410,137 @@ export interface ActionPreview {
   to?: string;
   label: string;
   description: string;
+}
+
+// ============================================================================
+// Execution History (for backward stepping)
+// ============================================================================
+
+/**
+ * Snapshot of execution state at a point in time
+ * Used for backward stepping (undo)
+ */
+export interface CFGExecutionSnapshot {
+  /**
+   * Step number when snapshot was taken
+   */
+  stepNumber: number;
+
+  /**
+   * Current node ID
+   */
+  currentNode: string;
+
+  /**
+   * All visited nodes up to this point
+   */
+  visitedNodes: string[];
+
+  /**
+   * Pending choice state
+   */
+  pendingChoice: EnhancedChoiceOption[] | null;
+
+  /**
+   * Selected choice index
+   */
+  selectedChoice: number | null;
+
+  /**
+   * Parallel execution state
+   */
+  parallelState: {
+    inParallel: boolean;
+    parallelBranches: string[][];
+    parallelBranchIndex: number;
+    parallelBranchesCompleted: Set<number>;
+    parallelJoinNode: string | null;
+  };
+
+  /**
+   * Recursion stack
+   */
+  recursionStack: RecursionContext[];
+
+  /**
+   * Completed flag
+   */
+  completed: boolean;
+
+  /**
+   * Reached max steps flag
+   */
+  reachedMaxSteps: boolean;
+
+  /**
+   * Timestamp when snapshot was taken
+   */
+  timestamp: number;
+
+  /**
+   * Last event that occurred (optional)
+   */
+  lastEvent?: CFGExecutionEvent;
+}
+
+/**
+ * Configuration for execution history tracking
+ */
+export interface ExecutionHistoryConfig {
+  /**
+   * Maximum number of snapshots to keep
+   * Default: 1000
+   */
+  maxSnapshots?: number;
+
+  /**
+   * Whether to enable history tracking
+   * Default: false (disabled for performance)
+   */
+  enabled?: boolean;
+}
+
+/**
+ * Execution history manager interface
+ */
+export interface IExecutionHistory {
+  /**
+   * Record a snapshot
+   */
+  recordSnapshot(snapshot: CFGExecutionSnapshot): void;
+
+  /**
+   * Get snapshot at specific step
+   */
+  getSnapshot(stepNumber: number): CFGExecutionSnapshot | undefined;
+
+  /**
+   * Get previous snapshot
+   */
+  getPreviousSnapshot(): CFGExecutionSnapshot | undefined;
+
+  /**
+   * Get next snapshot
+   */
+  getNextSnapshot(): CFGExecutionSnapshot | undefined;
+
+  /**
+   * Get all snapshots
+   */
+  getAllSnapshots(): CFGExecutionSnapshot[];
+
+  /**
+   * Clear all snapshots
+   */
+  clear(): void;
+
+  /**
+   * Get current position in history
+   */
+  getCurrentPosition(): number;
+
+  /**
+   * Set current position in history
+   */
+  setCurrentPosition(stepNumber: number): void;
 }

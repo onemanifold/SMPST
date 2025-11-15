@@ -42,11 +42,18 @@ import type {
   CFSMTraceEvent,
   CFSMEventType,
   CFSMEventCallback,
+  CFSMExecutionSnapshot,
+  CFSMExecutionHistoryConfig,
+  ICFSMExecutionHistory,
 } from './cfsm-simulator-types';
+import { CFSMExecutionHistory } from './execution-history';
 
 export class CFSMSimulator {
   private cfsm: CFSM;
-  private config: Required<CFSMSimulatorConfig>;
+  private config: Required<Omit<CFSMSimulatorConfig, 'executionHistory'>>;
+
+  // Execution history (for backward stepping)
+  private executionHistory: ICFSMExecutionHistory;
 
   // Execution state
   private currentState: string;
@@ -83,6 +90,12 @@ export class CFSMSimulator {
       verifyFIFO: config.verifyFIFO ?? false,
     };
 
+    // Initialize execution history
+    this.executionHistory = config.executionHistory || new CFSMExecutionHistory({
+      enabled: false, // Disabled by default for performance
+      maxSnapshots: 1000,
+    });
+
     // Initialize at initial state
     this.currentState = cfsm.initialState;
     this.visitedStates.push(cfsm.initialState);
@@ -95,6 +108,9 @@ export class CFSMSimulator {
       totalSteps: 0,
       completed: false,
     };
+
+    // Record initial snapshot
+    this.recordSnapshot();
   }
 
   /**
@@ -676,6 +692,146 @@ export class CFSMSimulator {
       totalSteps: 0,
       completed: false,
     };
+
+    // Clear execution history
+    this.executionHistory.clear();
+
+    // Record initial snapshot
+    this.recordSnapshot();
+  }
+
+  // ============================================================================
+  // Execution History & Stepping Debugger
+  // ============================================================================
+
+  /**
+   * Record current execution state as a snapshot
+   */
+  private recordSnapshot(): void {
+    const snapshot: CFSMExecutionSnapshot = {
+      stepNumber: this.stepCount,
+      currentState: this.currentState,
+      visitedStates: [...this.visitedStates],
+      buffer: this.cloneBuffer(),
+      outgoingMessages: [...this.outgoingMessages],
+      pendingTransitionChoice: this.pendingTransitionChoice,
+      completed: this.completed,
+      reachedMaxSteps: this.reachedMaxSteps,
+      messageIdCounter: this.messageIdCounter,
+      timestamp: Date.now(),
+    };
+
+    this.executionHistory.recordSnapshot(snapshot);
+  }
+
+  /**
+   * Restore execution state from a snapshot
+   */
+  private restoreSnapshot(snapshot: CFSMExecutionSnapshot): void {
+    this.stepCount = snapshot.stepNumber;
+    this.currentState = snapshot.currentState;
+    this.visitedStates = [...snapshot.visitedStates];
+    this.buffer = this.cloneBuffer(snapshot.buffer);
+    this.outgoingMessages = [...snapshot.outgoingMessages];
+    this.pendingTransitionChoice = snapshot.pendingTransitionChoice;
+    this.completed = snapshot.completed;
+    this.reachedMaxSteps = snapshot.reachedMaxSteps;
+    this.messageIdCounter = snapshot.messageIdCounter;
+  }
+
+  /**
+   * Step forward (explicit stepping)
+   * Same as step() but emits step-forward event
+   */
+  stepForward(): CFSMStepResult {
+    this.emit('step-forward', { stepCount: this.stepCount });
+    const result = this.step();
+
+    // Record snapshot after successful step
+    if (result.success) {
+      this.recordSnapshot();
+    }
+
+    return result;
+  }
+
+  /**
+   * Step backward (undo last step)
+   * Restores previous execution state from history
+   */
+  stepBackward(): CFSMStepResult {
+    const previousSnapshot = this.executionHistory.getPreviousSnapshot();
+
+    if (!previousSnapshot) {
+      const error = {
+        type: 'invalid-state' as const,
+        message: 'No previous state available in history',
+        stateId: this.currentState,
+      };
+      this.emit('error', error);
+      return {
+        success: false,
+        error,
+        state: this.getState(),
+      };
+    }
+
+    // Restore state
+    this.restoreSnapshot(previousSnapshot);
+
+    // Emit step-back event
+    this.emit('step-back', {
+      stepCount: this.stepCount,
+      restoredState: this.getState(),
+    });
+
+    return {
+      success: true,
+      state: this.getState(),
+    };
+  }
+
+  /**
+   * Step into (for consistency with CFG simulator)
+   * In CFSM context, this is the same as stepForward since there are no sub-protocols at this level
+   */
+  stepInto(): CFSMStepResult {
+    this.emit('step-into', { stepCount: this.stepCount });
+    return this.stepForward();
+  }
+
+  /**
+   * Step out (for consistency with CFG simulator)
+   * In CFSM context, this is the same as stepForward since there are no sub-protocols at this level
+   */
+  stepOut(): CFSMStepResult {
+    this.emit('step-out', { stepCount: this.stepCount });
+    return this.stepForward();
+  }
+
+  /**
+   * Enable execution history tracking
+   */
+  enableHistory(): void {
+    if (this.executionHistory instanceof CFSMExecutionHistory) {
+      this.executionHistory.enable();
+    }
+  }
+
+  /**
+   * Disable execution history tracking
+   */
+  disableHistory(): void {
+    if (this.executionHistory instanceof CFSMExecutionHistory) {
+      this.executionHistory.disable();
+    }
+  }
+
+  /**
+   * Get execution history
+   */
+  getExecutionHistory(): ICFSMExecutionHistory {
+    return this.executionHistory;
   }
 
   /**
@@ -718,9 +874,10 @@ export class CFSMSimulator {
   /**
    * Clone buffer for state snapshot
    */
-  private cloneBuffer(): MessageBuffer {
+  private cloneBuffer(buffer?: MessageBuffer): MessageBuffer {
+    const sourceBuffer = buffer || this.buffer;
     const cloned: MessageBuffer = { channels: new Map() };
-    for (const [from, queue] of this.buffer.channels) {
+    for (const [from, queue] of sourceBuffer.channels) {
       cloned.channels.set(from, [...queue]);
     }
     return cloned;

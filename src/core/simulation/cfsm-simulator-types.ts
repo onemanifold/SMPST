@@ -40,6 +40,12 @@ export interface CFSMSimulatorConfig {
    * When enabled, verifies messages received in send order
    */
   verifyFIFO?: boolean;
+
+  /**
+   * Execution history manager for backward stepping
+   * Optional - if not provided, a default one will be created with history disabled
+   */
+  executionHistory?: ICFSMExecutionHistory;
 }
 
 /**
@@ -220,9 +226,140 @@ export type CFSMEventType =
   | 'buffer-dequeue'
   | 'complete'
   | 'error'
-  | 'deadlock';
+  | 'deadlock'
+  | 'step-into'        // Stepping into sub-protocol
+  | 'step-out'         // Stepping out of sub-protocol
+  | 'step-back'        // Stepping backward (undo)
+  | 'step-forward';    // Stepping forward (explicit)
 
 export type CFSMEventCallback = (data: any) => void;
+
+// ============================================================================
+// Execution History (for backward stepping)
+// ============================================================================
+
+/**
+ * Snapshot of CFSM execution state at a point in time
+ * Used for backward stepping (undo)
+ */
+export interface CFSMExecutionSnapshot {
+  /**
+   * Step number when snapshot was taken
+   */
+  stepNumber: number;
+
+  /**
+   * Current state
+   */
+  currentState: string;
+
+  /**
+   * All visited states up to this point
+   */
+  visitedStates: string[];
+
+  /**
+   * Message buffer state (deep copy)
+   */
+  buffer: MessageBuffer;
+
+  /**
+   * Outgoing messages queue
+   */
+  outgoingMessages: Message[];
+
+  /**
+   * Pending transition choice
+   */
+  pendingTransitionChoice: number | null;
+
+  /**
+   * Completed flag
+   */
+  completed: boolean;
+
+  /**
+   * Reached max steps flag
+   */
+  reachedMaxSteps: boolean;
+
+  /**
+   * Message ID counter
+   */
+  messageIdCounter: number;
+
+  /**
+   * Timestamp when snapshot was taken
+   */
+  timestamp: number;
+
+  /**
+   * Last event that occurred (optional)
+   */
+  lastEvent?: CFSMTraceEvent;
+}
+
+/**
+ * Configuration for execution history tracking
+ */
+export interface CFSMExecutionHistoryConfig {
+  /**
+   * Maximum number of snapshots to keep
+   * Default: 1000
+   */
+  maxSnapshots?: number;
+
+  /**
+   * Whether to enable history tracking
+   * Default: false (disabled for performance)
+   */
+  enabled?: boolean;
+}
+
+/**
+ * Execution history manager interface for CFSM
+ */
+export interface ICFSMExecutionHistory {
+  /**
+   * Record a snapshot
+   */
+  recordSnapshot(snapshot: CFSMExecutionSnapshot): void;
+
+  /**
+   * Get snapshot at specific step
+   */
+  getSnapshot(stepNumber: number): CFSMExecutionSnapshot | undefined;
+
+  /**
+   * Get previous snapshot
+   */
+  getPreviousSnapshot(): CFSMExecutionSnapshot | undefined;
+
+  /**
+   * Get next snapshot
+   */
+  getNextSnapshot(): CFSMExecutionSnapshot | undefined;
+
+  /**
+   * Get all snapshots
+   */
+  getAllSnapshots(): CFSMExecutionSnapshot[];
+
+  /**
+   * Clear all snapshots
+   */
+  clear(): void;
+
+  /**
+   * Get current position in history
+   */
+  getCurrentPosition(): number;
+
+  /**
+   * Set current position in history
+   */
+  setCurrentPosition(stepNumber: number): void;
+}
 
 /**
  * Configuration for distributed simulator
