@@ -380,10 +380,6 @@ export class CFSMSimulator {
   /**
    * Execute receive action
    * Consumes message from transport or buffer (legacy)
-   *
-   * Note: In transport mode, this is a "best-effort" sync wrapper.
-   * For InMemoryTransport, receives resolve immediately so this works.
-   * For real async transports, the simulator would need to be async.
    */
   private executeReceive(transition: CFSMTransition): CFSMStepResult {
     const action = transition.action;
@@ -392,41 +388,11 @@ export class CFSMSimulator {
     let msg: Message;
 
     if (this.transport) {
-      // Transport mode: receive from transport
-      // Hack: InMemoryTransport.receive() is async but resolves immediately
-      // We use a flag to capture the result synchronously
-      let receivedMsg: Message | undefined = undefined;
-      let resolved = false;
-
-      this.transport.receive(this.cfsm.role).then((m: Message | undefined) => {
-        receivedMsg = m;
-        resolved = true;
-      }).catch(() => {
-        resolved = true;
-      });
-
-      // For InMemoryTransport, the promise resolves synchronously via microtask
-      // But we need to force synchronous execution
-      // Better approach: access transport internals directly for sync operation
-
-      // Actually, let's just bypass the async wrapper and call receive directly
-      // Since we know it's InMemoryTransport, we can cast and call sync version
-      // This is a hack but works for now - proper fix would be async simulator
-      if (this.transport.hasMessage && this.transport.hasMessage(this.cfsm.role)) {
-        // We know message exists, so receive should succeed
-        // Use a sync loop to wait for microtask resolution
-        this.transport.receive(this.cfsm.role).then((m: Message | undefined) => {
-          receivedMsg = m;
-        });
-
-        // Force microtask queue to flush - this is the hack
-        // In practice, for InMemoryTransport, we should access the queue directly
-        // Let me check the transport implementation...
-      }
-
-      if (!receivedMsg && !resolved) {
-        throw new Error(`No message available from transport for ${this.cfsm.role}`);
-      }
+      // Transport mode: receive from transport synchronously
+      // Uses receiveSync for InMemoryTransport to avoid async complexity
+      const receivedMsg = this.transport.receiveSync
+        ? this.transport.receiveSync(this.cfsm.role)
+        : undefined;
 
       if (!receivedMsg) {
         throw new Error(`No message available from transport for ${this.cfsm.role}`);

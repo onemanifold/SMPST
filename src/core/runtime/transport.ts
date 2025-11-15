@@ -114,6 +114,24 @@ export class InMemoryTransport implements MessageTransport {
     const queue = this.queues.get(role);
     return queue ? queue.length : 0;
   }
+
+  /**
+   * Synchronous receive for simulation purposes
+   * Avoids async/await complexity when using in synchronous simulators
+   * Returns undefined if no message available
+   */
+  receiveSync(role: string): Message | undefined {
+    // Scan all sender->role queues for first available message
+    for (const [queueKey, queue] of this.queues.entries()) {
+      if (queueKey.endsWith(`->${role}`) && queue.length > 0) {
+        const msg = queue.shift();
+        // Note: We don't notify listeners in sync mode
+        // This is intentional to avoid async side effects
+        return msg;
+      }
+    }
+    return undefined;
+  }
 }
 
 /**
