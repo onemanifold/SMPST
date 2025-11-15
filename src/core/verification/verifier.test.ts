@@ -1387,8 +1387,9 @@ describe('Multicast', () => {
 // ============================================================================
 
 describe('Self-Communication', () => {
-  it('should allow self-communication for DMst local actions', () => {
-    // DMst: Self-communication represents local actions
+  it('should detect self-communication as invalid', () => {
+    // MPST/DMst: Self-communication (A -> A) is prohibited
+    // Local actions should be modeled as τ-transitions instead
     const source = `
       protocol SelfMsg(role A, role B) {
         A -> A: Reflect();
@@ -1398,13 +1399,14 @@ describe('Self-Communication', () => {
     const cfg = buildCFG(ast.declarations[0]);
     const result = checkSelfCommunication(cfg);
 
-    // DMst: Self-communication is allowed (local actions)
-    expect(result.isValid).toBe(true);
-    expect(result.violations.length).toBe(0);
+    // Self-communication should be detected as invalid
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBe(1);
+    expect(result.violations[0].role).toBe('A');
   });
 
-  it('should allow self in multicast receiver list (manual CFG test)', () => {
-    // DMst: Self in multicast is also allowed
+  it('should detect self in multicast receiver list as invalid', () => {
+    // MPST/DMst: Sender cannot be in its own multicast receiver list
     const source = `protocol Test(role A, role B, role C) { A -> B: M(); }`;
     const ast = parse(source);
     const cfg = buildCFG(ast.declarations[0]);
@@ -1417,9 +1419,10 @@ describe('Self-Communication', () => {
 
     const result = checkSelfCommunication(cfg);
 
-    // DMst: Self in multicast is allowed
-    expect(result.isValid).toBe(true);
-    expect(result.violations.length).toBe(0);
+    // Self in multicast should be detected as invalid
+    expect(result.isValid).toBe(false);
+    expect(result.violations.length).toBe(1);
+    expect(result.violations[0].role).toBe('A');
   });
 
   it('should accept normal communication', () => {
