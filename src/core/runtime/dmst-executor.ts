@@ -39,6 +39,7 @@ import type {
   CFSMTransition,
   CreateAction,
   InviteAction,
+  ContinueWithAction,
   SendAction,
   ReceiveAction,
   SubProtocolCallAction,
@@ -57,6 +58,10 @@ export interface DMstExecutorConfig extends ExecutorConfig {
 
   // Dynamic role templates (role name → CFSM template)
   dynamicCFSMs?: Map<string, CFSM>;
+
+  // Sprint 3: Version tracking for updatable recursion
+  cfsmVersion?: number;  // Version number of CFSM (default: 1)
+  protocolName?: string;  // Protocol name for version registry lookup
 }
 
 /**
@@ -75,10 +80,16 @@ export class DMstExecutor extends Executor {
   private dynamicRegistry?: DynamicParticipantRegistry;
   private dynamicCFSMs?: Map<string, CFSM>;
 
+  // Sprint 3: Version tracking for updatable recursion
+  private cfsmVersion: number;
+  private protocolName?: string;
+
   constructor(config: DMstExecutorConfig) {
     super(config);
     this.dynamicRegistry = config.dynamicRegistry;
     this.dynamicCFSMs = config.dynamicCFSMs;
+    this.cfsmVersion = config.cfsmVersion || 1;
+    this.protocolName = config.protocolName;
   }
 
   /**
@@ -228,6 +239,13 @@ export class DMstExecutor extends Executor {
 
         case 'invite':
           result = await this.executeInvite(firstTransition, action as InviteAction);
+          break;
+
+        case 'continue-with':
+          // Sprint 3: Protocol update
+          // Note: This sends an update message that will be handled by DMstSimulator
+          // to broadcast the update to all executors
+          result = await this.executeContinueWith(firstTransition, action as any);
           break;
 
         default:
@@ -686,6 +704,104 @@ export class DMstExecutor extends Executor {
       newState: transition.to,
       messagesSent: [message],
     };
+  }
+
+  /**
+   * Execute continue-with action
+   *
+   * Sprint 3: Implements updatable recursion.
+   *
+   * From ECOOP 2023 Section 3.2:
+   * continue X with { G' } ≡ G' ; (rec X { G' ; (unfold X) })
+   *
+   * Implementation:
+   * 1. Send update message to DMstSimulator
+   * 2. Simulator broadcasts update to all executors
+   * 3. All executors swap their CFSM to extended version
+   * 4. Continue execution with extended CFSM
+   *
+   * @param transition - Transition containing continue-with action
+   * @param action - Continue-with action
+   */
+  private async executeContinueWith(
+    transition: CFSMTransition,
+    action: ContinueWithAction
+  ): Promise<ExecutionResult> {
+    const transport = (this as any).transport as MessageTransport;
+    const role = this.getState().role;
+
+    // Send update message (handled by DMstSimulator)
+    const message: Message = {
+      id: `continue_with_${action.recursionVar}_${Date.now()}`,
+      from: role,
+      to: '__simulator__',  // Special destination for simulator
+      label: 'continue-with',
+      payload: {
+        recursionVar: action.recursionVar,
+        extension: action.extension,
+        protocolName: this.protocolName,
+        currentVersion: this.cfsmVersion,
+      },
+      timestamp: Date.now(),
+    };
+
+    await transport.send(message);
+
+    // Notify observers
+    this.dmstNotifyMessageSent(message);
+
+    // Take transition
+    this.dmstTransitionTo(transition.to);
+
+    return {
+      success: true,
+      newState: transition.to,
+      messagesSent: [message],
+    };
+  }
+
+  // =========================================================================
+  // Sprint 3: Updatable Recursion Support
+  // =========================================================================
+
+  /**
+   * Apply CFSM update
+   *
+   * Swaps the executor's current CFSM to a new version.
+   * Preserves current state and execution context.
+   *
+   * This is called when a protocol update (continue-with) is applied.
+   * The update is atomic: the CFSM is swapped, but the current state
+   * and call stack are preserved.
+   *
+   * @param newCFSM - New CFSM version
+   * @param newVersion - Version number
+   */
+  applyCFSMUpdate(newCFSM: CFSM, newVersion: number): void {
+    // Swap CFSM (atomic update)
+    (this as any).currentCFSM = newCFSM;
+    this.cfsmVersion = newVersion;
+
+    // Notify observers of update (optional - for debugging/trace)
+    // Note: We don't change currentState - execution continues from same state
+  }
+
+  /**
+   * Get current CFSM version
+   *
+   * @returns Current version number
+   */
+  getCFSMVersion(): number {
+    return this.cfsmVersion;
+  }
+
+  /**
+   * Get protocol name
+   *
+   * @returns Protocol name, or undefined if not set
+   */
+  getProtocolName(): string | undefined {
+    return this.protocolName;
   }
 }
 

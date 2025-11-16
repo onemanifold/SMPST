@@ -26,6 +26,9 @@ export interface CallStackFrame {
   returnState: string;     // State in parent CFSM to return to after completion
   roleMapping: Record<string, string>;  // Formal parameter → actual role mapping
   protocol: string;        // Sub-protocol name being executed (for debugging)
+
+  // Updatable recursion support (Sprint 3)
+  cfsmVersion?: number;    // Version active when call was made (for versioned protocols)
 }
 
 /**

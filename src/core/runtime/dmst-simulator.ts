@@ -50,6 +50,13 @@ import {
 } from './dmst-runtime';
 import { InMemoryTransport } from './transport';
 import { DMstExecutor, type DMstExecutorConfig } from './dmst-executor';
+import {
+  createVersionRegistry,
+  registerInitialVersion,
+  registerCFSMUpdate,
+  type CFSMVersionRegistry,
+  type CFSMUpdate,
+} from './versioned-cfsm';
 
 // ============================================================================
 // DMst Simulator
@@ -99,6 +106,10 @@ export class DMstSimulator {
   private trace: DMstExecutionTrace;
   private recordTrace: boolean = false;
 
+  // Sprint 3: Version registry for updatable recursion
+  private versionRegistry: CFSMVersionRegistry;
+  private protocolName: string;
+
   // Pause/resume: Run control (Sprint 2, Issue #7)
   private currentRunPause: (() => void) | null = null;
 
@@ -109,6 +120,7 @@ export class DMstSimulator {
     cfsmRegistry?: Map<string, Map<string, CFSM>>,
     options?: {
       recordTrace?: boolean;
+      protocolName?: string;  // Sprint 3: Protocol name for version registry
     }
   ) {
     this.state = createDMstSimulationState(staticRoles);
@@ -117,6 +129,10 @@ export class DMstSimulator {
     this.dynamicCFSMs = dynamicRoles;
     this.cfsmRegistry = cfsmRegistry || new Map();
     this.recordTrace = options?.recordTrace || false;
+    this.protocolName = options?.protocolName || 'UnnamedProtocol';
+
+    // Sprint 3: Initialize version registry
+    this.versionRegistry = createVersionRegistry();
 
     // Initialize trace
     this.trace = {
@@ -128,6 +144,9 @@ export class DMstSimulator {
     // Create executor for each static role
     this.roleNames = Array.from(staticRoles.keys()).sort();
     for (const [role, cfsm] of staticRoles.entries()) {
+      // Sprint 3: Register initial version (v1)
+      registerInitialVersion(this.versionRegistry, this.protocolName, role, cfsm);
+
       const config: DMstExecutorConfig = {
         role,
         cfsm,
@@ -135,6 +154,9 @@ export class DMstSimulator {
         cfsmRegistry: this.cfsmRegistry,
         dynamicRegistry: this.state.dynamicParticipants,
         dynamicCFSMs: this.dynamicCFSMs,
+        // Sprint 3: Version tracking
+        cfsmVersion: 1,
+        protocolName: this.protocolName,
       };
       this.executors.set(role, new DMstExecutor(config));
     }
@@ -394,6 +416,9 @@ export class DMstSimulator {
         await this.handleCreation(role, msg);
       } else if (msg.label === 'invite') {
         await this.handleInvitation(role, msg);
+      } else if (msg.label === 'continue-with') {
+        // Sprint 3: Handle protocol update
+        await this.handleContinueWith(role, msg);
       }
     }
   }
@@ -485,6 +510,74 @@ export class DMstSimulator {
       pending.push(invitee);
       this.state.dynamicParticipants.pendingInvitations.set(inviter, pending);
     }
+  }
+
+  /**
+   * Handle continue-with (protocol update).
+   *
+   * Sprint 3: Implements updatable recursion.
+   *
+   * From ECOOP 2023 Section 3.2:
+   * When a role executes `continue X with { G }`, the protocol is updated
+   * for ALL roles. This creates a new CFSM version with the extension
+   * sequenced before the original recursion body.
+   *
+   * Implementation:
+   * 1. Extract update information from message
+   * 2. For each role, create extended CFSM
+   * 3. Register new version in version registry
+   * 4. Broadcast update to all active executors
+   * 5. Executors swap to new CFSM version atomically
+   *
+   * @param updater - Role that triggered the update
+   * @param msg - Continue-with message
+   */
+  private async handleContinueWith(updater: string, msg: Message): Promise<void> {
+    const payload = msg.payload;
+    if (!payload || !payload.recursionVar || !payload.extension) {
+      console.warn('[DMstSimulator] Invalid continue-with message payload');
+      return;
+    }
+
+    const { recursionVar, extension, currentVersion } = payload;
+
+    // For each role, register and apply update
+    // Note: In a full implementation, we'd project the extension to each role's local type
+    // For now, we assume the extension CFSM is already role-specific
+    for (const [roleName, executor] of this.executors.entries()) {
+      try {
+        // Create update descriptor
+        const update: CFSMUpdate = {
+          protocolName: this.protocolName,
+          roleName,
+          recursionVar,
+          extension,  // In full implementation: project extension to this role
+          targetVersion: currentVersion,
+        };
+
+        // Register update and get new version number
+        const newVersion = registerCFSMUpdate(this.versionRegistry, update);
+
+        // Get new CFSM from registry
+        const versionedCFSM = this.versionRegistry.versions
+          .get(`${this.protocolName}:${roleName}`)
+          ?.find(v => v.version === newVersion);
+
+        if (!versionedCFSM) {
+          console.warn(`[DMstSimulator] Failed to retrieve version ${newVersion} for ${roleName}`);
+          continue;
+        }
+
+        // Apply update to executor (atomic CFSM swap)
+        executor.applyCFSMUpdate(versionedCFSM.cfsm, newVersion);
+
+      } catch (error) {
+        console.error(`[DMstSimulator] Failed to apply update to ${roleName}:`, error);
+      }
+    }
+
+    // TODO Sprint 3: Add trace event for protocol update
+    // TODO Sprint 3: Notify observers of protocol update
   }
 
   /**
