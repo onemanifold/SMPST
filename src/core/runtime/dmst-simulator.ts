@@ -9,15 +9,20 @@
  *
  * Based on Castro-Perez & Yoshida (ECOOP 2023) operational semantics.
  *
- * SPRINT 1 STATUS:
- * - ✅ FIXED: Executor pattern implemented (Issue #4)
- * - ✅ FIXED: Fair scheduling implemented (Issue #2)
- * - ✅ FIXED: Epsilon auto-advance (via DMstExecutor) (Issue #3)
- * - ✅ FIXED: Sub-protocol call stack (via DMstExecutor) (Issue #1)
- * - ⏸️ TODO(P1): Observer pattern (Sprint 2, Issue #5)
- * - ⏸️ TODO(P1): Trace recording (Sprint 2, Issue #6)
- * - ⏸️ TODO(P1): Pause/resume (Sprint 2, Issue #7)
- * - ⏸️ TODO(P1): Updatable CFSM runtime (Sprint 3, Issue #8)
+ * SPRINT 1 STATUS (✅ COMPLETE):
+ * - ✅ Executor pattern implemented (Issue #4)
+ * - ✅ Fair scheduling implemented (Issue #2)
+ * - ✅ Epsilon auto-advance (via DMstExecutor) (Issue #3)
+ * - ✅ Sub-protocol call stack (via DMstExecutor) (Issue #1)
+ *
+ * SPRINT 2 STATUS (🚧 IN PROGRESS):
+ * - ✅ Observer pattern (Issue #5)
+ * - ✅ Trace recording (Issue #6)
+ * - ✅ Pause/resume (Issue #7)
+ * - ⏸️ Comprehensive tests (Issue #9) - separate test file
+ *
+ * SPRINT 3 (FUTURE):
+ * - ⏸️ Updatable CFSM runtime (Issue #8)
  */
 
 import type { CFSM } from '../projection/types';
@@ -32,6 +37,10 @@ import type {
   ParticipantCreationEvent,
   InvitationCompleteEvent,
 } from './dmst-runtime';
+import type {
+  DMstExecutionObserver,
+  DMstExecutionTrace,
+} from './dmst-types';
 import {
   createDMstSimulationState,
   createDynamicParticipant,
@@ -83,17 +92,38 @@ export class DMstSimulator {
   // CFSM registry for sub-protocol calls
   private cfsmRegistry: Map<string, Map<string, CFSM>> = new Map();
 
+  // Observer pattern: Event notification (Sprint 2, Issue #5)
+  private observers: Set<DMstExecutionObserver> = new Set();
+
+  // Trace recording: Execution history (Sprint 2, Issue #6)
+  private trace: DMstExecutionTrace;
+  private recordTrace: boolean = false;
+
+  // Pause/resume: Run control (Sprint 2, Issue #7)
+  private currentRunPause: (() => void) | null = null;
+
   constructor(
     staticRoles: Map<string, CFSM>,
     dynamicRoles: Map<string, CFSM> = new Map(),
     transport?: MessageTransport,
-    cfsmRegistry?: Map<string, Map<string, CFSM>>
+    cfsmRegistry?: Map<string, Map<string, CFSM>>,
+    options?: {
+      recordTrace?: boolean;
+    }
   ) {
     this.state = createDMstSimulationState(staticRoles);
     this.transport = transport || new InMemoryTransport();
     this.cfsms = staticRoles;
     this.dynamicCFSMs = dynamicRoles;
     this.cfsmRegistry = cfsmRegistry || new Map();
+    this.recordTrace = options?.recordTrace || false;
+
+    // Initialize trace
+    this.trace = {
+      events: [],
+      startTime: Date.now(),
+      completed: false,
+    };
 
     // Create executor for each static role
     this.roleNames = Array.from(staticRoles.keys()).sort();
@@ -107,6 +137,11 @@ export class DMstSimulator {
         dynamicCFSMs: this.dynamicCFSMs,
       };
       this.executors.set(role, new DMstExecutor(config));
+    }
+
+    // Add trace recorder if enabled
+    if (this.recordTrace) {
+      this.addTraceRecorder();
     }
   }
 
@@ -228,6 +263,13 @@ export class DMstSimulator {
    * - All roles completed
    * - Deadlock detected
    * - Max steps reached
+   * - Pause requested
+   *
+   * PAUSE/RESUME (Sprint 2, Issue #7):
+   * - Uses run-specific closure variable for pause signal
+   * - Calling pause() sets signal for current run() only
+   * - Signal auto-cleared when run() exits
+   * - Internal state preserved between runs
    *
    * @param maxSteps - Maximum steps (default: 1000)
    * @returns Final state
@@ -235,19 +277,39 @@ export class DMstSimulator {
   async run(maxSteps: number = 1000): Promise<DMstSimulationState> {
     let steps = 0;
 
-    while (!this.state.completed && !this.state.deadlocked && steps < maxSteps) {
-      await this.step();
-      steps++;
-    }
+    // Run-specific pause signal (closure variable)
+    let pauseRequested = false;
 
-    if (steps >= maxSteps && !this.state.completed) {
-      this.state.error = {
-        type: 'deadlock',
-        message: `Simulation exceeded max steps (${maxSteps})`,
-      };
-    }
+    // Expose pause setter for this specific run() invocation
+    this.currentRunPause = () => { pauseRequested = true; };
 
-    return this.state;
+    try {
+      while (!this.state.completed && !this.state.deadlocked && steps < maxSteps && !pauseRequested) {
+        await this.step();
+        steps++;
+
+        // Yield to event loop to allow pause() and other async operations
+        await new Promise(resolve => setImmediate(resolve));
+      }
+
+      if (steps >= maxSteps && !this.state.completed) {
+        this.state.error = {
+          type: 'deadlock',
+          message: `Simulation exceeded max steps (${maxSteps})`,
+        };
+      }
+
+      // Update trace completion status
+      if (this.state.completed) {
+        this.trace.completed = true;
+        this.trace.endTime = Date.now();
+      }
+
+      return this.state;
+    } finally {
+      // Clear run-specific pause handler (auto-cleanup)
+      this.currentRunPause = null;
+    }
   }
 
   /**
@@ -279,6 +341,16 @@ export class DMstSimulator {
 
     // Reset role names to static roles only
     this.roleNames = Array.from(this.cfsms.keys()).sort();
+
+    // Reset trace
+    this.trace = {
+      events: [],
+      startTime: Date.now(),
+      completed: false,
+    };
+
+    // Clear any active pause handler
+    this.currentRunPause = null;
   }
 
   // ==========================================================================
@@ -391,6 +463,9 @@ export class DMstSimulator {
       instanceId: participant.instanceId,
     };
     this.state.creationEvents.push(event);
+
+    // Notify observers (Sprint 2, Issue #5)
+    this.notifyParticipantCreation(event);
   }
 
   /**
@@ -446,8 +521,137 @@ export class DMstSimulator {
             invitee: inviteeId,
           };
           this.state.invitationEvents.push(event);
+
+          // Notify observers (Sprint 2, Issue #5)
+          this.notifyInvitationComplete(event);
         }
       }
+    }
+  }
+
+  // ==========================================================================
+  // Observer Pattern & Trace Recording (Sprint 2, Issues #5 & #6)
+  // ==========================================================================
+
+  /**
+   * Add an observer to receive execution events.
+   *
+   * Observers receive notifications for:
+   * - Standard MPST events (state change, message sent/received, errors)
+   * - DMst-specific events (participant creation, invitation complete)
+   *
+   * Observers are propagated to all executors (including dynamic participants).
+   *
+   * @param observer - Observer to add
+   */
+  addObserver(observer: DMstExecutionObserver): void {
+    this.observers.add(observer);
+
+    // Propagate observer to all executors so they can fire events
+    for (const executor of this.executors.values()) {
+      executor.addObserver(observer);
+    }
+  }
+
+  /**
+   * Remove an observer.
+   *
+   * @param observer - Observer to remove
+   */
+  removeObserver(observer: DMstExecutionObserver): void {
+    this.observers.delete(observer);
+
+    // Propagate removal to all executors
+    for (const executor of this.executors.values()) {
+      executor.removeObserver(observer);
+    }
+  }
+
+  /**
+   * Get execution trace.
+   *
+   * Returns a copy of the trace with all recorded events.
+   * Includes both standard MPST events and DMst-specific events.
+   *
+   * @returns Execution trace
+   */
+  getTrace(): DMstExecutionTrace {
+    return {
+      ...this.trace,
+      events: [...this.trace.events],
+    };
+  }
+
+  /**
+   * Add trace recorder observer.
+   *
+   * Creates an observer that records all events to the trace.
+   * Called automatically if recordTrace option is true.
+   */
+  private addTraceRecorder(): void {
+    const recorder: DMstExecutionObserver = {
+      onStateChange: (event) => {
+        this.trace.events.push(event);
+      },
+      onMessageSent: (event) => {
+        this.trace.events.push(event);
+      },
+      onMessageReceived: (event) => {
+        this.trace.events.push(event);
+      },
+      onError: (event) => {
+        this.trace.events.push(event);
+      },
+      onParticipantCreation: (event) => {
+        this.trace.events.push(event);
+      },
+      onInvitationComplete: (event) => {
+        this.trace.events.push(event);
+      },
+    };
+
+    // Register the observer so it gets propagated to all executors
+    this.addObserver(recorder);
+  }
+
+  /**
+   * Notify observers of participant creation.
+   *
+   * @param event - Participant creation event
+   */
+  private notifyParticipantCreation(event: ParticipantCreationEvent): void {
+    this.observers.forEach(observer => {
+      observer.onParticipantCreation?.(event);
+    });
+  }
+
+  /**
+   * Notify observers of invitation completion.
+   *
+   * @param event - Invitation complete event
+   */
+  private notifyInvitationComplete(event: InvitationCompleteEvent): void {
+    this.observers.forEach(observer => {
+      observer.onInvitationComplete?.(event);
+    });
+  }
+
+  // ==========================================================================
+  // Pause/Resume Control (Sprint 2, Issue #7)
+  // ==========================================================================
+
+  /**
+   * Pause current run() execution.
+   *
+   * Sets pause signal for current run() invocation only.
+   * If no run() is active, this has no effect.
+   *
+   * Internal state (stepCount, executor positions) is preserved,
+   * allowing resumption by calling run() again.
+   */
+  pause(): void {
+    if (this.currentRunPause) {
+      this.currentRunPause();  // Set current run's pause signal
     }
   }
 }
