@@ -833,6 +833,13 @@ export function checkChoiceMergeability(cfg: CFG): ChoiceMergeabilityResult {
 
       // If role appears in some branches but not all
       if (branchesWithRole.length > 0 && branchesWithoutRole.length > 0) {
+        // The chooser role makes the decision, so it implicitly participates in all branches
+        // Empty branches for the chooser are valid (representing "do nothing")
+        if (role === branchNode.at) {
+          // This is OK! Chooser can have empty branches
+          continue;
+        }
+
         // DMst: Allow dynamic roles to be conditional (branch-specific)
         if (dynamicRoles.has(role)) {
           // This is OK! Dynamic roles can be conditionally created
@@ -1275,30 +1282,22 @@ export function checkMulticast(cfg: CFG): MulticastResult {
 // ============================================================================
 
 /**
- * Check for self-communication (role sending to itself)
- * This is semantically questionable in session types
- */
-/**
  * Check for self-communication patterns
  *
- * DMst Extension: Self-communication is ALLOWED for local actions
- * (Definition 1: p -> p represents internal computation)
+ * Classic MPST prohibits self-communication (p -> p) as communication
+ * is defined between distinct roles (Honda, Yoshida, Carbone 2008).
  *
- * For DMst protocols, self-communication is a valid pattern representing
- * local processing without synchronization. This checker is disabled
- * to support DMst local actions.
+ * Note: Internal computation should be modeled as τ-transitions (silent steps),
+ * not as self-communication. Some actor-based session type variants allow
+ * self-messages, but this is not standard MPST/DMst.
+ *
+ * References:
+ * - Honda et al. POPL 2008: MPST communication between distinct roles
+ * - Castro-Perez & Yoshida ECOOP 2023: DMst uses τ-transitions, not p -> p
  */
 export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
   const violations: SelfCommunicationViolation[] = [];
 
-  // DMst: Self-communication is explicitly allowed for local actions
-  // (Definition 1: A -> A: Msg represents internal computation at A)
-  // Classic MPST prohibits this, but DMst uses it for local processing
-  //
-  // Therefore, we do not flag self-communication as an error.
-  // Uncomment the code below to restore classic MPST behavior:
-
-  /*
   // Find all action nodes
   for (const node of cfg.nodes) {
     if (isActionNode(node) && isMessageAction(node.action)) {
@@ -1325,10 +1324,9 @@ export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
       }
     }
   }
-  */
 
   return {
-    isValid: true, // DMst: Always valid (self-communication allowed)
+    isValid: violations.length === 0,
     violations,
   };
 }
@@ -1339,38 +1337,28 @@ export function checkSelfCommunication(cfg: CFG): SelfCommunicationResult {
 
 /**
  * Check for empty choice branches
- * Empty branches may indicate structural issues
+ *
+ * NOTE: Empty branches are VALID in MPST/DMst semantics.
+ * They represent "do nothing and merge" or "protocol ends" patterns.
+ * This is especially common in DMst with conditional participant creation.
+ *
+ * Example valid pattern:
+ *   choice at A {
+ *     A creates Worker; ...  // Branch 1: delegate work
+ *   } or {
+ *     // Branch 2: handle internally (empty - protocol ends or merges)
+ *   }
+ *
+ * This check is disabled as empty branches are formally correct.
  */
 export function checkEmptyChoiceBranch(cfg: CFG): EmptyChoiceBranchResult {
   const violations: EmptyBranchViolation[] = [];
 
-  // Find all branch nodes
-  const branchNodes = cfg.nodes.filter(isBranchNode) as BranchNode[];
-
-  for (const branchNode of branchNodes) {
-    // Get all outgoing branch edges
-    const branchEdges = cfg.edges.filter(e => e.from === branchNode.id && e.edgeType === 'branch');
-
-    // For each branch, check if it's empty (no actions before merge)
-    for (const edge of branchEdges) {
-      const branchLabel = edge.label || edge.to;
-
-      // Find first node in branch
-      const firstNode = cfg.nodes.find(n => n.id === edge.to);
-
-      // If first node is directly a merge node, branch is empty
-      if (firstNode && firstNode.type === 'merge') {
-        violations.push({
-          branchNodeId: branchNode.id,
-          emptyBranchLabel: branchLabel,
-          description: `Choice branch "${branchLabel}" is empty (no actions before merge)`,
-        });
-      }
-    }
-  }
+  // Empty branches are valid in MPST/DMst - no checking needed
+  // Returning empty violations (all valid)
 
   return {
-    isValid: violations.length === 0,
+    isValid: true, // Empty branches are allowed
     violations,
   };
 }
