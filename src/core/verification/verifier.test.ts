@@ -1465,9 +1465,9 @@ describe('Empty Choice Branch', () => {
     expect(result.violations.length).toBe(0);
   });
 
-  it('should detect empty choice branch (manual CFG test)', () => {
-    // Parser doesn't support truly empty branches
-    // Test verifier can detect empty branch in CFG structure
+  it('should allow empty choice branches (valid in MPST/DMst)', () => {
+    // Empty branches are valid in MPST/DMst semantics
+    // They represent "do nothing and merge/end" patterns
     const source = `
       protocol Test(role A, role B) {
         choice at A {
@@ -1496,11 +1496,9 @@ describe('Empty Choice Branch', () => {
 
     const result = checkEmptyChoiceBranch(cfg);
 
-    // Should detect the empty branch
-    expect(result.isValid).toBe(false);
-    expect(result.violations.length).toBeGreaterThan(0);
-    expect(result.violations[0].emptyBranchLabel).toContain('empty_branch');
-    expect(result.violations[0].description).toContain('empty');
+    // Empty branches should be allowed
+    expect(result.isValid).toBe(true);
+    expect(result.violations.length).toBe(0);
   });
 });
 

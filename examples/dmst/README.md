@@ -106,7 +106,7 @@ protocol ConditionalCreation(role Coordinator) {
     Coordinator -> Worker: Task(string);
     Worker -> Coordinator: Result(int);
   } or {
-    Coordinator -> Coordinator: SelfProcess(string);
+    // Internal computation is implicit - protocol ends here
   }
 }
 ```
