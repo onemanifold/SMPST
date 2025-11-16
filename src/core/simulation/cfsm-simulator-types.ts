@@ -12,6 +12,35 @@
 import type { CFSM, CFSMTransition, CFSMAction } from '../projection/types';
 
 /**
+ * Call stack frame for sub-protocol execution
+ * Follows formal MPST semantics: Γ ::= [] | (P, σ, s_ret) :: Γ
+ *
+ * See docs/SUB_PROTOCOL_FORMAL_SEMANTICS.md for formal definition
+ */
+export interface CallStackFrame {
+  /**
+   * Parent CFSM to return to after sub-protocol completes
+   */
+  parentCFSM: CFSM;
+
+  /**
+   * State in parent CFSM to return to after completion
+   */
+  returnState: string;
+
+  /**
+   * Role substitution: formal parameter → actual role mapping
+   * σ: {p₁, ..., pₙ} → {r₁, ..., rₙ}
+   */
+  roleMapping: Record<string, string>;
+
+  /**
+   * Sub-protocol name being executed (for debugging/tracing)
+   */
+  protocol: string;
+}
+
+/**
  * Configuration for CFSM simulator
  */
 export interface CFSMSimulatorConfig {
@@ -40,6 +69,35 @@ export interface CFSMSimulatorConfig {
    * When enabled, verifies messages received in send order
    */
   verifyFIFO?: boolean;
+
+  /**
+   * Execution history manager for backward stepping
+   * Optional - if not provided, a default one will be created with history disabled
+   */
+  executionHistory?: ICFSMExecutionHistory;
+
+  /**
+   * Message transport for async message passing
+   * Optional - if not provided, uses internal buffers (legacy mode)
+   * When provided, enables decentralized execution:
+   * - Sends go directly to transport
+   * - Receives pull from transport
+   * - No coordinator message delivery needed
+   */
+  transport?: any; // Will be MessageTransport from runtime/types
+
+  /**
+   * CFSM registry for sub-protocol execution
+   * Maps protocol name → (role → CFSM)
+   * Required for sub-protocol invocation support
+   *
+   * Example:
+   * {
+   *   "Auth": Map { "Client" => authClientCFSM, "Server" => authServerCFSM },
+   *   "Transfer": Map { "Sender" => transferSenderCFSM, "Receiver" => transferReceiverCFSM }
+   * }
+   */
+  cfsmRegistry?: Map<string, Map<string, CFSM>>;
 }
 
 /**
@@ -68,7 +126,7 @@ export interface MessageBuffer {
  */
 export interface CFSMExecutionState {
   /**
-   * Current control state
+   * Current control state (in current CFSM context)
    */
   currentState: string;
 
@@ -106,6 +164,16 @@ export interface CFSMExecutionState {
    * Pending transition selection (for manual mode)
    */
   pendingTransitionChoice: number | null;
+
+  /**
+   * Sub-protocol call stack (for nested protocol execution)
+   * Empty array [] = executing root protocol
+   * Non-empty = executing sub-protocol(s)
+   * Each frame represents a PARENT context to return to
+   *
+   * See docs/SUB_PROTOCOL_FORMAL_SEMANTICS.md Section 3
+   */
+  callStack: CallStackFrame[];
 }
 
 /**
@@ -220,9 +288,140 @@ export type CFSMEventType =
   | 'buffer-dequeue'
   | 'complete'
   | 'error'
-  | 'deadlock';
+  | 'deadlock'
+  | 'step-into'        // Stepping into sub-protocol
+  | 'step-out'         // Stepping out of sub-protocol
+  | 'step-back'        // Stepping backward (undo)
+  | 'step-forward';    // Stepping forward (explicit)
 
 export type CFSMEventCallback = (data: any) => void;
+
+// ============================================================================
+// Execution History (for backward stepping)
+// ============================================================================
+
+/**
+ * Snapshot of CFSM execution state at a point in time
+ * Used for backward stepping (undo)
+ */
+export interface CFSMExecutionSnapshot {
+  /**
+   * Step number when snapshot was taken
+   */
+  stepNumber: number;
+
+  /**
+   * Current state
+   */
+  currentState: string;
+
+  /**
+   * All visited states up to this point
+   */
+  visitedStates: string[];
+
+  /**
+   * Message buffer state (deep copy)
+   */
+  buffer: MessageBuffer;
+
+  /**
+   * Outgoing messages queue
+   */
+  outgoingMessages: Message[];
+
+  /**
+   * Pending transition choice
+   */
+  pendingTransitionChoice: number | null;
+
+  /**
+   * Completed flag
+   */
+  completed: boolean;
+
+  /**
+   * Reached max steps flag
+   */
+  reachedMaxSteps: boolean;
+
+  /**
+   * Message ID counter
+   */
+  messageIdCounter: number;
+
+  /**
+   * Timestamp when snapshot was taken
+   */
+  timestamp: number;
+
+  /**
+   * Last event that occurred (optional)
+   */
+  lastEvent?: CFSMTraceEvent;
+}
+
+/**
+ * Configuration for execution history tracking
+ */
+export interface CFSMExecutionHistoryConfig {
+  /**
+   * Maximum number of snapshots to keep
+   * Default: 1000
+   */
+  maxSnapshots?: number;
+
+  /**
+   * Whether to enable history tracking
+   * Default: false (disabled for performance)
+   */
+  enabled?: boolean;
+}
+
+/**
+ * Execution history manager interface for CFSM
+ */
+export interface ICFSMExecutionHistory {
+  /**
+   * Record a snapshot
+   */
+  recordSnapshot(snapshot: CFSMExecutionSnapshot): void;
+
+  /**
+   * Get snapshot at specific step
+   */
+  getSnapshot(stepNumber: number): CFSMExecutionSnapshot | undefined;
+
+  /**
+   * Get previous snapshot
+   */
+  getPreviousSnapshot(): CFSMExecutionSnapshot | undefined;
+
+  /**
+   * Get next snapshot
+   */
+  getNextSnapshot(): CFSMExecutionSnapshot | undefined;
+
+  /**
+   * Get all snapshots
+   */
+  getAllSnapshots(): CFSMExecutionSnapshot[];
+
+  /**
+   * Clear all snapshots
+   */
+  clear(): void;
+
+  /**
+   * Get current position in history
+   */
+  getCurrentPosition(): number;
+
+  /**
+   * Set current position in history
+   */
+  setCurrentPosition(stepNumber: number): void;
+}
 
 /**
  * Configuration for distributed simulator

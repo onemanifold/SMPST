@@ -22,7 +22,7 @@ describe('Protocol Examples with Simulation', () => {
       }
     `;
 
-    it('should execute three-party e-commerce workflow', () => {
+    it('should execute three-party e-commerce workflow', async () => {
       // Parse protocol
       const ast = parse(protocol);
       const globalProtocol = ast.declarations[0] as GlobalProtocolDeclaration;
@@ -44,7 +44,7 @@ describe('Protocol Examples with Simulation', () => {
         recordTrace: true,
       });
 
-      const result = sim.run();
+      const result = await sim.run();
 
       // Verify success
       expect(result.success).toBe(true);
@@ -118,7 +118,7 @@ describe('Protocol Examples with Simulation', () => {
       }
     `;
 
-    it('should handle banking transaction with success/failure branches', () => {
+    it('should handle banking transaction with success/failure branches', async () => {
       // Parse and project
       const ast = parse(protocol);
       const globalProtocol = ast.declarations[0] as GlobalProtocolDeclaration;
@@ -136,7 +136,7 @@ describe('Protocol Examples with Simulation', () => {
           recordTrace: true,
         });
 
-        const result = sim.run();
+        const result = await sim.run();
         expect(result.success).toBe(true);
 
         // Check which branch was taken
@@ -175,7 +175,7 @@ describe('Protocol Examples with Simulation', () => {
       }
     `;
 
-    it('should handle authentication with conditional data access', () => {
+    it('should handle authentication with conditional data access', async () => {
       // Parse and project
       const ast = parse(protocol);
       const globalProtocol = ast.declarations[0] as GlobalProtocolDeclaration;
@@ -190,7 +190,7 @@ describe('Protocol Examples with Simulation', () => {
         recordTrace: true,
       });
 
-      const result = sim.run();
+      const result = await sim.run();
 
       expect(result.success).toBe(true);
       expect(result.state.allCompleted).toBe(true);
@@ -234,12 +234,12 @@ describe('Protocol Examples with Simulation', () => {
       }
     `;
 
-    it('should execute simple request-response', () => {
+    it('should execute simple request-response', async () => {
       const ast = parse(protocol);
       const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
       const projection = projectAll(cfg);
       const sim = new DistributedSimulator(projection.cfsms, { recordTrace: true });
-      const result = sim.run();
+      const result = await sim.run();
 
       expect(result.success).toBe(true);
 

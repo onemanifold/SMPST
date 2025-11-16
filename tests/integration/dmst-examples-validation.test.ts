@@ -141,9 +141,6 @@ describe('DMst Examples Validation', () => {
         });
       });
 
-      // DMst REQUIREMENT: Structural well-formedness
-      // While not explicitly in Definition 15, structural checks ensure
-      // the protocol is syntactically valid before checking projectability
       it('should pass verification', () => {
         if (!cfg) {
           module = parse(readFileSync(filePath, 'utf-8'));
@@ -164,9 +161,6 @@ describe('DMst Examples Validation', () => {
         expect(result.isValid).toBe(true);
       });
 
-      // DMst REQUIREMENT: Projectability (Definition 15)
-      // "A global type is well formed iff it is projectable" (ECOOP 2023, p. 6:14)
-      // This is THE core requirement for DMst verification!
       it('should project to valid CFSMs', () => {
         if (!cfg) {
           module = parse(readFileSync(filePath, 'utf-8'));
@@ -195,9 +189,6 @@ describe('DMst Examples Validation', () => {
         });
       });
 
-      // SUPPLEMENTARY: Trace equivalence checking (NOT required by DMst)
-      // Theorem 20 guarantees trace equivalence for projectable protocols
-      // We check it for bounded protocols as development validation only
       it('should verify trace equivalence', () => {
         if (!cfg) {
           module = parse(readFileSync(filePath, 'utf-8'));
@@ -213,51 +204,22 @@ describe('DMst Examples Validation', () => {
           projections.set(role, cfsm);
         });
 
-        // NOTE: Trace equivalence checking is NOT required by DMst (ECOOP 2023)
-        // DMst provides trace equivalence via Theorem 20 (proven by induction)
-        // for all well-formed (projectable) protocols.
-        //
-        // Our bounded trace checking (depth=2) is supplementary validation,
-        // useful for catching errors during development, but not part of
-        // DMst's formal verification requirements (Definition 15).
-        //
-        // For protocols with updatable recursion, trace enumeration causes
-        // exponential explosion (2^depth traces), making deep verification
-        // intractable. DMst handles this via theoretical guarantees, not
-        // algorithmic checking.
-        if (features.includes('updatable recursion')) {
-          // Skip trace enumeration for unbounded recursive protocols
-          // Trace equivalence is guaranteed by Theorem 20 (ECOOP 2023, p.6:16)
-          // since the protocol is projectable (verified in earlier tests)
-          expect(projections.size).toBeGreaterThan(0); // Verify projectability succeeded
-        } else {
-          // For bounded protocols, trace checking provides useful validation
-          const traceResult = verifyTraceEquivalence(cfg, projections);
-          expect(traceResult).toBeTruthy();
-          if (!traceResult.isEquivalent) {
-            console.log(`\n${name} trace mismatch:`);
-            console.log('  Reason:', traceResult.reason);
-            console.log('  Global:', traceResult.globalTrace);
-            console.log('  Composed:', traceResult.composedTrace);
-          }
-          expect(traceResult.isEquivalent).toBe(true);
-        }
+        const traceResult = verifyTraceEquivalence(cfg, projections);
+        expect(traceResult).toBeTruthy();
+        expect(traceResult.isEquivalent).toBe(true);
       });
 
       if (features.includes('updatable recursion')) {
         it('should verify safe protocol update (Definition 14)', () => {
-          // Always rebuild CFG for safe update test using the LAST protocol
-          // This handles cases like map-reduce.smpst with MapTask (helper) and MapReduce (main)
-          if (!module) {
+          if (!cfg) {
             module = parse(readFileSync(filePath, 'utf-8'));
+            protocol = module.declarations.find(
+              (d: any) => d.type === 'GlobalProtocolDeclaration'
+            );
+            cfg = buildCFG(protocol);
           }
-          const protocols = module.declarations.filter(
-            (d: any) => d.type === 'GlobalProtocolDeclaration'
-          );
-          const mainProtocol = protocols[protocols.length - 1];
-          const mainCfg = buildCFG(mainProtocol);
 
-          const safeUpdateResult = checkSafeProtocolUpdate(mainCfg);
+          const safeUpdateResult = checkSafeProtocolUpdate(cfg);
           expect(safeUpdateResult).toBeTruthy();
           expect(safeUpdateResult.isSafe).toBe(true);
           expect(safeUpdateResult.violations).toHaveLength(0);

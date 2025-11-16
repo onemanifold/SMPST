@@ -38,7 +38,7 @@ describe('CFSM Simulator - Basic Operations', () => {
     expect(state.completed).toBe(false);
   });
 
-  it('should execute send action (always enabled)', () => {
+  it('should execute send action (always enabled)', async () => {
     const cfsm: CFSM = {
       role: 'A',
       states: [
@@ -65,7 +65,7 @@ describe('CFSM Simulator - Basic Operations', () => {
     expect(enabled[0].action.type).toBe('send');
 
     // Execute send
-    const result = sim.step();
+    const result = await sim.step();
 
     expect(result.success).toBe(true);
     expect(result.action?.type).toBe('send');
@@ -80,7 +80,7 @@ describe('CFSM Simulator - Basic Operations', () => {
     expect(messages[0].label).toBe('Hello');
   });
 
-  it('should execute receive action when message in buffer', () => {
+  it('should execute receive action when message in buffer', async () => {
     const cfsm: CFSM = {
       role: 'B',
       states: [
@@ -121,7 +121,7 @@ describe('CFSM Simulator - Basic Operations', () => {
     expect(enabled[0].action.type).toBe('receive');
 
     // Execute receive
-    const result = sim.step();
+    const result = await sim.step();
 
     expect(result.success).toBe(true);
     expect(result.action?.type).toBe('receive');
@@ -294,7 +294,7 @@ describe('CFSM Simulator - Transition Enabling', () => {
 });
 
 describe('CFSM Simulator - Deadlock Detection', () => {
-  it('should detect deadlock when blocked on receive', () => {
+  it('should detect deadlock when blocked on receive', async () => {
     const cfsm: CFSM = {
       role: 'B',
       states: [{ id: 's0' }, { id: 's1' }],
@@ -313,14 +313,14 @@ describe('CFSM Simulator - Deadlock Detection', () => {
     const sim = new CFSMSimulator(cfsm);
 
     // No message → step fails with no-enabled-transitions
-    const result = sim.step();
+    const result = await sim.step();
 
     expect(result.success).toBe(false);
     expect(result.error?.type).toBe('no-enabled-transitions');
     expect(sim.isComplete()).toBe(false);
   });
 
-  it('should complete normally at terminal state', () => {
+  it('should complete normally at terminal state', async () => {
     const cfsm: CFSM = {
       role: 'A',
       states: [{ id: 's0' }, { id: 's1' }],
@@ -338,12 +338,12 @@ describe('CFSM Simulator - Deadlock Detection', () => {
 
     const sim = new CFSMSimulator(cfsm);
 
-    sim.step();
+    await sim.step();
 
     expect(sim.isComplete()).toBe(true);
 
     // Further steps should return completed error
-    const result = sim.step();
+    const result = await sim.step();
     expect(result.success).toBe(false);
     expect(result.error?.type).toBe('invalid-state');
   });
@@ -459,7 +459,7 @@ describe('CFSM Simulator - Trace Recording', () => {
 });
 
 describe('CFSM Simulator - Run to Completion', () => {
-  it('should run simple protocol to completion', () => {
+  it('should run simple protocol to completion', async () => {
     const cfsm: CFSM = {
       role: 'A',
       states: [{ id: 's0' }, { id: 's1' }, { id: 's2' }],
@@ -482,14 +482,14 @@ describe('CFSM Simulator - Run to Completion', () => {
     };
 
     const sim = new CFSMSimulator(cfsm);
-    const result = sim.run();
+    const result = await sim.run();
 
     expect(result.success).toBe(true);
     expect(result.steps).toBe(2);
     expect(sim.isComplete()).toBe(true);
   });
 
-  it('should stop at maxSteps', () => {
+  it('should stop at maxSteps', async () => {
     const cfsm: CFSM = {
       role: 'A',
       states: [{ id: 's0' }, { id: 's1' }],
@@ -506,7 +506,7 @@ describe('CFSM Simulator - Run to Completion', () => {
     };
 
     const sim = new CFSMSimulator(cfsm, { maxSteps: 10 });
-    const result = sim.run();
+    const result = await sim.run();
 
     expect(result.success).toBe(false);
     expect(result.error?.type).toBe('max-steps');

@@ -9,7 +9,7 @@ import { DistributedSimulator } from './distributed-simulator';
 import type { CFSM, SendAction, ReceiveAction } from '../projection/types';
 
 describe('Distributed Simulator - Basic Coordination', () => {
-  it('should coordinate two roles with message passing', () => {
+  it('should coordinate two roles with message passing', async () => {
     // Protocol: A -> B: Hello
     const cfsmA: CFSM = {
       role: 'A',
@@ -48,7 +48,7 @@ describe('Distributed Simulator - Basic Coordination', () => {
     const dist = new DistributedSimulator(cfsms, { recordTrace: true });
 
     // Run to completion
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(true);
     expect(result.globalSteps).toBe(2); // A sends, B receives
@@ -62,7 +62,7 @@ describe('Distributed Simulator - Basic Coordination', () => {
     expect(traces.get('B')?.events[0].type).toBe('receive');
   });
 
-  it('should handle ping-pong protocol', () => {
+  it('should handle ping-pong protocol', async () => {
     // Protocol: A -> B: Ping, B -> A: Pong
     const cfsmA: CFSM = {
       role: 'A',
@@ -112,7 +112,7 @@ describe('Distributed Simulator - Basic Coordination', () => {
     ]);
     const dist = new DistributedSimulator(cfsms);
 
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(true);
     expect(result.globalSteps).toBeGreaterThanOrEqual(2);
@@ -124,7 +124,7 @@ describe('Distributed Simulator - Basic Coordination', () => {
     expect(traces.get('B')?.completed).toBe(true);
   });
 
-  it('should handle three-role protocol', () => {
+  it('should handle three-role protocol', async () => {
     // Protocol: A -> B: M1, B -> C: M2, C -> A: M3
     const cfsmA: CFSM = {
       role: 'A',
@@ -196,7 +196,7 @@ describe('Distributed Simulator - Basic Coordination', () => {
     ]);
     const dist = new DistributedSimulator(cfsms);
 
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(true);
     expect(dist.isComplete()).toBe(true);
@@ -210,7 +210,7 @@ describe('Distributed Simulator - Basic Coordination', () => {
 });
 
 describe('Distributed Simulator - Deadlock Detection', () => {
-  it('should detect circular wait deadlock', () => {
+  it('should detect circular wait deadlock', async () => {
     // A waits for B, B waits for A → deadlock
     const cfsmA: CFSM = {
       role: 'A',
@@ -248,14 +248,14 @@ describe('Distributed Simulator - Deadlock Detection', () => {
     ]);
     const dist = new DistributedSimulator(cfsms);
 
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(false);
     expect(result.error?.type).toBe('deadlock');
     expect(dist.isDeadlocked()).toBe(true);
   });
 
-  it('should NOT deadlock when protocol is correct', () => {
+  it('should NOT deadlock when protocol is correct', async () => {
     // Correct: A sends first, then B sends
     const cfsmA: CFSM = {
       role: 'A',
@@ -305,7 +305,7 @@ describe('Distributed Simulator - Deadlock Detection', () => {
     ]);
     const dist = new DistributedSimulator(cfsms);
 
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(true);
     expect(dist.isDeadlocked()).toBe(false);
@@ -314,7 +314,7 @@ describe('Distributed Simulator - Deadlock Detection', () => {
 });
 
 describe('Distributed Simulator - Scheduling Strategies', () => {
-  it('should use round-robin scheduling', () => {
+  it('should use round-robin scheduling', async () => {
     // Both roles can send independently
     const cfsmA: CFSM = {
       role: 'A',
@@ -352,13 +352,13 @@ describe('Distributed Simulator - Scheduling Strategies', () => {
     ]);
     const dist = new DistributedSimulator(cfsms, { schedulingStrategy: 'round-robin' });
 
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(true);
     expect(result.globalSteps).toBe(2);
   });
 
-  it('should use fair scheduling', () => {
+  it('should use fair scheduling', async () => {
     // Both roles can send independently
     const cfsmA: CFSM = {
       role: 'A',
@@ -396,7 +396,7 @@ describe('Distributed Simulator - Scheduling Strategies', () => {
     ]);
     const dist = new DistributedSimulator(cfsms, { schedulingStrategy: 'fair', recordTrace: true });
 
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(true);
     expect(result.globalSteps).toBe(2);
@@ -409,7 +409,7 @@ describe('Distributed Simulator - Scheduling Strategies', () => {
 });
 
 describe('Distributed Simulator - Message Buffering', () => {
-  it('should buffer messages until consumed', () => {
+  it('should buffer messages until consumed', async () => {
     // A sends two messages before B receives
     const cfsmA: CFSM = {
       role: 'A',
@@ -459,7 +459,7 @@ describe('Distributed Simulator - Message Buffering', () => {
     ]);
     const dist = new DistributedSimulator(cfsms, { recordTrace: true });
 
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(true);
     expect(dist.isComplete()).toBe(true);
@@ -473,7 +473,7 @@ describe('Distributed Simulator - Message Buffering', () => {
     expect(bEvents).toHaveLength(2);
   });
 
-  it('should enforce FIFO order across distributed execution', () => {
+  it('should enforce FIFO order across distributed execution', async () => {
     // A sends M1, M2 in order. B must receive in same order.
     const cfsmA: CFSM = {
       role: 'A',
@@ -523,7 +523,7 @@ describe('Distributed Simulator - Message Buffering', () => {
     ]);
     const dist = new DistributedSimulator(cfsms, { deliveryModel: 'fifo', recordTrace: true });
 
-    const result = dist.run();
+    const result = await dist.run();
 
     expect(result.success).toBe(true);
 
@@ -537,7 +537,7 @@ describe('Distributed Simulator - Message Buffering', () => {
 });
 
 describe('Distributed Simulator - Reset and State', () => {
-  it('should support reset to initial state', () => {
+  it('should support reset to initial state', async () => {
     const cfsmA: CFSM = {
       role: 'A',
       states: [{ id: 's0' }, { id: 's1' }],
@@ -575,7 +575,7 @@ describe('Distributed Simulator - Reset and State', () => {
     const dist = new DistributedSimulator(cfsms);
 
     // Run once
-    dist.run();
+    await dist.run();
     expect(dist.isComplete()).toBe(true);
 
     // Reset
@@ -589,11 +589,11 @@ describe('Distributed Simulator - Reset and State', () => {
     expect(dist.isComplete()).toBe(false);
 
     // Can run again
-    const result2 = dist.run();
+    const result2 = await dist.run();
     expect(result2.success).toBe(true);
   });
 
-  it('should provide detailed execution state', () => {
+  it('should provide detailed execution state', async () => {
     const cfsmA: CFSM = {
       role: 'A',
       states: [{ id: 's0' }, { id: 's1' }],
@@ -631,7 +631,7 @@ describe('Distributed Simulator - Reset and State', () => {
     const dist = new DistributedSimulator(cfsms);
 
     // After first step (A sends)
-    dist.step();
+    await dist.step();
     let state = dist.getState();
 
     expect(state.roleStates.get('A')).toBe('s1'); // A completed
@@ -641,7 +641,7 @@ describe('Distributed Simulator - Reset and State', () => {
     expect(state.anyCompleted).toBe(true);
 
     // After second step (B receives)
-    dist.step();
+    await dist.step();
     state = dist.getState();
 
     expect(state.roleStates.get('B')).toBe('s1'); // B completed

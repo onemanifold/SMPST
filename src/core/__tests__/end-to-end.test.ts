@@ -29,7 +29,7 @@ describe('End-to-End Integration: Parse → Project → Simulate', () => {
       }
     `;
 
-    it('should parse, project, and simulate successfully', () => {
+    it('should parse, project, and simulate successfully', async () => {
       // ============================================================================
       // STEP 1: Parse protocol source code
       // ============================================================================
@@ -108,7 +108,7 @@ describe('End-to-End Integration: Parse → Project → Simulate', () => {
       });
 
       // Run simulation to completion
-      const result = simulator.run();
+      const result = await simulator.run();
 
       // ============================================================================
       // STEP 5: Verify simulation results
@@ -176,7 +176,7 @@ describe('End-to-End Integration: Parse → Project → Simulate', () => {
       // Parse → CFG → Project → Simulate → Verify
     });
 
-    it('should produce identical results on multiple runs (deterministic)', () => {
+    it('should produce identical results on multiple runs (deterministic)', async () => {
       // Parse and project once
       const ast = parse(protocol);
       const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
@@ -191,7 +191,7 @@ describe('End-to-End Integration: Parse → Project → Simulate', () => {
           schedulingStrategy: 'round-robin', // Deterministic scheduler
           recordTrace: true,
         });
-        results.push(sim.run());
+        results.push(await sim.run());
       }
 
       // Verify all runs succeeded
@@ -218,7 +218,7 @@ describe('End-to-End Integration: Parse → Project → Simulate', () => {
       }
     `;
 
-    it('should handle three-party coordination', () => {
+    it('should handle three-party coordination', async () => {
       // Parse → Project → Simulate
       const ast = parse(protocol);
       const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
@@ -235,7 +235,7 @@ describe('End-to-End Integration: Parse → Project → Simulate', () => {
         schedulingStrategy: 'round-robin',
         recordTrace: true,
       });
-      const result = sim.run();
+      const result = await sim.run();
 
       // Verify success
       expect(result.success).toBe(true);
@@ -293,7 +293,7 @@ describe('End-to-End Integration: Parse → Project → Simulate', () => {
       }
     `;
 
-    it('should handle choice (non-deterministic branching)', () => {
+    it('should handle choice (non-deterministic branching)', async () => {
       const ast = parse(protocol);
       const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
       const projection = projectAll(cfg);
@@ -327,7 +327,7 @@ describe('End-to-End Integration: Parse → Project → Simulate', () => {
           schedulingStrategy: 'round-robin',
           recordTrace: true,
         });
-        const result = sim.run();
+        const result = await sim.run();
 
         expect(result.success).toBe(true);
 
