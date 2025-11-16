@@ -8,6 +8,16 @@
  * - Updatable recursion with growing participant sets
  *
  * Based on Castro-Perez & Yoshida (ECOOP 2023) operational semantics.
+ *
+ * KNOWN GAPS (see docs/dmst/SIMULATOR_PARITY_PLAN.md):
+ * - TODO(P0): Sub-protocol call stack not implemented (Issue #1)
+ * - TODO(P0): Fair scheduling missing - steps all roles per step() (Issue #2)
+ * - TODO(P0): Epsilon auto-advance missing (Issue #3)
+ * - TODO(P0): Should refactor to use Executor pattern (Issue #4)
+ * - TODO(P1): Observer pattern not implemented (Issue #5)
+ * - TODO(P1): Trace recording not implemented (Issue #6)
+ * - TODO(P1): Pause/resume not implemented (Issue #7)
+ * - TODO(P1): Updatable CFSM runtime semantics not designed (Issue #8)
  */
 
 import type { CFSM, CFSMAction, SendAction, ReceiveAction } from '../projection/types';
@@ -80,6 +90,11 @@ export class DMstSimulator {
    * 3. Handle creation/invitation actions
    * 4. Detect completion/deadlock
    *
+   * TODO(P0): Fair scheduling not implemented (Issue #2)
+   * Currently steps ALL roles per step(), should step ONE role per step()
+   * following Honda et al. 2008 semantics (one step = one transition).
+   * See src/core/runtime/simulator.ts:145-169 for reference implementation.
+   *
    * @returns Step result with updates
    */
   async step(): Promise<SimulationStepResult> {
@@ -93,6 +108,8 @@ export class DMstSimulator {
 
     const updates = new Map<string, ExecutionResult>();
 
+    // TODO(P0): Implement round-robin fair scheduling here
+    // Should select ONE role to step, not all roles
     // Step each participant
     for (const [role, execState] of allParticipants) {
       if (execState.completed || execState.blocked) {
@@ -177,12 +194,20 @@ export class DMstSimulator {
 
   /**
    * Step a single role.
+   *
+   * TODO(P0): Epsilon auto-advance not implemented (Issue #3)
+   * Currently executes ONE transition and returns. Should loop through
+   * epsilon (tau) transitions until hitting an action or terminal state.
+   * See src/core/runtime/executor.ts:136-195 for reference implementation.
    */
   private async stepRole(
     role: string,
     cfsm: CFSM,
     execState: ExecutionState
   ): Promise<ExecutionResult> {
+    // TODO(P0): Add while(true) loop here for epsilon auto-advance
+    // Current implementation only executes ONE transition
+
     // Find available transitions from current state
     const transitions = cfsm.transitions.filter(t => t.from === execState.currentState);
 
@@ -208,6 +233,9 @@ export class DMstSimulator {
     // Try first transition (deterministic CFSM assumption)
     const transition = transitions[0];
     const action = transition.action;
+
+    // TODO(P0): If action is null (epsilon), should advance state and continue loop
+    // Currently falls through to executeAction
 
     // Handle action
     const result = await this.executeAction(role, action, execState);
@@ -329,14 +357,32 @@ export class DMstSimulator {
 
   /**
    * Execute protocol call.
+   *
+   * TODO(P0): Sub-protocol call stack NOT IMPLEMENTED (Issue #1) - CRITICAL GAP
+   *
+   * This is currently a STUB that always succeeds. Protocols with sub-protocol
+   * invocations will fail silently at runtime.
+   *
+   * Required implementation:
+   * 1. Look up sub-protocol CFSM from registry
+   * 2. Map roles (formal params → actual args)
+   * 3. Push CallStackFrame onto call stack
+   * 4. Switch currentCFSM to sub-protocol CFSM
+   * 5. Set currentState to sub-protocol initial state
+   * 6. On sub-protocol completion, pop stack and restore parent context
+   *
+   * Reference implementation: src/core/runtime/executor.ts:403-460
+   *
+   * Impact: Code generation for protocols with composition (Pabble) will fail.
    */
   private async executeProtocolCall(
     role: string,
     action: any, // SubProtocolCallAction
     execState: ExecutionState
   ): Promise<ExecutionResult> {
-    // TODO: Implement protocol call stack semantics
+    // TODO(P0): Implement protocol call stack semantics (Issue #1)
     // For now, just succeed (placeholder)
+    console.warn(`[DMstSimulator] Sub-protocol call not implemented - stubbed: ${role}`);
     return { success: true };
   }
 
