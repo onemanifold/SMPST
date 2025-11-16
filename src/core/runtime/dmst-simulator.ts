@@ -1,55 +1,46 @@
 /**
  * DMst Simulator - Extended Multi-Role Protocol Execution
  *
- * Extends the standard simulator to handle:
+ * Extends the standard simulator pattern to handle:
  * - Dynamic participant creation during execution
  * - Invitation protocol synchronization
- * - Protocol call nesting
- * - Updatable recursion with growing participant sets
+ * - Protocol call nesting (via DMstExecutor)
+ * - Updatable recursion with growing participant sets (Sprint 3)
  *
  * Based on Castro-Perez & Yoshida (ECOOP 2023) operational semantics.
  *
- * KNOWN GAPS (see docs/dmst/SIMULATOR_PARITY_PLAN.md):
- * - TODO(P0): Sub-protocol call stack not implemented (Issue #1)
- * - TODO(P0): Fair scheduling missing - steps all roles per step() (Issue #2)
- * - TODO(P0): Epsilon auto-advance missing (Issue #3)
- * - TODO(P0): Should refactor to use Executor pattern (Issue #4)
- * - TODO(P1): Observer pattern not implemented (Issue #5)
- * - TODO(P1): Trace recording not implemented (Issue #6)
- * - TODO(P1): Pause/resume not implemented (Issue #7)
- * - TODO(P1): Updatable CFSM runtime semantics not designed (Issue #8)
+ * SPRINT 1 STATUS:
+ * - ✅ FIXED: Executor pattern implemented (Issue #4)
+ * - ✅ FIXED: Fair scheduling implemented (Issue #2)
+ * - ✅ FIXED: Epsilon auto-advance (via DMstExecutor) (Issue #3)
+ * - ✅ FIXED: Sub-protocol call stack (via DMstExecutor) (Issue #1)
+ * - ⏸️ TODO(P1): Observer pattern (Sprint 2, Issue #5)
+ * - ⏸️ TODO(P1): Trace recording (Sprint 2, Issue #6)
+ * - ⏸️ TODO(P1): Pause/resume (Sprint 2, Issue #7)
+ * - ⏸️ TODO(P1): Updatable CFSM runtime (Sprint 3, Issue #8)
  */
 
-import type { CFSM, CFSMAction, SendAction, ReceiveAction } from '../projection/types';
+import type { CFSM } from '../projection/types';
 import type {
   MessageTransport,
   Message,
-  ExecutionState,
-  ExecutionResult,
-  ExecutionError,
   SimulationStepResult,
-  ExecutorConfig,
+  ExecutionResult,
 } from './types';
 import type {
   DMstSimulationState,
-  DynamicParticipant,
-  ProtocolCallFrame,
   ParticipantCreationEvent,
   InvitationCompleteEvent,
 } from './dmst-runtime';
 import {
   createDMstSimulationState,
   createDynamicParticipant,
-  sendInvitation,
   completeInvitation,
-  isParticipantReady,
-  getAllActiveParticipants,
   allParticipantsTerminated,
   detectDMstDeadlock,
-  pushProtocolCall,
-  popProtocolCall,
 } from './dmst-runtime';
 import { InMemoryTransport } from './transport';
+import { DMstExecutor, type DMstExecutorConfig } from './dmst-executor';
 
 // ============================================================================
 // DMst Simulator
@@ -58,11 +49,23 @@ import { InMemoryTransport } from './transport';
 /**
  * DMst-aware multi-role protocol simulator.
  *
- * Orchestrates execution of:
- * - Static participants (pre-declared)
- * - Dynamic participants (created during execution)
- * - Nested protocol calls
- * - Updatable recursion
+ * ARCHITECTURE (Executor Pattern):
+ * - Simulator orchestrates multiple DMstExecutor instances
+ * - Each executor manages one role's CFSM execution
+ * - Simulator handles:
+ *   - Fair scheduling (round-robin)
+ *   - Dynamic participant creation
+ *   - Invitation synchronization
+ *   - Completion/deadlock detection
+ * - Executor handles:
+ *   - Epsilon auto-advance
+ *   - Sub-protocol call stack
+ *   - Action execution (send, receive, create, invite)
+ *
+ * FORMAL SEMANTICS (Honda et al. 2008):
+ * - One step() = ONE role executes ONE action
+ * - Fair scheduling ensures all roles eventually execute
+ * - Round-robin prevents starvation
  */
 export class DMstSimulator {
   private state: DMstSimulationState;
@@ -70,69 +73,139 @@ export class DMstSimulator {
   private cfsms: Map<string, CFSM>; // Static role CFSMs
   private dynamicCFSMs: Map<string, CFSM>; // Dynamic role type → CFSM template
 
+  // Executor pattern: One executor per role
+  private executors: Map<string, DMstExecutor> = new Map();
+
+  // Fair scheduling: Round-robin role selection
+  private nextRoleIndex: number = 0;
+  private roleNames: string[] = [];
+
+  // CFSM registry for sub-protocol calls
+  private cfsmRegistry: Map<string, Map<string, CFSM>> = new Map();
+
   constructor(
     staticRoles: Map<string, CFSM>,
     dynamicRoles: Map<string, CFSM> = new Map(),
-    transport?: MessageTransport
+    transport?: MessageTransport,
+    cfsmRegistry?: Map<string, Map<string, CFSM>>
   ) {
     this.state = createDMstSimulationState(staticRoles);
     this.transport = transport || new InMemoryTransport();
     this.cfsms = staticRoles;
     this.dynamicCFSMs = dynamicRoles;
+    this.cfsmRegistry = cfsmRegistry || new Map();
+
+    // Create executor for each static role
+    this.roleNames = Array.from(staticRoles.keys()).sort();
+    for (const [role, cfsm] of staticRoles.entries()) {
+      const config: DMstExecutorConfig = {
+        role,
+        cfsm,
+        transport: this.transport,
+        cfsmRegistry: this.cfsmRegistry,
+        dynamicRegistry: this.state.dynamicParticipants,
+        dynamicCFSMs: this.dynamicCFSMs,
+      };
+      this.executors.set(role, new DMstExecutor(config));
+    }
   }
 
   /**
    * Execute one step of the simulation.
    *
-   * Strategy:
-   * 1. Process pending invitations
-   * 2. Step all ready participants
-   * 3. Handle creation/invitation actions
-   * 4. Detect completion/deadlock
+   * FAIR SCHEDULING (Honda et al. 2008):
+   * - Steps ONE role per call (not all roles)
+   * - Uses round-robin to select next ready role
+   * - Skips completed roles
+   * - Returns after ONE role executes ONE transition
    *
-   * TODO(P0): Fair scheduling not implemented (Issue #2)
-   * Currently steps ALL roles per step(), should step ONE role per step()
-   * following Honda et al. 2008 semantics (one step = one transition).
-   * See src/core/runtime/simulator.ts:145-169 for reference implementation.
+   * DMst EXTENSIONS:
+   * - Processes pending invitations before stepping
+   * - Handles dynamic participant creation
+   * - Updates participant registry
    *
+   * @param targetRole - Optional specific role to step
    * @returns Step result with updates
    */
-  async step(): Promise<SimulationStepResult> {
+  async step(targetRole?: string): Promise<SimulationStepResult> {
     this.state.step++;
 
-    // Process pending invitations
+    // Process pending invitations (DMst-specific)
     await this.processPendingInvitations();
 
-    // Get all active participants
-    const allParticipants = getAllActiveParticipants(this.state);
-
     const updates = new Map<string, ExecutionResult>();
+    let selectedRole: string | null = null;
 
-    // TODO(P0): Implement round-robin fair scheduling here
-    // Should select ONE role to step, not all roles
-    // Step each participant
-    for (const [role, execState] of allParticipants) {
-      if (execState.completed || execState.blocked) {
-        continue; // Skip completed or blocked roles
+    if (targetRole) {
+      // Step specific role
+      const executor = this.executors.get(targetRole);
+      if (!executor) {
+        return {
+          success: false,
+          updates,
+          state: this.state,
+        };
       }
 
-      const cfsm = this.getCFSMForRole(role);
-      if (!cfsm) {
-        continue;
-      }
-
-      const result = await this.stepRole(role, cfsm, execState);
-      updates.set(role, result);
+      const result = await executor.step();
+      updates.set(targetRole, result);
+      selectedRole = targetRole;
 
       // Handle DMst-specific actions
-      if (result.success && result.messagesSent) {
-        for (const msg of result.messagesSent) {
-          await this.handleDMstAction(role, msg);
+      await this.handleDMstMessages(targetRole, result);
+    } else {
+      // Fair scheduling: Round-robin through all roles
+      let attempts = 0;
+
+      while (attempts < this.roleNames.length) {
+        const candidateRole = this.roleNames[this.nextRoleIndex];
+
+        // Move to next role for next time (round-robin)
+        this.nextRoleIndex = (this.nextRoleIndex + 1) % this.roleNames.length;
+        attempts++;
+
+        const executor = this.executors.get(candidateRole);
+        if (!executor) continue;
+
+        // Skip completed roles
+        if (executor.getState().completed) {
+          continue;
         }
+
+        // Try to step this role
+        const result = await executor.step();
+        updates.set(candidateRole, result);
+        selectedRole = candidateRole;
+
+        // Handle DMst-specific actions
+        await this.handleDMstMessages(candidateRole, result);
+
+        break; // Stepped ONE role - done
+      }
+
+      // If no role could step, all are completed or blocked
+      if (!selectedRole) {
+        // Check completion/deadlock
+        const completed = allParticipantsTerminated(this.state);
+        const deadlocked = detectDMstDeadlock(this.state, this.transport);
+
+        this.state.completed = completed;
+        this.state.deadlocked = deadlocked;
+
+        return {
+          success: false,
+          updates,
+          state: this.state,
+          completed,
+          deadlocked,
+        };
       }
     }
 
-    // Check completion
+    // Update state from executors
+    this.syncStateFromExecutors();
+
+    // Check completion/deadlock
     const completed = allParticipantsTerminated(this.state);
     const deadlocked = detectDMstDeadlock(this.state, this.transport);
 
@@ -150,6 +223,11 @@ export class DMstSimulator {
 
   /**
    * Run simulation to completion or max steps.
+   *
+   * Repeatedly calls step() until:
+   * - All roles completed
+   * - Deadlock detected
+   * - Max steps reached
    *
    * @param maxSteps - Maximum steps (default: 1000)
    * @returns Final state
@@ -184,8 +262,23 @@ export class DMstSimulator {
    */
   reset(): void {
     this.state = createDMstSimulationState(this.cfsms);
-    // Clear transport messages
-    // Note: InMemoryTransport doesn't have clear() yet, would need to add
+    this.nextRoleIndex = 0;
+
+    // Reset all executors
+    for (const executor of this.executors.values()) {
+      executor.reset();
+    }
+
+    // Clear dynamic executors (they'll be recreated during execution)
+    const staticRoles = new Set(this.cfsms.keys());
+    for (const role of this.executors.keys()) {
+      if (!staticRoles.has(role)) {
+        this.executors.delete(role);
+      }
+    }
+
+    // Reset role names to static roles only
+    this.roleNames = Array.from(this.cfsms.keys()).sort();
   }
 
   // ==========================================================================
@@ -193,227 +286,68 @@ export class DMstSimulator {
   // ==========================================================================
 
   /**
-   * Step a single role.
+   * Sync simulation state from executors.
    *
-   * TODO(P0): Epsilon auto-advance not implemented (Issue #3)
-   * Currently executes ONE transition and returns. Should loop through
-   * epsilon (tau) transitions until hitting an action or terminal state.
-   * See src/core/runtime/executor.ts:136-195 for reference implementation.
+   * Updates this.state.roles with current executor states.
    */
-  private async stepRole(
-    role: string,
-    cfsm: CFSM,
-    execState: ExecutionState
-  ): Promise<ExecutionResult> {
-    // TODO(P0): Add while(true) loop here for epsilon auto-advance
-    // Current implementation only executes ONE transition
-
-    // Find available transitions from current state
-    const transitions = cfsm.transitions.filter(t => t.from === execState.currentState);
-
-    if (transitions.length === 0) {
-      // No transitions - check if terminal
-      if (cfsm.terminalStates.includes(execState.currentState)) {
-        execState.completed = true;
-        return { success: true };
-      }
-
-      // Stuck state
-      execState.blocked = true;
-      return {
-        success: false,
-        error: {
-          type: 'no-transition',
-          message: `No transition from state ${execState.currentState}`,
-          state: execState.currentState,
-        },
-      };
-    }
-
-    // Try first transition (deterministic CFSM assumption)
-    const transition = transitions[0];
-    const action = transition.action;
-
-    // TODO(P0): If action is null (epsilon), should advance state and continue loop
-    // Currently falls through to executeAction
-
-    // Handle action
-    const result = await this.executeAction(role, action, execState);
-
-    if (result.success && result.newState) {
-      execState.currentState = result.newState;
-      execState.visitedStates.push(result.newState);
-
-      // Check if reached terminal
-      if (cfsm.terminalStates.includes(result.newState)) {
-        execState.completed = true;
+  private syncStateFromExecutors(): void {
+    for (const [role, executor] of this.executors.entries()) {
+      const execState = executor.getState();
+      // Only update static roles (dynamic participants have separate state)
+      if (this.state.roles.has(role)) {
+        this.state.roles.set(role, execState);
       }
     }
-
-    return result;
   }
 
   /**
-   * Execute a CFSM action.
+   * Handle DMst-specific messages (create, invite).
+   *
+   * Checks execution result for creation/invitation messages
+   * and updates participant registry accordingly.
+   *
+   * @param role - Role that produced the messages
+   * @param result - Execution result containing messages
    */
-  private async executeAction(
+  private async handleDMstMessages(
     role: string,
-    action: CFSMAction,
-    execState: ExecutionState
-  ): Promise<ExecutionResult> {
-    switch (action.type) {
-      case 'send':
-        return this.executeSend(role, action as SendAction, execState);
-
-      case 'receive':
-        return this.executeReceive(role, action as ReceiveAction, execState);
-
-      case 'tau':
-        // Silent transition - just succeed
-        return { success: true };
-
-      case 'choice':
-        // Internal choice - just succeed (branch already determined)
-        return { success: true };
-
-      case 'subprotocol-call':
-        return this.executeProtocolCall(role, action, execState);
-
-      default:
-        return {
-          success: false,
-          error: {
-            type: 'protocol-violation',
-            message: `Unknown action type: ${(action as any).type}`,
-          },
-        };
-    }
-  }
-
-  /**
-   * Execute send action.
-   */
-  private async executeSend(
-    role: string,
-    action: SendAction,
-    execState: ExecutionState
-  ): Promise<ExecutionResult> {
-    const message: Message = {
-      id: `msg_${Date.now()}_${role}`,
-      from: role,
-      to: action.to,
-      label: action.message.label,
-      payload: action.message.payload,
-      timestamp: Date.now(),
-    };
-
-    await this.transport.send(message);
-
-    return {
-      success: true,
-      messagesSent: [message],
-    };
-  }
-
-  /**
-   * Execute receive action.
-   */
-  private async executeReceive(
-    role: string,
-    action: ReceiveAction,
-    execState: ExecutionState
-  ): Promise<ExecutionResult> {
-    // Check for matching message in queue
-    const msg = await this.transport.receive(role);
-
-    if (!msg) {
-      // No message available - block
-      execState.blocked = true;
-      return {
-        success: false,
-        error: {
-          type: 'message-not-ready',
-          message: `Waiting for message: ${action.message.label} from ${action.from}`,
-        },
-      };
+    result: ExecutionResult
+  ): Promise<void> {
+    if (!result.success || !result.messagesSent) {
+      return;
     }
 
-    // Verify message matches expected action
-    if (msg.label !== action.message.label || msg.from !== action.from) {
-      return {
-        success: false,
-        error: {
-          type: 'protocol-violation',
-          message: `Expected ${action.message.label} from ${action.from}, got ${msg.label} from ${msg.from}`,
-        },
-      };
-    }
-
-    return {
-      success: true,
-      messagesConsumed: [msg],
-    };
-  }
-
-  /**
-   * Execute protocol call.
-   *
-   * TODO(P0): Sub-protocol call stack NOT IMPLEMENTED (Issue #1) - CRITICAL GAP
-   *
-   * This is currently a STUB that always succeeds. Protocols with sub-protocol
-   * invocations will fail silently at runtime.
-   *
-   * Required implementation:
-   * 1. Look up sub-protocol CFSM from registry
-   * 2. Map roles (formal params → actual args)
-   * 3. Push CallStackFrame onto call stack
-   * 4. Switch currentCFSM to sub-protocol CFSM
-   * 5. Set currentState to sub-protocol initial state
-   * 6. On sub-protocol completion, pop stack and restore parent context
-   *
-   * Reference implementation: src/core/runtime/executor.ts:403-460
-   *
-   * Impact: Code generation for protocols with composition (Pabble) will fail.
-   */
-  private async executeProtocolCall(
-    role: string,
-    action: any, // SubProtocolCallAction
-    execState: ExecutionState
-  ): Promise<ExecutionResult> {
-    // TODO(P0): Implement protocol call stack semantics (Issue #1)
-    // For now, just succeed (placeholder)
-    console.warn(`[DMstSimulator] Sub-protocol call not implemented - stubbed: ${role}`);
-    return { success: true };
-  }
-
-  /**
-   * Handle DMst-specific actions (creation, invitation).
-   */
-  private async handleDMstAction(role: string, msg: Message): Promise<void> {
-    // Check if message is a creation action
-    if (msg.label === 'create') {
-      await this.handleCreation(role, msg);
-    }
-
-    // Check if message is an invitation action
-    if (msg.label === 'invite') {
-      await this.handleInvitation(role, msg);
+    for (const msg of result.messagesSent) {
+      if (msg.label === 'create') {
+        await this.handleCreation(role, msg);
+      } else if (msg.label === 'invite') {
+        await this.handleInvitation(role, msg);
+      }
     }
   }
 
   /**
    * Handle participant creation.
+   *
+   * Creates new dynamic participant and executor.
+   *
+   * @param creator - Role that created the participant
+   * @param msg - Creation message
    */
   private async handleCreation(creator: string, msg: Message): Promise<void> {
-    const to = typeof msg.to === 'string' ? msg.to : msg.to[0];
+    const payload = msg.payload;
+    if (!payload || !payload.role || !payload.instanceId) {
+      console.warn('[DMstSimulator] Invalid creation message payload');
+      return;
+    }
 
-    // Extract role name from instance ID (e.g., "Worker_1" → "Worker")
-    const roleName = to.split('_')[0];
+    const roleName = payload.role;
+    const instanceId = payload.instanceId;
 
     // Get CFSM template for this dynamic role
     const cfsmTemplate = this.dynamicCFSMs.get(roleName);
     if (!cfsmTemplate) {
-      console.warn(`No CFSM template for dynamic role: ${roleName}`);
+      console.warn(`[DMstSimulator] No CFSM template for dynamic role: ${roleName}`);
       return;
     }
 
@@ -425,6 +359,28 @@ export class DMstSimulator {
       cfsmTemplate,
       this.transport
     );
+
+    // Create executor for dynamic participant
+    const config: DMstExecutorConfig = {
+      role: instanceId,
+      cfsm: cfsmTemplate,
+      transport: this.transport,
+      cfsmRegistry: this.cfsmRegistry,
+      dynamicRegistry: this.state.dynamicParticipants,
+      dynamicCFSMs: this.dynamicCFSMs,
+    };
+    const executor = new DMstExecutor(config);
+    this.executors.set(instanceId, executor);
+
+    // Add to role names for fair scheduling (maintain sorted order)
+    this.roleNames.push(instanceId);
+    this.roleNames.sort();
+
+    // Adjust nextRoleIndex if insertion before current position
+    const insertIndex = this.roleNames.indexOf(instanceId);
+    if (insertIndex < this.nextRoleIndex) {
+      this.nextRoleIndex++;
+    }
 
     // Record creation event
     const event: ParticipantCreationEvent = {
@@ -439,16 +395,28 @@ export class DMstSimulator {
 
   /**
    * Handle invitation.
+   *
+   * Registers pending invitation in registry.
+   *
+   * @param inviter - Role sending invitation
+   * @param msg - Invitation message
    */
   private async handleInvitation(inviter: string, msg: Message): Promise<void> {
     const invitee = typeof msg.to === 'string' ? msg.to : msg.to[0];
 
-    // Send invitation
-    sendInvitation(this.state.dynamicParticipants, inviter, invitee, this.transport);
+    // Register pending invitation
+    const pending = this.state.dynamicParticipants.pendingInvitations.get(inviter) || [];
+    if (!pending.includes(invitee)) {
+      pending.push(invitee);
+      this.state.dynamicParticipants.pendingInvitations.set(inviter, pending);
+    }
   }
 
   /**
    * Process pending invitations.
+   *
+   * Checks if dynamic participants have received both create and invite,
+   * and completes invitation if so.
    */
   private async processPendingInvitations(): Promise<void> {
     const registry = this.state.dynamicParticipants;
@@ -482,28 +450,5 @@ export class DMstSimulator {
       }
     }
   }
-
-  /**
-   * Get CFSM for a role (static or dynamic).
-   */
-  private getCFSMForRole(role: string): CFSM | undefined {
-    // Check static roles first
-    if (this.cfsms.has(role)) {
-      return this.cfsms.get(role);
-    }
-
-    // Check dynamic participants
-    const participant = this.state.dynamicParticipants.participants.get(role);
-    if (participant) {
-      return participant.cfsm;
-    }
-
-    return undefined;
-  }
 }
 
-// ============================================================================
-// Exports
-// ============================================================================
-
-export { DMstSimulator };

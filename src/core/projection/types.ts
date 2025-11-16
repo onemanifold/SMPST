@@ -46,7 +46,9 @@ export type CFSMAction =
   | ReceiveAction
   | TauAction       // Silent/internal action (epsilon)
   | ChoiceAction    // Internal choice (branch selection)
-  | SubProtocolCallAction;  // Sub-protocol invocation
+  | SubProtocolCallAction  // Sub-protocol invocation
+  | CreateAction    // DMst: Create dynamic participant
+  | InviteAction;   // DMst: Invite dynamic participant
 
 /**
  * Send action: ! ⟨p, l⟨U⟩⟩
@@ -127,6 +129,33 @@ export interface SubProtocolCallAction {
   protocol: string;           // Sub-protocol name
   roleMapping: Record<string, string>;  // Formal parameter → actual role mapping
   returnState: string;        // State to return to after sub-protocol completes
+}
+
+/**
+ * Create action: p creates r
+ * DMst-specific action for creating dynamic participants
+ *
+ * From ECOOP 2023 Definition 12:
+ * [[p creates r]]_p = !create(r) (creator sends)
+ * [[p creates r]]_r = ?create from p (created receives)
+ */
+export interface CreateAction {
+  type: 'create';
+  role: string;        // Dynamic role name (e.g., 'Worker')
+  instance?: string;   // Instance ID (e.g., 'Worker_1'), generated if not provided
+}
+
+/**
+ * Invite action: p invites q
+ * DMst-specific action for invitation protocol synchronization
+ *
+ * From ECOOP 2023 Definition 12:
+ * [[p invites q]]_p = !invite to q
+ * [[p invites q]]_q = ?invite from p
+ */
+export interface InviteAction {
+  type: 'invite';
+  target: string;      // Instance ID to invite
 }
 
 /**
