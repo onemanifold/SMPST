@@ -94,14 +94,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-
-// NOTE: These imports will fail until we implement DMst extensions
-// This is intentional - tests guide implementation (TDD)
-// import { parse } from '../../../core/parser/parser';
-// import { buildCFG } from '../../../core/cfg/builder';
-// import { verifyProtocol } from '../../../core/verification/verifier';
-// import { detectDeadlock } from '../../../core/verification/verifier';
-// import { checkDMstWellFormedness } from '../../../core/verification/dmst/well-formedness';
+import { parse } from '../../../core/parser/parser';
+import { buildCFG } from '../../../core/cfg/builder';
+import { verifyProtocol } from '../../../core/verification/verifier';
+import { detectDeadlock } from '../../../core/verification/verifier';
+import { checkDMstWellFormedness } from '../../../core/verification/dmst/well-formedness';
 // import { buildStateGraph } from '../../../core/verification/dmst/state-graph';
 
 describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', () => {
@@ -116,42 +113,62 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
    *   Verify that existing well-formedness checks extend to DMst syntax.
    */
   describe('Proof Obligation 1: Static DMst Protocols', () => {
-    it.skip('proves: simple DMst protocol is deadlock-free', () => {
-      // TODO: Test basic protocol using DMst syntax but no dynamic features
+    it('proves: simple DMst protocol is deadlock-free', () => {
+      // Test basic protocol using DMst syntax but no dynamic features
 
-      // const protocol = `
-      //   protocol SimpleDMst(role A, role B, role C) {
-      //     A -> B: Request();
-      //     B -> C: Forward();
-      //     C -> B: Response();
-      //     B -> A: Reply();
-      //   }
-      // `;
+      const protocol = `
+        protocol SimpleDMst(role A, role B, role C) {
+          A -> B: Request();
+          B -> C: Forward();
+          C -> B: Response();
+          B -> A: Reply();
+        }
+      `;
 
-      // const ast = parse(protocol);
-      // const cfg = buildCFG(ast.declarations[0]);
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0]);
 
-      // // Check well-formedness
-      // const wf = verifyProtocol(cfg);
-      // expect(wf.connectedness.isConnected).toBe(true);
-      // expect(wf.choiceDeterminism.isDeterministic).toBe(true);
-      // expect(wf.raceConditions.hasRaces).toBe(false);
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.connectedness.isConnected).toBe(true);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false);
 
-      // // Theorem 23: Well-formed → Deadlock-free
-      // expect(wf.progress.canProgress).toBe(true);
-      // const deadlock = detectDeadlock(cfg);
-      // expect(deadlock.hasDeadlock).toBe(false);
-      // // ✅ PROOF: Static DMst protocol is deadlock-free
-
-      expect(true).toBe(true); // Placeholder
+      // Theorem 23: Well-formed → Deadlock-free
+      expect(wf.progress.canProgress).toBe(true);
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Static DMst protocol is deadlock-free
     });
 
-    it.skip('proves: DMst choice protocol is deadlock-free', () => {
-      // TODO: Test choice construct in DMst
+    it('proves: DMst choice protocol is deadlock-free', () => {
+      // Test choice construct in DMst - choice should maintain deadlock-freedom
 
-      // Choice with DMst syntax should maintain deadlock-freedom
+      const protocol = `
+        protocol ChoiceDMst(role Client, role Server) {
+          choice at Client {
+            Client -> Server: Request();
+            Server -> Client: Response();
+          } or {
+            Client -> Server: Cancel();
+          }
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0]);
+
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.connectedness.isConnected).toBe(true);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false);
+
+      // Theorem 23: Choice preserves deadlock-freedom
+      expect(wf.progress.canProgress).toBe(true);
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Choice protocol is deadlock-free
     });
   });
 
@@ -171,74 +188,93 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
    *   - Circular waits (proper ordering guaranteed)
    */
   describe('Proof Obligation 2: Dynamic Participant Creation', () => {
-    it.skip('proves: single dynamic participant is deadlock-free', () => {
-      // TODO: Test protocol that creates one dynamic participant
+    it('proves: single dynamic participant is deadlock-free', () => {
+      // Test protocol that creates one dynamic participant
 
-      // const protocol = `
-      //   protocol DynamicWorker(role Manager) {
-      //     new role Worker;
-      //     Manager creates Worker;
-      //     Manager invites Worker;
-      //     Manager -> Worker: Task();
-      //     Worker -> Manager: Result();
-      //   }
-      // `;
+      const protocol = `
+        protocol DynamicWorker(role Manager) {
+          new role Worker;
+          Manager creates Worker;
+          Manager invites Worker;
+          Manager -> Worker: Task();
+          Worker -> Manager: Result();
+        }
+      `;
 
-      // const ast = parse(protocol);
-      // const cfg = buildCFG(ast.declarations[0]);
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0]);
 
-      // // Check DMst well-formedness
-      // const dmstWF = checkDMstWellFormedness(cfg);
-      // expect(dmstWF.hasValidInvitations).toBe(true);
-      // expect(dmstWF.dynamicParticipantsWellFormed).toBe(true);
+      // Check DMst well-formedness
+      const dmstWF = checkDMstWellFormedness(cfg);
+      expect(dmstWF.hasValidInvitations).toBe(true);
+      expect(dmstWF.dynamicParticipantsWellFormed).toBe(true);
 
-      // // Theorem 23: Well-formed DMst → Deadlock-free
-      // const deadlock = detectDeadlock(cfg);
-      // expect(deadlock.hasDeadlock).toBe(false);
-      // // ✅ PROOF: Dynamic participant doesn't introduce deadlock
-
-      expect(true).toBe(true); // Placeholder
+      // Theorem 23: Well-formed DMst → Deadlock-free
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Dynamic participant doesn't introduce deadlock
     });
 
-    it.skip('proves: multiple dynamic participants are deadlock-free', () => {
-      // TODO: Test protocol creating multiple dynamic participants
+    it('proves: multiple dynamic participants are deadlock-free', () => {
+      // Test protocol creating multiple dynamic participants
 
-      // const protocol = `
-      //   protocol MultiWorker(role Manager) {
-      //     new role Worker;
-      //     Manager creates Worker as w1;
-      //     Manager creates Worker as w2;
-      //     Manager -> w1: Task1();
-      //     Manager -> w2: Task2();
-      //     w1 -> Manager: Result1();
-      //     w2 -> Manager: Result2();
-      //   }
-      // `;
+      const protocol = `
+        protocol MultiWorker(role Manager) {
+          new role Worker;
+          Manager creates Worker as w1;
+          Manager invites w1;
+          Manager creates Worker as w2;
+          Manager invites w2;
+          Manager -> w1: Task1();
+          Manager -> w2: Task2();
+          w1 -> Manager: Result1();
+          w2 -> Manager: Result2();
+        }
+      `;
 
-      // Multiple workers should not deadlock (independent channels)
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0]);
 
-      expect(true).toBe(true); // Placeholder
+      // Check DMst well-formedness
+      const dmstWF = checkDMstWellFormedness(cfg);
+      expect(dmstWF.hasValidInvitations).toBe(true);
+      expect(dmstWF.dynamicParticipantsWellFormed).toBe(true);
+
+      // Theorem 23: Multiple workers should not deadlock (independent channels)
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Multiple dynamic participants don't introduce deadlock
     });
 
-    it.skip('proves: dynamic participant with choice is deadlock-free', () => {
-      // TODO: Test dynamic participant involved in choice
+    it('proves: dynamic participant with choice is deadlock-free', () => {
+      // Test dynamic participant involved in choice
 
-      // const protocol = `
-      //   protocol DynamicChoice(role Manager) {
-      //     new role Worker;
-      //     Manager creates Worker;
-      //     choice at Manager {
-      //       Manager -> Worker: Task();
-      //       Worker -> Manager: Result();
-      //     } or {
-      //       Manager -> Worker: Cancel();
-      //     }
-      //   }
-      // `;
+      const protocol = `
+        protocol DynamicChoice(role Manager) {
+          new role Worker;
+          Manager creates Worker;
+          Manager invites Worker;
+          choice at Manager {
+            Manager -> Worker: Task();
+            Worker -> Manager: Result();
+          } or {
+            Manager -> Worker: Cancel();
+          }
+        }
+      `;
 
-      // Choice involving dynamic participant should preserve deadlock-freedom
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0]);
 
-      expect(true).toBe(true); // Placeholder
+      // Check DMst well-formedness
+      const dmstWF = checkDMstWellFormedness(cfg);
+      expect(dmstWF.hasValidInvitations).toBe(true);
+      expect(dmstWF.dynamicParticipantsWellFormed).toBe(true);
+
+      // Theorem 23: Choice involving dynamic participant should preserve deadlock-freedom
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Choice with dynamic participant is deadlock-free
     });
   });
 
