@@ -99,7 +99,7 @@ import { buildCFG } from '../../../core/cfg/builder';
 import { verifyProtocol } from '../../../core/verification/verifier';
 import { detectDeadlock } from '../../../core/verification/verifier';
 import { checkDMstWellFormedness } from '../../../core/verification/dmst/well-formedness';
-// import { buildStateGraph } from '../../../core/verification/dmst/state-graph';
+import { buildStateGraph, verifyDeadlockFreedom } from '../../../core/verification/dmst/state-graph';
 
 describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', () => {
   /**
@@ -540,22 +540,37 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
    * Direct verification of deadlock-freedom by exploring state space.
    */
   describe('State Graph Verification', () => {
-    it.skip('verifies: all reachable states can progress or terminate', () => {
-      // TODO: Build complete state graph and verify each state
+    it('verifies: all reachable states can progress or terminate', () => {
+      // Build complete state graph and verify each state
 
-      // const protocol = `...`;
-      // const cfg = buildCFG(parse(protocol));
-      // const stateGraph = buildStateGraph(cfg);
+      const protocol = `
+        protocol StateGraphTest(role A, role B, role C) {
+          A -> B: M1();
+          B -> C: M2();
+          C -> A: M3();
+        }
+      `;
 
-      // // For each reachable state σ:
-      // for (const state of stateGraph.reachableStates) {
-      //   const isTerminal = state.isTerminal();
-      //   const hasEnabledAction = state.getEnabledActions().length > 0;
-      //   expect(isTerminal || hasEnabledAction).toBe(true);
-      // }
-      // // ✅ PROOF: No deadlock states exist
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0]);
 
-      expect(true).toBe(true); // Placeholder
+      // Build state graph
+      const stateGraph = buildStateGraph(cfg);
+
+      // Verify deadlock-freedom using state graph
+      const result = verifyDeadlockFreedom(stateGraph);
+      expect(result.isDeadlockFree).toBe(true);
+      expect(result.stuckStates).toHaveLength(0);
+
+      // Additional verification: all reachable states can progress or terminate
+      for (const state of stateGraph.reachableStates) {
+        const isTerminal = stateGraph.terminalStates.has(state);
+        const hasEnabledAction =
+          stateGraph.transitions.has(state) &&
+          stateGraph.transitions.get(state)!.length > 0;
+        expect(isTerminal || hasEnabledAction).toBe(true);
+      }
+      // ✅ PROOF: No deadlock states exist
     });
   });
 
