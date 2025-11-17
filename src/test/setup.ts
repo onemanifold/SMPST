@@ -1,10 +1,5 @@
-import { expect, afterEach } from 'vitest';
-import { cleanup } from '@testing-library/svelte';
+import { expect } from 'vitest';
 
-// Extend Vitest's expect method with Testing Library assertions
-// expect.extend(matchers);
-
-// Cleanup after each test case (e.g., clearing jsdom)
-afterEach(() => {
-  cleanup();
-});
+// NOTE: Svelte Testing Library cleanup removed since tests use node environment
+// If you add UI component tests in the future, use @vitest-environment jsdom
+// comment at the top of those test files and re-enable cleanup for them.
