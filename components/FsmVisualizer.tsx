@@ -4,9 +4,17 @@ import { FsmGraph } from '../types';
 
 interface FsmVisualizerProps {
     graph: FsmGraph;
+    currentState?: string; // Current state during execution
+    visitedStates?: string[]; // All visited states
+    highlightPath?: boolean; // Whether to highlight visited path
 }
 
-const FsmVisualizer: React.FC<FsmVisualizerProps> = ({ graph }) => {
+const FsmVisualizer: React.FC<FsmVisualizerProps> = ({
+    graph,
+    currentState,
+    visitedStates = [],
+    highlightPath = true
+}) => {
     const ref = useRef<SVGSVGElement>(null);
 
     useEffect(() => {
@@ -26,8 +34,10 @@ const FsmVisualizer: React.FC<FsmVisualizerProps> = ({ graph }) => {
 
         const g = svg.append("g");
 
-        // Arrowhead marker
-        svg.append("defs").append("marker")
+        // Arrowhead markers
+        const defs = svg.append("defs");
+
+        defs.append("marker")
             .attr("id", "arrowhead")
             .attr("viewBox", "-0 -5 10 10")
             .attr("refX", 25)
@@ -41,14 +51,67 @@ const FsmVisualizer: React.FC<FsmVisualizerProps> = ({ graph }) => {
             .attr("fill", "#999")
             .style("stroke", "none");
 
+        defs.append("marker")
+            .attr("id", "arrowhead-highlight")
+            .attr("viewBox", "-0 -5 10 10")
+            .attr("refX", 25)
+            .attr("refY", 0)
+            .attr("orient", "auto")
+            .attr("markerWidth", 8)
+            .attr("markerHeight", 8)
+            .append("svg:path")
+            .attr("d", "M 0,-5 L 10 ,0 L 0,5")
+            .attr("fill", "#3b82f6")
+            .style("stroke", "none");
+
+        defs.append("marker")
+            .attr("id", "arrowhead-current")
+            .attr("viewBox", "-0 -5 10 10")
+            .attr("refX", 25)
+            .attr("refY", 0)
+            .attr("orient", "auto")
+            .attr("markerWidth", 8)
+            .attr("markerHeight", 8)
+            .append("svg:path")
+            .attr("d", "M 0,-5 L 10 ,0 L 0,5")
+            .attr("fill", "#f59e0b")
+            .style("stroke", "none");
+
+        // Helper functions
+        const isCurrentState = (stateId: string) => currentState === stateId;
+        const isVisitedState = (stateId: string) => visitedStates.includes(stateId);
+        const isExecutionEdge = (edge: any) => {
+            if (!highlightPath) return false;
+            const sourceIndex = visitedStates.indexOf(edge.source.id);
+            const targetIndex = visitedStates.indexOf(edge.target.id);
+            return sourceIndex >= 0 && targetIndex === sourceIndex + 1;
+        };
+
         const link = g.append("g")
             .attr("class", "links")
             .selectAll("line")
             .data(graph.edges)
             .enter().append("line")
-            .attr("stroke-width", 2)
-            .attr("stroke", "#999")
-            .attr("marker-end", "url(#arrowhead)");
+            .attr("stroke-width", (d: any) => {
+                if (isCurrentState(d.target)) return 3;
+                if (isExecutionEdge(d)) return 2.5;
+                return 2;
+            })
+            .attr("stroke", (d: any) => {
+                if (isCurrentState(d.target)) return '#f59e0b';
+                if (isExecutionEdge(d)) return '#3b82f6';
+                return '#999';
+            })
+            .attr("marker-end", (d: any) => {
+                if (isCurrentState(d.target)) return 'url(#arrowhead-current)';
+                if (isExecutionEdge(d)) return 'url(#arrowhead-highlight)';
+                return 'url(#arrowhead)';
+            })
+            .attr("opacity", (d: any) => {
+                if (isCurrentState(d.target) || isExecutionEdge(d)) return 1;
+                if (highlightPath && visitedStates.length > 0) return 0.3;
+                return 0.6;
+            });
 
         const linkText = g.append("g")
             .attr("class", "link-labels")
@@ -66,16 +129,62 @@ const FsmVisualizer: React.FC<FsmVisualizerProps> = ({ graph }) => {
             .enter().append("g");
 
         node.append("circle")
-            .attr("r", (d: any) => d.isStartState || d.isEndState ? 8 : 5)
-            .attr("fill", (d: any) => d.isStartState ? '#22c55e' : (d.isEndState ? '#ef4444' : '#3b82f6'))
+            .attr("r", (d: any) => {
+                if (isCurrentState(d.id)) return 10;
+                if (d.isStartState || d.isEndState) return 8;
+                return 5;
+            })
+            .attr("fill", (d: any) => {
+                if (isCurrentState(d.id)) return '#f59e0b'; // Amber for current
+                if (d.isStartState) return '#22c55e'; // Green for start
+                if (d.isEndState) return '#ef4444'; // Red for end
+                if (isVisitedState(d.id)) return '#3b82f6'; // Blue for visited
+                return '#6b7280'; // Gray for unvisited
+            })
+            .attr("stroke", (d: any) => isCurrentState(d.id) ? '#fbbf24' : 'none')
+            .attr("stroke-width", 3)
+            .attr("opacity", (d: any) => {
+                if (isCurrentState(d.id) || d.isStartState || d.isEndState) return 1;
+                if (highlightPath && visitedStates.length > 0 && !isVisitedState(d.id)) return 0.3;
+                return 1;
+            })
             .call(drag(simulation) as any);
+
+        // Add pulsing animation for current state
+        node.filter((d: any) => isCurrentState(d.id))
+            .append("circle")
+            .attr("r", 10)
+            .attr("fill", "none")
+            .attr("stroke", "#f59e0b")
+            .attr("stroke-width", 2)
+            .attr("opacity", 0)
+            .transition()
+            .duration(1500)
+            .ease(d3.easeLinear)
+            .attr("r", 18)
+            .attr("opacity", 0.8)
+            .attr("stroke-width", 0)
+            .on("end", function repeat() {
+                d3.select(this)
+                    .attr("r", 10)
+                    .attr("opacity", 0)
+                    .attr("stroke-width", 2)
+                    .transition()
+                    .duration(1500)
+                    .ease(d3.easeLinear)
+                    .attr("r", 18)
+                    .attr("opacity", 0.8)
+                    .attr("stroke-width", 0)
+                    .on("end", repeat);
+            });
 
         node.append("text")
             .text((d: any) => d.label)
             .attr("x", 12)
             .attr("y", 4)
             .attr("fill", "white")
-            .style('font-size', '12px');
+            .style('font-size', '12px')
+            .attr("font-weight", (d: any) => isCurrentState(d.id) ? 'bold' : 'normal');
 
         simulation.on("tick", () => {
             link
@@ -119,7 +228,10 @@ const FsmVisualizer: React.FC<FsmVisualizerProps> = ({ graph }) => {
                 .on("end", dragended);
         }
 
-    }, [graph]);
+        return () => {
+            simulation.stop();
+        };
+    }, [graph, currentState, visitedStates, highlightPath]);
 
     return (
         <svg ref={ref}></svg>
