@@ -12,6 +12,136 @@
 
 import type { CFSM, CFSMTransition } from '../projection/types';
 
+// ============================================================================
+// CFSM Validation Utilities (Phase 1: Critical Safety)
+// ============================================================================
+
+/**
+ * Validate CFSM well-formedness
+ *
+ * Checks that a CFSM has valid structure:
+ * - Non-empty states
+ * - Valid initial state
+ * - Valid terminal states
+ * - All transitions reference existing states
+ *
+ * @param cfsm - CFSM to validate
+ * @throws Error if CFSM is malformed
+ */
+export function validateCFSM(cfsm: CFSM): void {
+  if (!cfsm) {
+    throw new Error('CFSM cannot be null or undefined');
+  }
+
+  // Check states
+  if (!cfsm.states || cfsm.states.length === 0) {
+    throw new Error('CFSM must have at least one state');
+  }
+
+  const stateIds = new Set(cfsm.states.map(s => s.id));
+
+  // Check initial state
+  if (!cfsm.initialState) {
+    throw new Error('CFSM must have an initial state');
+  }
+
+  if (!stateIds.has(cfsm.initialState)) {
+    throw new Error(
+      `Initial state "${cfsm.initialState}" does not exist in states [${Array.from(stateIds).join(', ')}]`
+    );
+  }
+
+  // Check terminal states
+  if (cfsm.terminalStates) {
+    for (const terminal of cfsm.terminalStates) {
+      if (!stateIds.has(terminal)) {
+        throw new Error(
+          `Terminal state "${terminal}" does not exist in states [${Array.from(stateIds).join(', ')}]`
+        );
+      }
+    }
+  }
+
+  // Check transitions
+  if (cfsm.transitions) {
+    for (const trans of cfsm.transitions) {
+      if (!stateIds.has(trans.from)) {
+        throw new Error(
+          `Transition "${trans.id}" has invalid 'from' state "${trans.from}"`
+        );
+      }
+      if (!stateIds.has(trans.to)) {
+        throw new Error(
+          `Transition "${trans.id}" has invalid 'to' state "${trans.to}"`
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Validate recursion variable
+ *
+ * @param recursionVar - Recursion variable name
+ * @throws Error if invalid
+ */
+export function validateRecursionVar(recursionVar: string): void {
+  if (recursionVar === null || recursionVar === undefined) {
+    throw new Error('Recursion variable cannot be null or undefined');
+  }
+
+  if (typeof recursionVar !== 'string') {
+    throw new Error('Recursion variable must be a string');
+  }
+
+  if (recursionVar.trim().length === 0) {
+    throw new Error('Recursion variable cannot be empty');
+  }
+}
+
+/**
+ * Validate update descriptor
+ *
+ * @param update - CFSM update descriptor
+ * @throws Error if invalid
+ */
+export function validateUpdate(update: CFSMUpdate): void {
+  if (!update) {
+    throw new Error('Update cannot be null or undefined');
+  }
+
+  if (!update.protocolName || update.protocolName.trim().length === 0) {
+    throw new Error('Update must have a non-empty protocol name');
+  }
+
+  if (!update.roleName || update.roleName.trim().length === 0) {
+    throw new Error('Update must have a non-empty role name');
+  }
+
+  if (!update.recursionVar || update.recursionVar.trim().length === 0) {
+    throw new Error('Update must have a non-empty recursion variable');
+  }
+
+  if (!update.extension) {
+    throw new Error('Update must have an extension CFSM');
+  }
+
+  if (update.targetVersion < 1) {
+    throw new Error('Update target version must be >= 1');
+  }
+
+  // Validate extension CFSM structure
+  validateCFSM(update.extension);
+
+  // Validate role name matches extension role
+  if (update.extension.role !== update.roleName) {
+    throw new Error(
+      `Role name mismatch: update specifies role "${update.roleName}" ` +
+      `but extension CFSM has role "${update.extension.role}"`
+    );
+  }
+}
+
 /**
  * Versioned CFSM entry
  *
@@ -139,12 +269,15 @@ export function registerCFSMUpdate(
   registry: CFSMVersionRegistry,
   update: CFSMUpdate
 ): number {
+  // Validate update descriptor (Phase 1: Critical Safety)
+  validateUpdate(update);
+
   const key = `${update.protocolName}:${update.roleName}`;
 
   // Get existing versions
   const versions = registry.versions.get(key);
   if (!versions || versions.length === 0) {
-    throw new Error(`No versions found for ${key}`);
+    throw new Error(`Protocol/role not found: ${key}`);
   }
 
   // Get target version
@@ -250,6 +383,11 @@ export function extendCFSM(
   extension: CFSM,
   recursionVar: string
 ): CFSM {
+  // Phase 1: Critical Safety - Validate inputs
+  validateCFSM(original);
+  validateCFSM(extension);
+  validateRecursionVar(recursionVar);
+
   // Strategy: Create a new CFSM that sequences extension before original
   //
   // Original CFSM:
@@ -264,8 +402,15 @@ export function extendCFSM(
   // Find recursion point in original
   // Convention: Recursion points have state IDs containing the recursion var
   const recursionState = original.states.find(s =>
-    s.id.includes(recursionVar) || s.id === original.initialState
-  ) || original.initialState;
+    s.id.includes(recursionVar)
+  );
+
+  if (!recursionState) {
+    throw new Error(
+      `Recursion variable "${recursionVar}" not found in CFSM. ` +
+      `Available states: [${original.states.map(s => s.id).join(', ')}]`
+    );
+  }
 
   // Create unique state IDs for extension
   const stateIdMap = new Map<string, string>();
@@ -288,7 +433,7 @@ export function extendCFSM(
   // Redirect transitions to recursion point -> go through extension first
   const originalTransitions = original.transitions.map(trans => {
     // If transition goes TO recursion point, redirect to extension entry
-    if (trans.to === recursionState && trans.from !== recursionState) {
+    if (trans.to === recursionState.id && trans.from !== recursionState.id) {
       return {
         ...trans,
         to: stateIdMap.get(extension.initialState)!,
@@ -301,12 +446,12 @@ export function extendCFSM(
   const bridgeTransitions: CFSMTransition[] = extTerminals.map((terminal, idx) => ({
     id: `bridge_${idx}_${Date.now()}`,
     from: terminal,
-    to: recursionState,
+    to: recursionState.id,
     action: { type: 'tau' as const },
   }));
 
   // Combine everything
-  return {
+  const result: CFSM = {
     role: original.role,
     protocolName: original.protocolName,
     parameters: original.parameters,
@@ -315,6 +460,11 @@ export function extendCFSM(
     initialState: original.initialState,
     terminalStates: original.terminalStates,
   };
+
+  // Phase 1: Critical Safety - Validate output
+  validateCFSM(result);
+
+  return result;
 }
 
 /**
