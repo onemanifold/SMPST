@@ -374,6 +374,15 @@ export class ScribbleParser extends CstParser {
   private continueStatement = this.RULE('continueStatement', () => {
     this.CONSUME(tokens.Continue);
     this.CONSUME(tokens.Identifier, { LABEL: 'label' });
+
+    // Optional: with { GlobalProtocolBody } for updatable recursion (DMst)
+    this.OPTION(() => {
+      this.CONSUME(tokens.With);
+      this.CONSUME(tokens.LCurly);
+      this.SUBRULE(this.globalProtocolBody, { LABEL: 'extension' });
+      this.CONSUME(tokens.RCurly);
+    });
+
     this.CONSUME(tokens.Semicolon);
   });
 
@@ -1004,11 +1013,18 @@ class ScribbleToAstVisitor extends BaseCstVisitor {
   }
 
   continueStatement(ctx: any): AST.Continue {
-    return {
+    const result: AST.Continue = {
       type: 'Continue',
       label: ctx.label[0].image,
       location: this.getLocation(ctx),
     };
+
+    // Optional: extension for updatable recursion (DMst)
+    if (ctx.extension) {
+      result.extension = this.visit(ctx.extension);
+    }
+
+    return result;
   }
 
   doStatement(ctx: any): AST.Do {

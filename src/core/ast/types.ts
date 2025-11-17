@@ -243,6 +243,21 @@ export interface Recursion {
 export interface Continue {
   type: 'Continue';
   label: string;
+
+  /**
+   * Extension for updatable recursion (DMst)
+   *
+   * Syntax: continue X with { G }
+   *
+   * From ECOOP 2023 Definition 3:
+   * continue X with { G } ≡ G ; (rec X { G ; (unfold X) })
+   *
+   * When present, the recursion is updated with this extension.
+   * The extension is executed first, then the original recursion body.
+   * This update persists across all future iterations.
+   */
+  extension?: GlobalProtocolBody | LocalProtocolBody;
+
   location?: SourceLocation;
 }
 
