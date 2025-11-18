@@ -260,7 +260,7 @@ export class CFGSimulator {
       }
 
       // Auto-advance from structural nodes (initial, merge, join, recursive)
-      // For recursive nodes, take the forward edge and set up recursion state
+      // For recursive nodes, set up recursion state and emit enter event
       if (node.type === 'recursive') {
         const edges = this.getOutgoingEdges(node.id);
         const forwardEdge = edges.find(e => e.edgeType === 'sequence' && !this.isTerminalNode(e.to));
@@ -272,6 +272,24 @@ export class CFGSimulator {
             nodeId: node.id,
             iterations: 0,
           });
+
+          // Emit recursion enter event
+          this.emit('recursion-enter', {
+            label: (node as any).label,
+            nodeId: node.id,
+          });
+
+          // Record enter event if tracing
+          if (this.config.recordTrace) {
+            const event: RecursionEvent = {
+              type: 'recursion',
+              timestamp: Date.now(),
+              action: 'enter',
+              label: (node as any).label,
+              nodeId: node.id,
+            };
+            this.trace.events.push(event);
+          }
 
           this.currentNode = forwardEdge.to;
           this.visitedNodes.push(this.currentNode);
@@ -882,15 +900,31 @@ export class CFGSimulator {
     // If already chose, take that branch
     if (this.selectedChoice !== null) {
       const choiceIndex = this.selectedChoice;
+      const choiceOption = this.pendingChoice ? this.pendingChoice[choiceIndex] : undefined;
       this.selectedChoice = null;
       this.pendingChoice = null;
 
-      // Emit choice-selected event
+      // Create choice event
+      const event: ChoiceEvent = {
+        type: 'choice',
+        timestamp: Date.now(),
+        decidingRole: node.at,
+        choiceIndex,
+        choiceLabel: choiceOption?.label,
+        nodeId: node.id,
+      };
+
+      // Emit choice-selected event for legacy compatibility
       this.emit('choice-selected', {
         nodeId: node.id,
         role: node.at,
         choiceIndex,
       });
+
+      // Record choice event if tracing
+      if (this.config.recordTrace) {
+        this.trace.events.push(event);
+      }
 
       // Take the chosen branch
       const edges = this.getOutgoingEdges(node.id);
@@ -901,21 +935,10 @@ export class CFGSimulator {
       const chosenEdge = edges[choiceIndex];
       this.transitionTo(chosenEdge.to);
 
-      // Record choice event if tracing
-      if (this.config.recordTrace) {
-        const event: ChoiceEvent = {
-          type: 'choice',
-          timestamp: Date.now(),
-          decidingRole: node.at,
-          choiceIndex,
-          nodeId: node.id,
-        };
-        this.trace.events.push(event);
-      }
-
-      // Return without event - let executeUntilAction continue to next action
+      // Return with choice event
       return {
         success: true,
+        event,
         state: this.getState(),
       };
     }
@@ -986,7 +1009,16 @@ export class CFGSimulator {
         iterations: 0,
       });
 
-      // Emit recursion-enter event
+      // Create enter event
+      const event: RecursionEvent = {
+        type: 'recursion',
+        timestamp: Date.now(),
+        action: 'enter',
+        label: node.label,
+        nodeId: node.id,
+      };
+
+      // Emit recursion-enter event for legacy compatibility
       this.emit('recursion-enter', {
         label: node.label,
         nodeId: node.id,
@@ -994,13 +1026,6 @@ export class CFGSimulator {
 
       // Record enter event if tracing
       if (this.config.recordTrace) {
-        const event: RecursionEvent = {
-          type: 'recursion',
-          timestamp: Date.now(),
-          action: 'enter',
-          label: node.label,
-          nodeId: node.id,
-        };
         this.trace.events.push(event);
       }
 
@@ -1009,6 +1034,7 @@ export class CFGSimulator {
 
       return {
         success: true,
+        event,
         state: this.getState(),
       };
     } else {
@@ -1024,7 +1050,17 @@ export class CFGSimulator {
         // Exit recursion due to maxSteps limit
         this.reachedMaxSteps = true;
 
-        // Emit recursion-exit event
+        // Create exit event
+        const event: RecursionEvent = {
+          type: 'recursion',
+          timestamp: Date.now(),
+          action: 'exit',
+          label: node.label,
+          iteration: inStack.iterations,
+          nodeId: node.id,
+        };
+
+        // Emit recursion-exit event for legacy compatibility
         this.emit('recursion-exit', {
           label: node.label,
           iteration: inStack.iterations,
@@ -1033,14 +1069,6 @@ export class CFGSimulator {
 
         // Record exit event if tracing
         if (this.config.recordTrace) {
-          const event: RecursionEvent = {
-            type: 'recursion',
-            timestamp: Date.now(),
-            action: 'exit',
-            label: node.label,
-            iteration: inStack.iterations,
-            nodeId: node.id,
-          };
           this.trace.events.push(event);
         }
 
@@ -1056,27 +1084,31 @@ export class CFGSimulator {
 
         return {
           success: true,
+          event,
           state: this.getState(),
         };
       } else {
         // Continue looping - take forward edge again
 
-        // Emit recursion-continue event
+        // Create continue event
+        const event: RecursionEvent = {
+          type: 'recursion',
+          timestamp: Date.now(),
+          action: 'continue',
+          label: node.label,
+          iteration: inStack.iterations,
+          nodeId: node.id,
+        };
+
+        // Emit recursion-continue event for legacy compatibility
         this.emit('recursion-continue', {
           label: node.label,
           iteration: inStack.iterations,
           nodeId: node.id,
         });
 
+        // Record continue event if tracing
         if (this.config.recordTrace) {
-          const event: RecursionEvent = {
-            type: 'recursion',
-            timestamp: Date.now(),
-            action: 'continue',
-            label: node.label,
-            iteration: inStack.iterations,
-            nodeId: node.id,
-          };
           this.trace.events.push(event);
         }
 
@@ -1085,6 +1117,7 @@ export class CFGSimulator {
 
         return {
           success: true,
+          event,
           state: this.getState(),
         };
       }
@@ -1131,7 +1164,16 @@ export class CFGSimulator {
     this.parallelBranchesCompleted = new Set();
     this.parallelJoinNode = joinNode.id;
 
-    // Emit fork event
+    // Create fork event
+    const event: ParallelEvent = {
+      type: 'parallel',
+      timestamp: Date.now(),
+      action: 'fork',
+      branches: forkEdges.length,
+      nodeId: this.currentNode,
+    };
+
+    // Emit fork event for legacy compatibility
     this.emit('fork', {
       nodeId: this.currentNode,
       branches: forkEdges.length,
@@ -1140,13 +1182,6 @@ export class CFGSimulator {
 
     // Record fork event if tracing
     if (this.config.recordTrace) {
-      const event: ParallelEvent = {
-        type: 'parallel',
-        timestamp: Date.now(),
-        action: 'fork',
-        branches: forkEdges.length,
-        nodeId: this.currentNode,
-      };
       this.trace.events.push(event);
     }
 
@@ -1154,9 +1189,10 @@ export class CFGSimulator {
     this.currentNode = this.parallelBranches[0][0];
     this.visitedNodes.push(this.currentNode);
 
-    // Return without event - let executeUntilAction continue to action
+    // Return with fork event
     return {
       success: true,
+      event,
       state: this.getState(),
     };
   }
@@ -1200,24 +1236,32 @@ export class CFGSimulator {
     this.parallelBranchesCompleted = new Set();
     this.parallelJoinNode = null;
 
-    // Emit join event
+    // Create join event
+    const event: ParallelEvent = {
+      type: 'parallel',
+      timestamp: Date.now(),
+      action: 'join',
+      nodeId: this.currentNode,
+    };
+
+    // Emit join event for legacy compatibility
     this.emit('join', {
       nodeId: this.currentNode,
     });
 
     // Record join event if tracing
     if (this.config.recordTrace) {
-      const event: ParallelEvent = {
-        type: 'parallel',
-        timestamp: Date.now(),
-        action: 'join',
-        nodeId: this.currentNode,
-      };
       this.trace.events.push(event);
     }
 
-    // Transition to next node without returning join event
-    return this.transitionToNext();
+    // Transition to next node
+    const result = this.transitionToNext();
+
+    // Return with join event
+    return {
+      ...result,
+      event,
+    };
   }
 
   /**

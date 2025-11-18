@@ -72,6 +72,12 @@ export async function initializeSimulation(cfg: CFG) {
   executionState.set(simulator.getState());
   simulationMode.set('idle');
 
+  // Phase 1: Capture any events from initialization (e.g., recursion enter)
+  const trace = simulator.getTrace();
+  if (trace.events.length > 0) {
+    executionEvents.set([...trace.events]);
+  }
+
   // Phase 2: Initialize history state
   const history = simulator.getExecutionHistory();
   currentStepNumber.set(history.getCurrentPosition());
@@ -238,24 +244,24 @@ export function jumpToStep(stepNumber: number) {
 
   if (!snapshot) return;
 
-  // Update position and restore snapshot
-  history.setCurrentPosition(stepNumber);
-
-  // Get the state by stepping backward/forward to that position
+  // Get current position BEFORE changing it
   const currentPos = history.getCurrentPosition();
   const targetPos = stepNumber;
 
   if (targetPos < currentPos) {
     // Step backward
-    while (history.getCurrentPosition() > targetPos) {
+    const stepsBack = currentPos - targetPos;
+    for (let i = 0; i < stepsBack; i++) {
       stepBack();
     }
   } else if (targetPos > currentPos) {
     // Step forward
-    while (history.getCurrentPosition() < targetPos) {
+    const stepsForward = targetPos - currentPos;
+    for (let i = 0; i < stepsForward; i++) {
       stepForward();
     }
   }
+  // If targetPos === currentPos, we're already there - do nothing
 }
 
 /**

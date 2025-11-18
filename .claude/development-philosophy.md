@@ -107,6 +107,53 @@ handleStepResult(result, {
 
 ---
 
+### 4. Frontend as Backend Completeness Test
+
+**Core Principle:** **NEVER WORK AROUND backend limitations**. Frontend is the completeness test for backend implementation.
+
+**Rule:** When frontend tests fail due to backend gaps:
+1. ❌ **DO NOT** work around with frontend hacks
+2. ❌ **DO NOT** mark tests as `.todo()` and move on
+3. ✅ **DO** fix the backend to make tests pass (TDD approach)
+4. ✅ **DO** treat frontend requirements as backend specifications
+
+**Example:**
+```typescript
+// Frontend test fails: choice events not captured
+it('should capture choice events', () => {
+  makeChoice(0);
+  expect(get(choiceEvents).length).toBeGreaterThan(0); // FAILS
+});
+
+// ❌ WRONG - Work around the limitation
+it.skip('should capture choice events', () => { /* skip test */ });
+// or
+const choiceEvents = derived(executionState, s => s.atChoice ? [mockEvent] : []); // fake it
+
+// ✅ RIGHT - Fix backend to return choice events
+// Modify backend: executeBranch() to return ChoiceEvent in CFGStepResult
+private executeBranch(node: BranchNode): CFGStepResult {
+  const event: ChoiceEvent = { /* ... */ };
+  return { success: true, event, state: this.getState() };
+}
+```
+
+**Why:** Backend implements formal semantics. If backend doesn't return something, it's a **backend bug**, not a frontend limitation. Frontend tests drive backend completeness.
+
+**Workflow:**
+1. Write frontend integration test using real backend
+2. Test fails → discover backend gap
+3. Fix backend (TDD: test already written and failing)
+4. Test passes → frontend and backend in sync
+
+**Benefits:**
+- Ensures backend API is complete
+- Prevents frontend hacks that hide backend issues
+- Frontend integration tests document backend requirements
+- Test-driven backend development
+
+---
+
 ## When Adding New Features
 
 ### Mandatory Checklist
@@ -251,6 +298,23 @@ it('should work', () => {
 ```typescript
 // Code exists but no formal documentation
 // Why does this exist? What theorem does it implement?
+```
+
+### ❌ Working Around Backend Limitations
+```typescript
+// Frontend test fails because backend doesn't return event
+it('should capture events', () => {
+  const events = get(executionEvents);
+  expect(events.length).toBeGreaterThan(0); // FAILS - backend doesn't return events
+});
+
+// BAD: Skip the test or fake it in frontend
+it.skip('should capture events', () => { ... });
+// or
+const events = derived(state, s => [fakeEvent]); // Workaround
+
+// CORRECT: Fix backend to return events
+// Modify backend method to return event in result
 ```
 
 ---
