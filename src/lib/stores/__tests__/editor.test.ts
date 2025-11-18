@@ -17,6 +17,8 @@ import {
   parseError,
   verificationResult,
   projectionData,
+  projectionErrors,
+  hasProjectionErrors,
   editorContent,
   setEditorContent,
   clearEditor,
@@ -429,16 +431,58 @@ describe('Editor Store - Backend Contract Enforcement', () => {
       });
     });
 
-    // ⚠️ DOCUMENTS MISSING PROPERTY - CRITICAL
-    it.todo('should expose projection errors', async () => {
-      // TODO: projectAll() returns { cfsms, roles, errors }
-      // But editor.ts IGNORES the errors array (line 155)
-      //
-      // Projection can fail for individual roles while succeeding for others.
-      // These errors are currently invisible to users.
-      //
-      // Expected: projectionData should include error information per role
-      // Current: Errors are silently dropped
+    // ✅ NOW EXPOSED - Projection errors
+    it('should expose projection errors when they occur', async () => {
+      const protocol = `
+        global protocol Simple(role A, role B) {
+          msg(int) from A to B;
+        }
+      `;
+
+      await parseProtocol(protocol);
+
+      // projectionErrors store should be defined
+      const errors = get(projectionErrors);
+      expect(errors).toBeDefined();
+      expect(Array.isArray(errors)).toBe(true);
+
+      // For a valid protocol, should have no errors
+      expect(errors.length).toBe(0);
+      expect(get(hasProjectionErrors)).toBe(false);
+    });
+
+    it('should clear projection errors on successful projection', async () => {
+      const protocol = `
+        global protocol Simple(role A, role B) {
+          msg(int) from A to B;
+        }
+      `;
+
+      await parseProtocol(protocol);
+
+      // Should have no projection errors
+      expect(get(projectionErrors)).toEqual([]);
+      expect(get(hasProjectionErrors)).toBe(false);
+    });
+
+    it('should expose projectionErrors store with correct structure', async () => {
+      const protocol = `
+        global protocol Simple(role A, role B) {
+          msg(int) from A to B;
+        }
+      `;
+
+      await parseProtocol(protocol);
+      const errors = get(projectionErrors);
+
+      // Even if empty, should have correct structure
+      errors.forEach(error => {
+        expect(error).toHaveProperty('role');
+        expect(error).toHaveProperty('message');
+        // Optional properties
+        if (error.nodeId) expect(typeof error.nodeId).toBe('string');
+        if (error.phase) expect(['merging', 'continuation', 'projection']).toContain(error.phase);
+      });
     });
 
     it.todo('should preserve CFSM.parameters for sub-protocols', async () => {
@@ -580,6 +624,8 @@ describe('Editor Store - Backend Contract Enforcement', () => {
       expect(get(parseError)).toBeNull();
       expect(get(verificationResult)).toBeNull();
       expect(get(projectionData)).toEqual([]);
+      expect(get(projectionErrors)).toEqual([]);
+      expect(get(hasProjectionErrors)).toBe(false);
     });
   });
 

@@ -80,6 +80,16 @@ export interface ProjectionData {
 
 export const projectionData = writable<ProjectionData[]>([]);
 
+// Projection errors (from projectAll)
+export interface ProjectionErrorInfo {
+  role: string;
+  message: string;
+  nodeId?: string;
+  phase?: 'merging' | 'continuation' | 'projection';
+}
+
+export const projectionErrors = writable<ProjectionErrorInfo[]>([]);
+
 // Mock simulation state
 export interface SimulationState {
   running: boolean;
@@ -113,6 +123,11 @@ export const canSimulate = derived(
     $parseStatus === 'success' && $verificationResult?.deadlockFree === true
 );
 
+export const hasProjectionErrors = derived(
+  projectionErrors,
+  $errors => $errors.length > 0
+);
+
 // Actions
 export function setEditorContent(content: string) {
   editorContent.set(content);
@@ -138,6 +153,7 @@ export function clearEditor() {
   parseError.set(null);
   verificationResult.set(null);
   projectionData.set([]);
+  projectionErrors.set([]);
 }
 
 // Real parse action (integrates parser, CFG builder, verifier)
@@ -182,12 +198,33 @@ export async function parseProtocol(content: string) {
     const roles = projectionResult.roles;
 
     // 5. Extract ALL verification issues using contract handler
-    const { extractVerificationIssues } = await import('./contracts/editor-contract');
+    const { extractVerificationIssues, handleProjectionResult, formatProjectionErrors } = await import('./contracts/editor-contract');
     const issues = extractVerificationIssues(result);
 
     // Combine errors, warnings, and critical issues
     const allErrors = [...issues.errors, ...issues.criticalIssues];
-    const allWarnings = issues.warnings;
+    const allWarnings = [...issues.warnings];
+
+    // 4b. Handle projection errors using contract handler
+    handleProjectionResult(projectionResult, {
+      onSuccess: (result) => {
+        // All roles projected successfully - clear any previous errors
+        projectionErrors.set([]);
+      },
+      onPartialFailure: (result, errors) => {
+        // Some roles failed to project - expose errors
+        const formattedErrors = formatProjectionErrors(errors);
+        projectionErrors.set(errors.map(err => ({
+          role: err.role || 'unknown',
+          message: err.message,
+          nodeId: err.nodeId,
+          phase: err.phase
+        })));
+
+        // Also add to warnings so users see them
+        allWarnings.push(...formattedErrors);
+      }
+    });
 
     // 6. Update stores with COMPLETE verification results
     parseStatus.set('success');
