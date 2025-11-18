@@ -15,10 +15,13 @@ import {
   stopSimulation,
   stepBack,
   stepForward,
+  jumpToStep,
   // Phase 1: Execution Events
   executionEvents,
   messageEvents,
   choiceEvents,
+  recursionEvents,
+  parallelEvents,
   // Phase 2: Backward Stepping
   canStepBack,
   canStepForward,
@@ -167,6 +170,116 @@ describe('Simulation Store - Integration Tests', () => {
         expect(events[i].timestamp).toBeLessThanOrEqual(events[i + 1].timestamp);
       }
     });
+
+    it('should capture choice events when choice is made', async () => {
+      const source = `
+        protocol ChoiceProtocol(role A, role B) {
+          choice at A {
+            A -> B: Option1(string);
+          } or {
+            A -> B: Option2(int);
+          }
+        }
+      `;
+
+      const module = parse(source);
+      const protocol = module.declarations.find(
+        d => d.type === 'GlobalProtocolDeclaration'
+      ) as GlobalProtocolDeclaration;
+
+      expect(protocol).toBeDefined();
+      const cfg = buildCFG(protocol);
+
+      await initializeSimulation(cfg);
+
+      // Should be at choice point
+      const state = get(executionState);
+      expect(state?.atChoice).toBe(true);
+
+      // Make a choice
+      makeChoice(0);
+
+      // Should have choice event
+      const events = get(executionEvents);
+      const choices = get(choiceEvents);
+      expect(choices.length).toBeGreaterThan(0);
+      expect(choices[0].type).toBe('choice');
+      expect(choices[0].decidingRole).toBe('A');
+      expect(choices[0].choiceIndex).toBe(0);
+    });
+
+    it('should capture recursion events', async () => {
+      const source = `
+        protocol RecursiveProtocol(role A, role B) {
+          rec Loop {
+            A -> B: Message(string);
+            continue Loop;
+          }
+        }
+      `;
+
+      const module = parse(source);
+      const protocol = module.declarations.find(
+        d => d.type === 'GlobalProtocolDeclaration'
+      ) as GlobalProtocolDeclaration;
+
+      expect(protocol).toBeDefined();
+      const cfg = buildCFG(protocol);
+
+      await initializeSimulation(cfg);
+
+      // Step through recursion
+      stepSimulation(); // Enter rec
+      stepSimulation(); // Message
+      stepSimulation(); // Continue
+
+      const events = get(executionEvents);
+      const recEvents = get(recursionEvents);
+
+      // Should have recursion events
+      expect(recEvents.length).toBeGreaterThan(0);
+      const enterEvent = recEvents.find(e => e.type === 'recursion' && e.action === 'enter');
+      expect(enterEvent).toBeDefined();
+      if (enterEvent && enterEvent.type === 'recursion') {
+        expect(enterEvent.label).toBe('Loop');
+      }
+    });
+
+    it('should capture parallel events', async () => {
+      const source = `
+        protocol ParallelProtocol(role A, role B, role C) {
+          par {
+            A -> B: Msg1(string);
+          } and {
+            A -> C: Msg2(string);
+          }
+        }
+      `;
+
+      const module = parse(source);
+      const protocol = module.declarations.find(
+        d => d.type === 'GlobalProtocolDeclaration'
+      ) as GlobalProtocolDeclaration;
+
+      expect(protocol).toBeDefined();
+      const cfg = buildCFG(protocol);
+
+      await initializeSimulation(cfg);
+
+      // Step through parallel
+      stepSimulation(); // Fork
+      stepSimulation(); // First branch
+      stepSimulation(); // Second branch
+      stepSimulation(); // Join
+
+      const events = get(executionEvents);
+      const parEvents = get(parallelEvents);
+
+      // Should have parallel events (fork and/or join)
+      expect(parEvents.length).toBeGreaterThan(0);
+      const forkEvent = parEvents.find(e => e.type === 'parallel' && e.action === 'fork');
+      expect(forkEvent).toBeDefined();
+    });
   });
 
   describe('Phase 2: Backward Stepping - Integration', () => {
@@ -306,6 +419,47 @@ describe('Simulation Store - Integration Tests', () => {
       // Step backward shouldn't decrease total
       stepBack();
       expect(get(totalStepCount)).toBe(total3);
+    });
+
+    it('should support jumpToStep to arbitrary position', async () => {
+      const source = `
+        protocol SimpleProtocol(role A, role B) {
+          A -> B: Msg1(string);
+          B -> A: Msg2(string);
+          A -> B: Msg3(string);
+          B -> A: Msg4(string);
+        }
+      `;
+
+      const module = parse(source);
+      const protocol = module.declarations.find(
+        d => d.type === 'GlobalProtocolDeclaration'
+      ) as GlobalProtocolDeclaration;
+
+      expect(protocol).toBeDefined();
+      const cfg = buildCFG(protocol);
+
+      await initializeSimulation(cfg);
+
+      // Take several steps
+      stepSimulation(); // Step 1
+      const step1 = get(currentStepNumber);
+      stepSimulation(); // Step 2
+      const step2 = get(currentStepNumber);
+      stepSimulation(); // Step 3
+      const step3 = get(currentStepNumber);
+
+      // Jump back to step 1
+      jumpToStep(step1);
+      expect(get(currentStepNumber)).toBe(step1);
+
+      // Jump forward to step 3
+      jumpToStep(step3);
+      expect(get(currentStepNumber)).toBe(step3);
+
+      // Jump to step 2
+      jumpToStep(step2);
+      expect(get(currentStepNumber)).toBe(step2);
     });
 
     it.todo('should truncate events when stepping backward', async () => {
