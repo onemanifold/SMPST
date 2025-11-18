@@ -13,8 +13,10 @@ This directory contains critical development protocols for the SMPST project.
 | `README.md` | **THIS FILE** - Start here | **Every session** |
 | `development-philosophy.md` | Core principles | **Every session** |
 | `store-development-protocol.md` | Frontend integration rules | When modifying stores |
+| `simulation-development-protocol.md` | Simulation feature patterns | When working on simulation |
 | `theorem-driven-testing.md` | Testing methodology | When writing tests |
 | `formal-methods-workflow.md` | Feature development process | When adding features |
+| `backend-contract-checklist.md` | Feature parity workflow | When exposing backend features |
 
 ---
 
