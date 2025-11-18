@@ -34,10 +34,11 @@ export type DMstTraceEvent =
 /**
  * DMst execution trace
  *
- * Extends base ExecutionTrace to include DMst-specific events
+ * Extends base ExecutionTrace with DMst-specific event types
+ * Uses the generic parameter to properly type the events array
  */
-export interface DMstExecutionTrace extends BaseExecutionTrace {
-  events: DMstTraceEvent[];
+export interface DMstExecutionTrace extends BaseExecutionTrace<DMstTraceEvent> {
+  // events: DMstTraceEvent[] is inherited from BaseExecutionTrace<DMstTraceEvent>
 }
 
 /**

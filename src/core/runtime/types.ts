@@ -153,6 +153,14 @@ export type MessageListener = (message: Message) => void;
 // ============================================================================
 
 /**
+ * Base event structure - all trace events must have these fields
+ */
+export interface BaseEvent {
+  type: string;
+  timestamp: number;
+}
+
+/**
  * Recorded event during execution
  */
 export type TraceEvent =
@@ -191,9 +199,15 @@ export interface ErrorEvent {
 
 /**
  * Execution trace recorder
+ *
+ * Generic to allow extension with additional event types (e.g., DMst events).
+ * TEvent defaults to TraceEvent for backward compatibility.
+ *
+ * The constraint is BaseEvent (requires type and timestamp), allowing
+ * subclasses to add additional event types beyond the base TraceEvent union.
  */
-export interface ExecutionTrace {
-  events: TraceEvent[];
+export interface ExecutionTrace<TEvent extends BaseEvent = TraceEvent> {
+  events: TEvent[];
   startTime: number;
   endTime?: number;
   completed: boolean;

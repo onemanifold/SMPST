@@ -22,15 +22,25 @@ import type { MessageTransport } from './types';
 /**
  * Multi-role protocol simulator
  * Orchestrates multiple CFSM executors
+ *
+ * Generic parameters:
+ * - TTrace: Trace type (defaults to ExecutionTrace<TraceEvent> for base implementation)
+ * - TState: State type (defaults to SimulationState for base implementation)
+ *
+ * The TTrace constraint allows subclasses to use extended trace types with
+ * additional event types (e.g., DMst events).
  */
-export class Simulator {
+export class Simulator<
+  TTrace extends ExecutionTrace<any> = ExecutionTrace,
+  TState extends SimulationState = SimulationState
+> {
   protected executors: Map<string, Executor> = new Map();
   protected transport: MessageTransport;
   protected options: SimulatorConfig['options'];
   protected observers: Set<ExecutionObserver> = new Set();
 
   protected stepCount: number = 0;
-  protected trace: ExecutionTrace;
+  protected trace: TTrace;
 
   // Fair scheduling: round-robin role selection
   protected nextRoleIndex: number = 0;
@@ -76,8 +86,10 @@ export class Simulator {
 
   /**
    * Get current simulation state
+   *
+   * Subclasses can override to return more specific state types
    */
-  getState(): SimulationState {
+  getState(): TState {
     const roles = new Map<string, ExecutionState>();
     for (const [role, executor] of this.executors.entries()) {
       roles.set(role, executor.getState());
@@ -107,7 +119,7 @@ export class Simulator {
       step: this.stepCount,
       completed,
       deadlocked,
-    };
+    } as TState;
   }
 
   /**
@@ -370,12 +382,14 @@ export class Simulator {
 
   /**
    * Get execution trace
+   *
+   * Returns a copy to prevent external mutation
    */
-  getTrace(): ExecutionTrace {
+  getTrace(): TTrace {
     return {
       ...this.trace,
       events: [...this.trace.events],
-    };
+    } as TTrace;
   }
 
   /**

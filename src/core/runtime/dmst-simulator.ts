@@ -89,8 +89,8 @@ import {
  * - Fair scheduling ensures all roles eventually execute
  * - Round-robin prevents starvation
  */
-export class DMstSimulator extends Simulator {
-  // DMst-specific state (shadows base state with extended type)
+export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationState> {
+  // DMst-specific state (now properly typed via generic parameter)
   protected state: DMstSimulationState;
 
   // DMst-specific fields
