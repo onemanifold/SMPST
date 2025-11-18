@@ -18,6 +18,7 @@ import {
   jumpToStep,
   // Phase 1: Execution Events
   executionEvents,
+  visibleExecutionEvents,
   messageEvents,
   choiceEvents,
   recursionEvents,
@@ -534,16 +535,9 @@ describe('Simulation Store - Integration Tests', () => {
       expect(get(currentStepNumber)).toBe(step2);
     });
 
-    it.todo('should truncate events when stepping backward', async () => {
-      // TODO: Event truncation during stepBack is complex
-      // Current implementation keeps all events (they're preserved in history)
-      // A future enhancement could filter displayed events based on current position
-      // For now, backward stepping correctly restores execution state
-      //
-      // Ideal behavior:
-      // - Events shown should match current history position
-      // - Use derived store to filter: executionEvents.filter(e => e.stepNumber <= currentStep)
-      // - This requires adding stepNumber to each event as it's captured
+    it('should truncate events when stepping backward', async () => {
+      // visibleExecutionEvents filters events based on current history position
+      // This ensures event log matches current step during time-travel
 
       const source = `
         protocol SimpleProtocol(role A, role B) {
@@ -564,20 +558,36 @@ describe('Simulation Store - Integration Tests', () => {
       await initializeSimulation(cfg);
 
       // Take 3 steps
-      stepSimulation();
-      stepSimulation();
-      stepSimulation();
+      stepSimulation(); // Step 1
+      stepSimulation(); // Step 2
+      stepSimulation(); // Step 3
 
-      const events3 = get(executionEvents);
-      expect(events3.length).toBe(3);
+      const allEvents = get(executionEvents);
+      const visibleEventsAt3 = get(visibleExecutionEvents);
 
-      // Step back twice
-      stepBack();
-      stepBack();
+      expect(allEvents.length).toBe(3);
+      expect(visibleEventsAt3.length).toBe(3);
 
-      // Events should be filtered to match current position
-      const events1 = get(executionEvents);
-      expect(events1.length).toBeLessThan(events3.length);
+      // Step back twice to step 1
+      stepBack(); // Back to step 2
+      stepBack(); // Back to step 1
+
+      const currentStep = get(currentStepNumber);
+      expect(currentStep).toBe(1);
+
+      // All events are still preserved in executionEvents
+      const allEventsAfterStepBack = get(executionEvents);
+      expect(allEventsAfterStepBack.length).toBe(3);
+
+      // But visibleExecutionEvents should be filtered to current position
+      const visibleEventsAt1 = get(visibleExecutionEvents);
+      expect(visibleEventsAt1.length).toBe(1);
+      expect(visibleEventsAt1.length).toBeLessThan(visibleEventsAt3.length);
+
+      // Verify all visible events have stepNumber <= currentStepNumber
+      visibleEventsAt1.forEach(event => {
+        expect(event.stepNumber).toBeLessThanOrEqual(currentStep);
+      });
     });
 
     it('should reset history on simulation reset', async () => {

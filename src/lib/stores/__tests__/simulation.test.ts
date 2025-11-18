@@ -39,6 +39,9 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
     vi.clearAllMocks();
     // Clear execution events
     executionEvents.set([]);
+    // Reset history state
+    currentStepNumber.set(0);
+    totalStepCount.set(0);
   });
 
   describe('Phase 1: Execution Events - HIGH PRIORITY', () => {
@@ -128,13 +131,16 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
     });
 
     it('should filter events correctly by type', () => {
-      // Set up mixed events
+      // Set up mixed events with stepNumbers
       executionEvents.set([
-        { type: 'message', timestamp: 1, from: 'A', to: 'B', label: 'test', nodeId: 'n1' },
-        { type: 'choice', timestamp: 2, decidingRole: 'A', choiceIndex: 0, nodeId: 'n2' },
-        { type: 'message', timestamp: 3, from: 'B', to: 'C', label: 'test2', nodeId: 'n3' },
-        { type: 'recursion', timestamp: 4, action: 'enter', label: 'Loop', nodeId: 'n4' },
+        { type: 'message', timestamp: 1, from: 'A', to: 'B', label: 'test', nodeId: 'n1', stepNumber: 1 },
+        { type: 'choice', timestamp: 2, decidingRole: 'A', choiceIndex: 0, nodeId: 'n2', stepNumber: 2 },
+        { type: 'message', timestamp: 3, from: 'B', to: 'C', label: 'test2', nodeId: 'n3', stepNumber: 3 },
+        { type: 'recursion', timestamp: 4, action: 'enter', label: 'Loop', nodeId: 'n4', stepNumber: 4 },
       ] as any);
+
+      // Set current step to include all events
+      currentStepNumber.set(4);
 
       expect(get(messageEvents).length).toBe(2);
       expect(get(choiceEvents).length).toBe(1);
@@ -145,8 +151,10 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
     it('should support clearing events manually', () => {
       // Events can be cleared via store
       executionEvents.set([
-        { type: 'message', timestamp: 1, from: 'A', to: 'B', label: 'test', nodeId: 'n1' },
+        { type: 'message', timestamp: 1, from: 'A', to: 'B', label: 'test', nodeId: 'n1', stepNumber: 1 },
       ] as any);
+
+      currentStepNumber.set(1);
 
       expect(get(executionEvents).length).toBe(1);
       executionEvents.set([]);

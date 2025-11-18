@@ -21,8 +21,12 @@ export const currentCFG = writable<CFG | null>(null);
 // Playback speed (ms between steps in play mode)
 export const playbackSpeed = writable<number>(300);
 
-// Phase 1: Execution Events - ALL events from simulator
-export const executionEvents = writable<CFGExecutionEvent[]>([]);
+// Phase 1: Execution Events with Step Numbers
+// Extended event type that includes stepNumber for time-travel filtering
+export type SteppedExecutionEvent = CFGExecutionEvent & { stepNumber: number };
+
+// Phase 1: Execution Events - ALL events from simulator (with step numbers)
+export const executionEvents = writable<SteppedExecutionEvent[]>([]);
 
 // Phase 2: Execution History - backward stepping state
 export const currentStepNumber = writable<number>(0);
@@ -74,13 +78,20 @@ export async function initializeSimulation(cfg: CFG) {
 
   // Phase 1: Capture any events from initialization (e.g., recursion enter)
   const trace = simulator.getTrace();
+  const history = simulator.getExecutionHistory();
+  const currentStep = history.getCurrentPosition();
+
   if (trace.events.length > 0) {
-    executionEvents.set([...trace.events]);
+    // Add step numbers to events
+    const steppedEvents: SteppedExecutionEvent[] = trace.events.map((event: CFGExecutionEvent) => ({
+      ...event,
+      stepNumber: currentStep,
+    }));
+    executionEvents.set(steppedEvents);
   }
 
   // Phase 2: Initialize history state
-  const history = simulator.getExecutionHistory();
-  currentStepNumber.set(history.getCurrentPosition());
+  currentStepNumber.set(currentStep);
   totalStepCount.set(history.getAllSnapshots().length);
 }
 
@@ -94,16 +105,21 @@ export function stepSimulation() {
   const result = simulator.stepForward();
   executionState.set(result.state);
 
-  // Phase 1: Capture execution event if present
-  if (result.event) {
-    executionEvents.update(events => [...events, result.event!]);
-  }
-
-  // Phase 2: Update history state
+  // Phase 2: Update history state FIRST to get current step number
   if (result.success) {
     const history = simulator.getExecutionHistory();
-    currentStepNumber.set(history.getCurrentPosition());
+    const currentStep = history.getCurrentPosition();
+    currentStepNumber.set(currentStep);
     totalStepCount.set(history.getAllSnapshots().length);
+
+    // Phase 1: Capture execution event if present (with step number)
+    if (result.event) {
+      const steppedEvent: SteppedExecutionEvent = {
+        ...result.event,
+        stepNumber: currentStep,
+      };
+      executionEvents.update(events => [...events, steppedEvent]);
+    }
   }
 
   if (result.state.completed) {
@@ -124,16 +140,21 @@ export function makeChoice(choiceIndex: number) {
   const result = simulator.stepForward();
   executionState.set(result.state);
 
-  // Phase 1: Capture execution event if present
-  if (result.event) {
-    executionEvents.update(events => [...events, result.event!]);
-  }
-
-  // Phase 2: Update history state
+  // Phase 2: Update history state FIRST to get current step number
   if (result.success) {
     const history = simulator.getExecutionHistory();
-    currentStepNumber.set(history.getCurrentPosition());
+    const currentStep = history.getCurrentPosition();
+    currentStepNumber.set(currentStep);
     totalStepCount.set(history.getAllSnapshots().length);
+
+    // Phase 1: Capture execution event if present (with step number)
+    if (result.event) {
+      const steppedEvent: SteppedExecutionEvent = {
+        ...result.event,
+        stepNumber: currentStep,
+      };
+      executionEvents.update(events => [...events, steppedEvent]);
+    }
   }
 
   if (result.state.completed) {
@@ -205,9 +226,8 @@ export function stepBack() {
     const history = simulator.getExecutionHistory();
     currentStepNumber.set(history.getCurrentPosition());
 
-    // TODO: Event truncation/filtering
-    // Consider using a derived store that filters events based on currentStepNumber
-    // This would require adding stepNumber to each event when captured
+    // Events are filtered by visibleExecutionEvents derived store
+    // No need to manually truncate executionEvents
   }
 }
 
@@ -221,15 +241,20 @@ export function stepForward() {
   if (result.success) {
     executionState.set(result.state);
 
-    // Phase 1: Capture execution event if present
-    if (result.event) {
-      executionEvents.update(events => [...events, result.event!]);
-    }
-
-    // Phase 2: Update history state
+    // Phase 2: Update history state FIRST to get current step number
     const history = simulator.getExecutionHistory();
-    currentStepNumber.set(history.getCurrentPosition());
+    const currentStep = history.getCurrentPosition();
+    currentStepNumber.set(currentStep);
     totalStepCount.set(history.getAllSnapshots().length);
+
+    // Phase 1: Capture execution event if present (with step number)
+    if (result.event) {
+      const steppedEvent: SteppedExecutionEvent = {
+        ...result.event,
+        stepNumber: currentStep,
+      };
+      executionEvents.update(events => [...events, steppedEvent]);
+    }
   }
 }
 
@@ -329,34 +354,42 @@ export const availableChoices = derived(
   $state => $state?.availableChoices ?? []
 );
 
+// Phase 2: Visible events filtered by current history position
+// This ensures event log matches the current step when navigating history
+export const visibleExecutionEvents = derived(
+  [executionEvents, currentStepNumber],
+  ([$events, $currentStep]) => $events.filter(e => e.stepNumber <= $currentStep)
+);
+
 // Phase 1: Event filtering - Derived stores for each event type
+// These now filter from visibleExecutionEvents (time-travel aware)
 export const messageEvents = derived(
-  executionEvents,
+  visibleExecutionEvents,
   $events => $events.filter(e => e.type === 'message')
 );
 
 export const choiceEvents = derived(
-  executionEvents,
+  visibleExecutionEvents,
   $events => $events.filter(e => e.type === 'choice')
 );
 
 export const recursionEvents = derived(
-  executionEvents,
+  visibleExecutionEvents,
   $events => $events.filter(e => e.type === 'recursion')
 );
 
 export const parallelEvents = derived(
-  executionEvents,
+  visibleExecutionEvents,
   $events => $events.filter(e => e.type === 'parallel')
 );
 
 export const subProtocolEvents = derived(
-  executionEvents,
+  visibleExecutionEvents,
   $events => $events.filter(e => e.type === 'subprotocol')
 );
 
 export const stateChangeEvents = derived(
-  executionEvents,
+  visibleExecutionEvents,
   $events => $events.filter(e => e.type === 'state-change')
 );
 
