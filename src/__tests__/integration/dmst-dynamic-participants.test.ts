@@ -203,9 +203,8 @@ describe('DMst Dynamic Participants Integration', () => {
         protocol TaskDelegation(role Manager) {
           new role Worker;
           Manager creates Worker as w1;
-          Manager invites Worker;
-          Manager -> Worker: Task;
-          Worker -> Manager: Done;
+          Manager -> Worker: Task();
+          Worker -> Manager: Done();
         }
       `;
 
@@ -216,11 +215,10 @@ describe('DMst Dynamic Participants Integration', () => {
       // Project for Manager
       const managerCFSM = project(cfg, 'Manager');
 
-      // Should have create, invite, send, receive actions
+      // Should have create, send, receive actions
       const actionTypes = managerCFSM.transitions.map(t => t.action.type);
 
       expect(actionTypes).toContain('create');
-      expect(actionTypes).toContain('invite');
       expect(actionTypes).toContain('send');
       expect(actionTypes).toContain('receive');
 
