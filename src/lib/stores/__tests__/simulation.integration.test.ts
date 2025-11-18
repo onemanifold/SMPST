@@ -27,6 +27,8 @@ import {
   canStepForward,
   currentStepNumber,
   totalStepCount,
+  // Phase 3: Enhanced Choice Previews
+  availableChoices,
   executionState,
 } from '../simulation';
 import { parse } from '../../../core/parser/parser';
@@ -279,6 +281,76 @@ describe('Simulation Store - Integration Tests', () => {
       expect(parEvents.length).toBeGreaterThan(0);
       const forkEvent = parEvents.find(e => e.type === 'parallel' && e.action === 'fork');
       expect(forkEvent).toBeDefined();
+    });
+  });
+
+  describe('Phase 3: Enhanced Choice Previews - Integration', () => {
+    it('should provide enhanced choice previews with all properties', async () => {
+      const source = `
+        protocol ChoiceProtocol(role A, role B) {
+          choice at A {
+            A -> B: Option1(string);
+            B -> A: Response1(int);
+          } or {
+            A -> B: Option2(int);
+            B -> A: Response2(string);
+            A -> B: Follow(string);
+          }
+        }
+      `;
+
+      const module = parse(source);
+      const protocol = module.declarations.find(
+        d => d.type === 'GlobalProtocolDeclaration'
+      ) as GlobalProtocolDeclaration;
+
+      expect(protocol).toBeDefined();
+      const cfg = buildCFG(protocol);
+
+      await initializeSimulation(cfg);
+
+      // Should be at choice point
+      const state = get(executionState);
+      expect(state?.atChoice).toBe(true);
+
+      // Get available choices
+      const choices = get(availableChoices);
+      expect(choices.length).toBe(2);
+
+      // Verify all EnhancedChoiceOption properties are present
+      for (const choice of choices) {
+        // Basic properties
+        expect(choice).toHaveProperty('index');
+        expect(choice).toHaveProperty('label');
+        expect(choice).toHaveProperty('firstNode');
+
+        // Enhanced properties (Phase 3)
+        expect(choice).toHaveProperty('preview');
+        expect(choice).toHaveProperty('participatingRoles');
+        expect(choice).toHaveProperty('estimatedSteps');
+
+        // Verify preview is ActionPreview array
+        expect(Array.isArray(choice.preview)).toBe(true);
+        expect(choice.preview.length).toBeGreaterThan(0);
+
+        // Verify participating roles
+        expect(Array.isArray(choice.participatingRoles)).toBe(true);
+        expect(choice.participatingRoles.length).toBeGreaterThan(0);
+
+        // Verify estimated steps
+        expect(typeof choice.estimatedSteps).toBe('number');
+        expect(choice.estimatedSteps).toBeGreaterThan(0);
+      }
+
+      // Verify branch 1 has 2 actions (Option1 + Response1)
+      expect(choices[0].preview.length).toBeGreaterThanOrEqual(2);
+      expect(choices[0].participatingRoles).toContain('A');
+      expect(choices[0].participatingRoles).toContain('B');
+
+      // Verify branch 2 has 3 actions (Option2 + Response2 + Follow)
+      expect(choices[1].preview.length).toBeGreaterThanOrEqual(3);
+      expect(choices[1].participatingRoles).toContain('A');
+      expect(choices[1].participatingRoles).toContain('B');
     });
   });
 
