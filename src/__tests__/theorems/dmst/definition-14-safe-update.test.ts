@@ -88,12 +88,11 @@
 
 import { describe, it, expect } from 'vitest';
 
-// NOTE: These imports will fail until we implement DMst extensions
-// This is intentional - tests guide implementation (TDD)
-// import { parse } from '../../../core/parser/parser';
-// import { buildCFG } from '../../../core/cfg/builder';
-// import { compute1Unfolding, checkSafeUpdate } from '../../../core/verification/dmst/safe-update';
-// import { verifyProtocol } from '../../../core/verification/verifier';
+// DMst verification imports
+import { parse } from '../../../core/parser/parser';
+import { buildCFG } from '../../../core/cfg/builder';
+import { compute1Unfolding, checkSafeProtocolUpdate } from '../../../core/verification/dmst/safe-update';
+import { verifyProtocol } from '../../../core/verification/verifier';
 
 describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', () => {
   /**
