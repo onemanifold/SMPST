@@ -65,6 +65,9 @@ export async function initializeSimulation(cfg: CFG) {
     recordTrace: true
   });
 
+  // Phase 2: Enable execution history for backward stepping
+  simulator.enableHistory();
+
   currentCFG.set(cfg);
   executionState.set(simulator.getState());
   simulationMode.set('idle');
@@ -81,7 +84,8 @@ export async function initializeSimulation(cfg: CFG) {
 export function stepSimulation() {
   if (!simulator) return;
 
-  const result = simulator.step();
+  // Use stepForward() to record history snapshots
+  const result = simulator.stepForward();
   executionState.set(result.state);
 
   // Phase 1: Capture execution event if present
@@ -107,7 +111,11 @@ export function stepSimulation() {
 export function makeChoice(choiceIndex: number) {
   if (!simulator) return;
 
-  const result = simulator.step(choiceIndex);
+  // Set the choice
+  simulator.choose(choiceIndex);
+
+  // Step forward with the choice (records history snapshot)
+  const result = simulator.stepForward();
   executionState.set(result.state);
 
   // Phase 1: Capture execution event if present
@@ -191,15 +199,9 @@ export function stepBack() {
     const history = simulator.getExecutionHistory();
     currentStepNumber.set(history.getCurrentPosition());
 
-    // Truncate events to match history position
-    const snapshots = history.getAllSnapshots();
-    const currentSnapshot = snapshots.find(s => s.stepNumber === history.getCurrentPosition());
-    if (currentSnapshot) {
-      // Keep only events up to current step
-      executionEvents.update(events =>
-        events.filter(e => e.timestamp <= currentSnapshot.timestamp)
-      );
-    }
+    // TODO: Event truncation/filtering
+    // Consider using a derived store that filters events based on currentStepNumber
+    // This would require adding stepNumber to each event when captured
   }
 }
 
