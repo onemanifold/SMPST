@@ -31,6 +31,7 @@ import type {
   Message,
   SimulationStepResult,
   ExecutionResult,
+  SimulatorConfig,
 } from './types';
 import type {
   DMstSimulationState,
@@ -49,6 +50,7 @@ import {
   detectDMstDeadlock,
 } from './dmst-runtime';
 import { InMemoryTransport } from './transport';
+import { Simulator } from './simulator';
 import { DMstExecutor, type DMstExecutorConfig } from './dmst-executor';
 import {
   createVersionRegistry,
@@ -65,14 +67,18 @@ import {
 /**
  * DMst-aware multi-role protocol simulator.
  *
- * ARCHITECTURE (Executor Pattern):
+ * ARCHITECTURE (Extends Simulator):
+ * - Extends base Simulator with DMst-specific capabilities
+ * - Inherits: fair scheduling, trace recording, observers, pause/resume
+ * - Adds: dynamic participants, version management, invitation protocol
+ *
  * - Simulator orchestrates multiple DMstExecutor instances
  * - Each executor manages one role's CFSM execution
  * - Simulator handles:
- *   - Fair scheduling (round-robin)
- *   - Dynamic participant creation
- *   - Invitation synchronization
- *   - Completion/deadlock detection
+ *   - Fair scheduling (round-robin) - inherited
+ *   - Dynamic participant creation - DMst-specific
+ *   - Invitation synchronization - DMst-specific
+ *   - Completion/deadlock detection - overridden for DMst
  * - Executor handles:
  *   - Epsilon auto-advance
  *   - Sub-protocol call stack
@@ -83,35 +89,18 @@ import {
  * - Fair scheduling ensures all roles eventually execute
  * - Round-robin prevents starvation
  */
-export class DMstSimulator {
-  private state: DMstSimulationState;
-  private transport: MessageTransport;
+export class DMstSimulator extends Simulator {
+  // DMst-specific state (shadows base state with extended type)
+  protected state: DMstSimulationState;
+
+  // DMst-specific fields
   private cfsms: Map<string, CFSM>; // Static role CFSMs
   private dynamicCFSMs: Map<string, CFSM>; // Dynamic role type → CFSM template
-
-  // Executor pattern: One executor per role
-  private executors: Map<string, DMstExecutor> = new Map();
-
-  // Fair scheduling: Round-robin role selection
-  private nextRoleIndex: number = 0;
-  private roleNames: string[] = [];
-
-  // CFSM registry for sub-protocol calls
   private cfsmRegistry: Map<string, Map<string, CFSM>> = new Map();
-
-  // Observer pattern: Event notification (Sprint 2, Issue #5)
-  private observers: Set<DMstExecutionObserver> = new Set();
-
-  // Trace recording: Execution history (Sprint 2, Issue #6)
-  private trace: DMstExecutionTrace;
-  private recordTrace: boolean = false;
 
   // Sprint 3: Version registry for updatable recursion
   private versionRegistry: CFSMVersionRegistry;
   private protocolName: string;
-
-  // Pause/resume: Run control (Sprint 2, Issue #7)
-  private currentRunPause: (() => void) | null = null;
 
   constructor(
     staticRoles: Map<string, CFSM>,
@@ -123,26 +112,29 @@ export class DMstSimulator {
       protocolName?: string;  // Sprint 3: Protocol name for version registry
     }
   ) {
+    // Call base Simulator constructor
+    super({
+      roles: staticRoles,
+      transport,
+      options: {
+        recordTrace: options?.recordTrace,
+        maxSteps: 1000,
+        strictMode: false,
+      },
+    });
+
+    // Initialize DMst-specific state
     this.state = createDMstSimulationState(staticRoles);
-    this.transport = transport || new InMemoryTransport();
     this.cfsms = staticRoles;
     this.dynamicCFSMs = dynamicRoles;
     this.cfsmRegistry = cfsmRegistry || new Map();
-    this.recordTrace = options?.recordTrace || false;
     this.protocolName = options?.protocolName || 'UnnamedProtocol';
 
     // Sprint 3: Initialize version registry
     this.versionRegistry = createVersionRegistry();
 
-    // Initialize trace
-    this.trace = {
-      events: [],
-      startTime: Date.now(),
-      completed: false,
-    };
-
-    // Create executor for each static role
-    this.roleNames = Array.from(staticRoles.keys()).sort();
+    // Replace base Executors with DMstExecutors
+    this.executors.clear();
     for (const [role, cfsm] of staticRoles.entries()) {
       // Sprint 3: Register initial version (v1)
       registerInitialVersion(this.versionRegistry, this.protocolName, role, cfsm);
@@ -159,11 +151,6 @@ export class DMstSimulator {
         protocolName: this.protocolName,
       };
       this.executors.set(role, new DMstExecutor(config));
-    }
-
-    // Add trace recorder if enabled
-    if (this.recordTrace) {
-      this.addTraceRecorder();
     }
   }
 
@@ -278,61 +265,8 @@ export class DMstSimulator {
     };
   }
 
-  /**
-   * Run simulation to completion or max steps.
-   *
-   * Repeatedly calls step() until:
-   * - All roles completed
-   * - Deadlock detected
-   * - Max steps reached
-   * - Pause requested
-   *
-   * PAUSE/RESUME (Sprint 2, Issue #7):
-   * - Uses run-specific closure variable for pause signal
-   * - Calling pause() sets signal for current run() only
-   * - Signal auto-cleared when run() exits
-   * - Internal state preserved between runs
-   *
-   * @param maxSteps - Maximum steps (default: 1000)
-   * @returns Final state
-   */
-  async run(maxSteps: number = 1000): Promise<DMstSimulationState> {
-    let steps = 0;
-
-    // Run-specific pause signal (closure variable)
-    let pauseRequested = false;
-
-    // Expose pause setter for this specific run() invocation
-    this.currentRunPause = () => { pauseRequested = true; };
-
-    try {
-      while (!this.state.completed && !this.state.deadlocked && steps < maxSteps && !pauseRequested) {
-        await this.step();
-        steps++;
-
-        // Yield to event loop to allow pause() and other async operations
-        await new Promise(resolve => setImmediate(resolve));
-      }
-
-      if (steps >= maxSteps && !this.state.completed) {
-        this.state.error = {
-          type: 'deadlock',
-          message: `Simulation exceeded max steps (${maxSteps})`,
-        };
-      }
-
-      // Update trace completion status
-      if (this.state.completed) {
-        this.trace.completed = true;
-        this.trace.endTime = Date.now();
-      }
-
-      return this.state;
-    } finally {
-      // Clear run-specific pause handler (auto-cleanup)
-      this.currentRunPause = null;
-    }
-  }
+  // Note: run() method inherited from Simulator base class
+  // The inherited run() calls our overridden step() method
 
   /**
    * Get current simulation state.
@@ -742,10 +676,6 @@ export class DMstSimulator {
    * Internal state (stepCount, executor positions) is preserved,
    * allowing resumption by calling run() again.
    */
-  pause(): void {
-    if (this.currentRunPause) {
-      this.currentRunPause();  // Set current run's pause signal
-    }
-  }
+  // Note: pause() method inherited from Simulator base class
 }
 

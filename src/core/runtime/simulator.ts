@@ -24,20 +24,20 @@ import type { MessageTransport } from './types';
  * Orchestrates multiple CFSM executors
  */
 export class Simulator {
-  private executors: Map<string, Executor> = new Map();
-  private transport: MessageTransport;
-  private options: SimulatorConfig['options'];
-  private observers: Set<ExecutionObserver> = new Set();
+  protected executors: Map<string, Executor> = new Map();
+  protected transport: MessageTransport;
+  protected options: SimulatorConfig['options'];
+  protected observers: Set<ExecutionObserver> = new Set();
 
-  private stepCount: number = 0;
-  private trace: ExecutionTrace;
+  protected stepCount: number = 0;
+  protected trace: ExecutionTrace;
 
   // Fair scheduling: round-robin role selection
-  private nextRoleIndex: number = 0;
-  private roleNames: string[] = [];
+  protected nextRoleIndex: number = 0;
+  protected roleNames: string[] = [];
 
   // Pause/resume: run-specific closure (null when no run() active)
-  private currentRunPause: (() => void) | null = null;
+  protected currentRunPause: (() => void) | null = null;
 
   constructor(config: SimulatorConfig) {
     this.transport = config.transport || createInMemoryTransport();
