@@ -33,7 +33,7 @@ import { InMemoryTransport } from '../../core/runtime/transport';
 // ============================================================================
 
 /**
- * Create a simple two-state CFSM for testing
+ * Create a simple two-state CFSM for testing with recursion point
  */
 function createSimpleCFSM(role: string): CFSM {
   return {
@@ -42,27 +42,27 @@ function createSimpleCFSM(role: string): CFSM {
     parameters: [],
     states: [
       { id: 'S0' },
-      { id: 'S1' },
+      { id: 'S1_rec_X' },  // Recursion point - state ID includes 'X'
     ],
     transitions: [
       {
         id: 't1',
         from: 'S0',
-        to: 'S1',
+        to: 'S1_rec_X',
         action: { type: 'tau' },
       },
     ],
     initialState: 'S0',
-    terminalStates: ['S1'],
+    terminalStates: ['S1_rec_X'],
   };
 }
 
 /**
  * Create an extension CFSM (2 new states with send action)
  */
-function createExtensionCFSM(): CFSM {
+function createExtensionCFSM(role: string = 'test'): CFSM {
   return {
-    role: 'test',
+    role,
     protocolName: 'ExtensionProtocol',
     parameters: [],
     states: [
@@ -206,7 +206,7 @@ describe('Updatable Recursion - Version Registry', () => {
 describe('Updatable Recursion - CFSM Extension', () => {
   it('should extend CFSM with new states', () => {
     const original = createSimpleCFSM('Alice');
-    const extension = createExtensionCFSM();
+    const extension = createExtensionCFSM('Alice');
 
     const extended = extendCFSM(original, extension, 'X');
 
@@ -217,7 +217,7 @@ describe('Updatable Recursion - CFSM Extension', () => {
 
   it('should connect extension to recursion point', () => {
     const original = createRecursiveProtocolCFSM('Alice');
-    const extension = createExtensionCFSM();
+    const extension = createExtensionCFSM('Alice');
 
     const extended = extendCFSM(original, extension, 'X');
 
@@ -234,7 +234,7 @@ describe('Updatable Recursion - CFSM Extension', () => {
 
   it('should preserve original terminal states', () => {
     const original = createSimpleCFSM('Alice');
-    const extension = createExtensionCFSM();
+    const extension = createExtensionCFSM('Alice');
 
     const extended = extendCFSM(original, extension, 'X');
 
@@ -251,7 +251,7 @@ describe('Updatable Recursion - Update Registration', () => {
   it('should register CFSM update', () => {
     const registry = createVersionRegistry();
     const original = createSimpleCFSM('Alice');
-    const extension = createExtensionCFSM();
+    const extension = createExtensionCFSM('Alice');
 
     registerInitialVersion(registry, 'TestProtocol', 'Alice', original);
 
@@ -273,7 +273,7 @@ describe('Updatable Recursion - Update Registration', () => {
   it('should track parent version in update', () => {
     const registry = createVersionRegistry();
     const original = createSimpleCFSM('Alice');
-    const extension = createExtensionCFSM();
+    const extension = createExtensionCFSM('Alice');
 
     registerInitialVersion(registry, 'TestProtocol', 'Alice', original);
 
@@ -295,8 +295,8 @@ describe('Updatable Recursion - Update Registration', () => {
   it('should support multiple updates (chaining)', () => {
     const registry = createVersionRegistry();
     const original = createSimpleCFSM('Alice');
-    const ext1 = createExtensionCFSM();
-    const ext2 = createExtensionCFSM();
+    const ext1 = createExtensionCFSM('Alice');
+    const ext2 = createExtensionCFSM('Alice');
 
     registerInitialVersion(registry, 'TestProtocol', 'Alice', original);
 
@@ -361,7 +361,7 @@ describe('Updatable Recursion - Executor Version Tracking', () => {
       protocolName: 'TestProtocol',
     });
 
-    const newCFSM = extendCFSM(cfsm, createExtensionCFSM(), 'X');
+    const newCFSM = extendCFSM(cfsm, createExtensionCFSM('Alice'), 'X');
     executor.applyCFSMUpdate(newCFSM, 2);
 
     expect(executor.getCFSMVersion()).toBe(2);
@@ -384,7 +384,7 @@ describe('Updatable Recursion - Executor Version Tracking', () => {
     const stateBefore = executor.getState();
 
     // Apply update
-    const newCFSM = extendCFSM(cfsm, createExtensionCFSM(), 'X');
+    const newCFSM = extendCFSM(cfsm, createExtensionCFSM('Alice'), 'X');
     executor.applyCFSMUpdate(newCFSM, 2);
 
     // State should be preserved
@@ -497,7 +497,7 @@ describe('Updatable Recursion - End-to-End', () => {
 describe('Updatable Recursion - Correctness Properties', () => {
   it('should maintain CFSM well-formedness after extension', () => {
     const original = createRecursiveProtocolCFSM('Alice');
-    const extension = createExtensionCFSM();
+    const extension = createExtensionCFSM('Alice');
 
     const extended = extendCFSM(original, extension, 'X');
 
@@ -529,7 +529,7 @@ describe('Updatable Recursion - Correctness Properties', () => {
       protocolName: 'TestProtocol',
       roleName: 'Alice',
       recursionVar: 'X',
-      extension: createExtensionCFSM(),
+      extension: createExtensionCFSM('Alice'),
       targetVersion: 1,
     };
 
@@ -552,7 +552,7 @@ describe('Updatable Recursion - Correctness Properties', () => {
       protocolName: 'TestProtocol',
       roleName: 'Alice',
       recursionVar: 'X',
-      extension: createExtensionCFSM(),
+      extension: createExtensionCFSM('Alice'),
       targetVersion: 1,
     };
 
@@ -562,7 +562,7 @@ describe('Updatable Recursion - Correctness Properties', () => {
       protocolName: 'TestProtocol',
       roleName: 'Alice',
       recursionVar: 'X',
-      extension: createExtensionCFSM(),
+      extension: createExtensionCFSM('Alice'),
       targetVersion: v2,
     };
 
