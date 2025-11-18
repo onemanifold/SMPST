@@ -3,7 +3,7 @@
  */
 import { writable, derived, get } from 'svelte/store';
 import type { CFG } from '../../core/cfg/types';
-import type { CFGExecutionState, CFGStepResult } from '../../core/simulation/types';
+import type { CFGExecutionState, CFGStepResult, CFGExecutionEvent } from '../../core/simulation/types';
 
 // Simulation mode
 export type SimulationMode = 'idle' | 'stepping' | 'playing';
@@ -20,6 +20,9 @@ export const currentCFG = writable<CFG | null>(null);
 
 // Playback speed (ms between steps in play mode)
 export const playbackSpeed = writable<number>(300);
+
+// Phase 1: Execution Events - ALL events from simulator
+export const executionEvents = writable<CFGExecutionEvent[]>([]);
 
 // Play mode interval
 let playInterval: ReturnType<typeof setInterval> | null = null;
@@ -72,6 +75,11 @@ export function stepSimulation() {
   const result = simulator.step();
   executionState.set(result.state);
 
+  // Phase 1: Capture execution event if present
+  if (result.event) {
+    executionEvents.update(events => [...events, result.event!]);
+  }
+
   if (result.state.completed) {
     simulationMode.set('idle');
   }
@@ -85,6 +93,11 @@ export function makeChoice(choiceIndex: number) {
 
   const result = simulator.step(choiceIndex);
   executionState.set(result.state);
+
+  // Phase 1: Capture execution event if present
+  if (result.event) {
+    executionEvents.update(events => [...events, result.event!]);
+  }
 
   if (result.state.completed) {
     simulationMode.set('idle');
@@ -147,6 +160,9 @@ export function resetSimulation() {
   simulator.reset();
   executionState.set(simulator.getState());
   simulationMode.set('idle');
+
+  // Phase 1: Clear execution events
+  executionEvents.set([]);
 }
 
 /**
@@ -158,6 +174,9 @@ export function stopSimulation() {
   executionState.set(null);
   currentCFG.set(null);
   simulationMode.set('idle');
+
+  // Phase 1: Clear execution events
+  executionEvents.set([]);
 }
 
 // Derived stores
@@ -185,4 +204,35 @@ export const isAtChoice = derived(
 export const availableChoices = derived(
   executionState,
   $state => $state?.availableChoices ?? []
+);
+
+// Phase 1: Event filtering - Derived stores for each event type
+export const messageEvents = derived(
+  executionEvents,
+  $events => $events.filter(e => e.type === 'message')
+);
+
+export const choiceEvents = derived(
+  executionEvents,
+  $events => $events.filter(e => e.type === 'choice')
+);
+
+export const recursionEvents = derived(
+  executionEvents,
+  $events => $events.filter(e => e.type === 'recursion')
+);
+
+export const parallelEvents = derived(
+  executionEvents,
+  $events => $events.filter(e => e.type === 'parallel')
+);
+
+export const subProtocolEvents = derived(
+  executionEvents,
+  $events => $events.filter(e => e.type === 'subprotocol')
+);
+
+export const stateChangeEvents = derived(
+  executionEvents,
+  $events => $events.filter(e => e.type === 'state-change')
 );
