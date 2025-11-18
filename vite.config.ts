@@ -31,7 +31,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'jsdom',
+    environment: 'node', // Changed from 'jsdom' - tests don't use DOM
     setupFiles: ['./src/test/setup.ts']
   },
   optimizeDeps: {
