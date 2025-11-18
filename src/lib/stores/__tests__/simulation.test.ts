@@ -23,6 +23,14 @@ import {
   stateChangeEvents,
   resetSimulation,
   stopSimulation,
+  // Phase 2: Backward Stepping
+  canStepBack,
+  canStepForward,
+  currentStepNumber,
+  totalStepCount,
+  stepBack,
+  stepForward,
+  jumpToStep,
 } from '../simulation';
 
 describe('Simulation Store - Backend Contract Enforcement', () => {
@@ -173,19 +181,38 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
   });
 
   describe('Phase 2: Backward Stepping - HIGH PRIORITY', () => {
-    it.todo('should expose canStepBack derived store', () => {
-      // TODO: Execution history not implemented
-      // Expected: canStepBack = derived based on history.getCurrentPosition() > 0
-      // Current: No history system
+    it('should expose canStepBack derived store', () => {
+      // canStepBack should be false initially (at step 0)
+      const canGoBack = get(canStepBack);
+      expect(typeof canGoBack).toBe('boolean');
+      expect(canGoBack).toBe(false);
+    });
 
-      // const canGoBack = get(canStepBack);
-      // expect(typeof canGoBack).toBe('boolean');
+    it('should expose canStepForward derived store', () => {
+      // canStepForward should be false initially (no steps taken yet)
+      const canGoForward = get(canStepForward);
+      expect(typeof canGoForward).toBe('boolean');
+      expect(canGoForward).toBe(false);
+    });
+
+    it('should track currentStepNumber', () => {
+      // Should start at 0
+      const currentStep = get(currentStepNumber);
+      expect(typeof currentStep).toBe('number');
+      expect(currentStep).toBe(0);
+    });
+
+    it('should track totalStepCount', () => {
+      // Should start at 0
+      const totalSteps = get(totalStepCount);
+      expect(typeof totalSteps).toBe('number');
+      expect(totalSteps).toBe(0);
     });
 
     it.todo('should enable stepBack() action', async () => {
-      // TODO: Backward stepping not implemented
+      // TODO: Requires simulator initialized with CFG
       // Expected: stepBack() restores previous snapshot from history
-      // Current: No stepBack function
+      // Current: Need integration test with real CFG
 
       // await initializeSimulation(cfg);
       // await stepSimulation();
@@ -196,16 +223,32 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
       // expect(restoredState).toEqual(step1State);
     });
 
-    it.todo('should track execution history snapshots', async () => {
-      // TODO: ExecutionHistory not integrated
-      // Expected: Snapshot at every step
-      // Current: No history
+    it.todo('should enable stepForward() action', async () => {
+      // TODO: Requires simulator initialized with CFG
+      // Expected: stepForward() after stepBack() restores forward state
+      // Current: Need integration test with real CFG
 
       // await initializeSimulation(cfg);
       // await stepSimulation();
       // await stepSimulation();
-      // const snapshots = get(executionSnapshots);
-      // expect(snapshots.length).toBe(2);
+      // await stepBack();
+      // await stepForward();
+      // const state = get(executionState);
+      // expect(state.stepCount).toBe(2);
+    });
+
+    it.todo('should enable jumpToStep() action', async () => {
+      // TODO: Requires simulator initialized with CFG
+      // Expected: jumpToStep(n) restores state at step n
+      // Current: Need integration test with real CFG
+
+      // await initializeSimulation(cfg);
+      // await stepSimulation(); // step 1
+      // await stepSimulation(); // step 2
+      // await stepSimulation(); // step 3
+      // await jumpToStep(1);
+      // const state = get(executionState);
+      // expect(state.stepCount).toBe(1);
     });
   });
 

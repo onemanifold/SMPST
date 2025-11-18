@@ -24,6 +24,10 @@ export const playbackSpeed = writable<number>(300);
 // Phase 1: Execution Events - ALL events from simulator
 export const executionEvents = writable<CFGExecutionEvent[]>([]);
 
+// Phase 2: Execution History - backward stepping state
+export const currentStepNumber = writable<number>(0);
+export const totalStepCount = writable<number>(0);
+
 // Play mode interval
 let playInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -64,6 +68,11 @@ export async function initializeSimulation(cfg: CFG) {
   currentCFG.set(cfg);
   executionState.set(simulator.getState());
   simulationMode.set('idle');
+
+  // Phase 2: Initialize history state
+  const history = simulator.getExecutionHistory();
+  currentStepNumber.set(history.getCurrentPosition());
+  totalStepCount.set(history.getAllSnapshots().length);
 }
 
 /**
@@ -78,6 +87,13 @@ export function stepSimulation() {
   // Phase 1: Capture execution event if present
   if (result.event) {
     executionEvents.update(events => [...events, result.event!]);
+  }
+
+  // Phase 2: Update history state
+  if (result.success) {
+    const history = simulator.getExecutionHistory();
+    currentStepNumber.set(history.getCurrentPosition());
+    totalStepCount.set(history.getAllSnapshots().length);
   }
 
   if (result.state.completed) {
@@ -97,6 +113,13 @@ export function makeChoice(choiceIndex: number) {
   // Phase 1: Capture execution event if present
   if (result.event) {
     executionEvents.update(events => [...events, result.event!]);
+  }
+
+  // Phase 2: Update history state
+  if (result.success) {
+    const history = simulator.getExecutionHistory();
+    currentStepNumber.set(history.getCurrentPosition());
+    totalStepCount.set(history.getAllSnapshots().length);
   }
 
   if (result.state.completed) {
@@ -150,6 +173,89 @@ export function pauseSimulation() {
   simulationMode.set('stepping');
 }
 
+// ============================================================================
+// Phase 2: Backward Stepping Actions
+// ============================================================================
+
+/**
+ * Step backward in execution history
+ */
+export function stepBack() {
+  if (!simulator) return;
+
+  const result = simulator.stepBackward();
+  if (result.success) {
+    executionState.set(result.state);
+
+    // Update history position
+    const history = simulator.getExecutionHistory();
+    currentStepNumber.set(history.getCurrentPosition());
+
+    // Truncate events to match history position
+    const snapshots = history.getAllSnapshots();
+    const currentSnapshot = snapshots.find(s => s.stepNumber === history.getCurrentPosition());
+    if (currentSnapshot) {
+      // Keep only events up to current step
+      executionEvents.update(events =>
+        events.filter(e => e.timestamp <= currentSnapshot.timestamp)
+      );
+    }
+  }
+}
+
+/**
+ * Step forward in execution history (redo)
+ */
+export function stepForward() {
+  if (!simulator) return;
+
+  const result = simulator.stepForward();
+  if (result.success) {
+    executionState.set(result.state);
+
+    // Phase 1: Capture execution event if present
+    if (result.event) {
+      executionEvents.update(events => [...events, result.event!]);
+    }
+
+    // Phase 2: Update history state
+    const history = simulator.getExecutionHistory();
+    currentStepNumber.set(history.getCurrentPosition());
+    totalStepCount.set(history.getAllSnapshots().length);
+  }
+}
+
+/**
+ * Jump to a specific step in execution history
+ */
+export function jumpToStep(stepNumber: number) {
+  if (!simulator) return;
+
+  const history = simulator.getExecutionHistory();
+  const snapshot = history.getSnapshot(stepNumber);
+
+  if (!snapshot) return;
+
+  // Update position and restore snapshot
+  history.setCurrentPosition(stepNumber);
+
+  // Get the state by stepping backward/forward to that position
+  const currentPos = history.getCurrentPosition();
+  const targetPos = stepNumber;
+
+  if (targetPos < currentPos) {
+    // Step backward
+    while (history.getCurrentPosition() > targetPos) {
+      stepBack();
+    }
+  } else if (targetPos > currentPos) {
+    // Step forward
+    while (history.getCurrentPosition() < targetPos) {
+      stepForward();
+    }
+  }
+}
+
 /**
  * Reset simulation to initial state
  */
@@ -163,6 +269,11 @@ export function resetSimulation() {
 
   // Phase 1: Clear execution events
   executionEvents.set([]);
+
+  // Phase 2: Reset history state
+  const history = simulator.getExecutionHistory();
+  currentStepNumber.set(history.getCurrentPosition());
+  totalStepCount.set(history.getAllSnapshots().length);
 }
 
 /**
@@ -177,6 +288,10 @@ export function stopSimulation() {
 
   // Phase 1: Clear execution events
   executionEvents.set([]);
+
+  // Phase 2: Reset history state
+  currentStepNumber.set(0);
+  totalStepCount.set(0);
 }
 
 // Derived stores
@@ -235,4 +350,15 @@ export const subProtocolEvents = derived(
 export const stateChangeEvents = derived(
   executionEvents,
   $events => $events.filter(e => e.type === 'state-change')
+);
+
+// Phase 2: History-based derived stores
+export const canStepBack = derived(
+  currentStepNumber,
+  $currentStep => $currentStep > 0
+);
+
+export const canStepForward = derived(
+  [currentStepNumber, totalStepCount],
+  ([$currentStep, $totalSteps]) => $currentStep < $totalSteps
 );

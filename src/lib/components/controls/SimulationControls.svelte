@@ -14,6 +14,7 @@
     makeChoice,
     playbackSpeed,
   } from '$lib/stores/simulation';
+  import TimelineControls from './TimelineControls.svelte';
 
   let selectedChoice: number | null = null;
 
@@ -122,6 +123,8 @@
       />
       <span class="speed-value">{$playbackSpeed}ms</span>
     </div>
+
+    <TimelineControls />
 
     {#if $isAtChoice}
       <div class="choice-group" class:auto-selecting={$isPlaying}>
