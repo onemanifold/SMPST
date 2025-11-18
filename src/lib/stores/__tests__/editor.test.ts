@@ -189,57 +189,148 @@ describe('Editor Store - Backend Contract Enforcement', () => {
       });
     });
 
-    describe('Missing Checks - CRITICAL GAPS (9/16)', () => {
+    describe('Previously Missing Checks - NOW EXPOSED (9/16)', () => {
       /**
-       * ⚠️ THESE CHECKS ARE CURRENTLY IGNORED ⚠️
+       * ✅ THESE CHECKS ARE NOW EXPOSED ✅
        *
-       * The backend performs these checks, but editor.ts doesn't expose them.
-       * This means protocols with these issues appear valid in the UI.
+       * These were previously ignored but are now included in the
+       * comprehensive VerificationResult interface.
        */
 
-      it.todo('should expose structural verification', async () => {
-        // Checks: orphaned nodes, unreachable states
-        // MISSING: result.structural not used in editor.ts:152-197
+      it('should expose structural verification', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result).toBeDefined();
+        expect(result?.structural).toBeDefined();
+        expect(result?.structural).toHaveProperty('valid');
+        expect(result?.structural).toHaveProperty('issues');
       });
 
-      it.todo('should expose choiceMergeability check', async () => {
-        // Checks: whether choice branches can merge consistently
-        // MISSING: result.choiceMergeability not used
+      it('should expose choiceMergeability check', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result?.choiceMergeability).toBeDefined();
+        expect(result?.choiceMergeability).toHaveProperty('valid');
+        expect(result?.choiceMergeability).toHaveProperty('issues');
       });
 
-      it.todo('should expose connectedness check', async () => {
-        // Checks: all declared roles participate in protocol
-        // MISSING: result.connectedness not used
+      it('should expose connectedness check', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result?.connectedness).toBeDefined();
+        expect(result?.connectedness).toHaveProperty('valid');
+        expect(result?.connectedness).toHaveProperty('issues');
       });
 
-      it.todo('should expose nestedRecursion check', async () => {
-        // Checks: recursion label scoping (Theorem 5.1)
-        // MISSING: result.nestedRecursion not used
+      it('should expose nestedRecursion check (Theorem 5.1)', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result?.nestedRecursion).toBeDefined();
+        expect(result?.nestedRecursion).toHaveProperty('valid');
+        expect(result?.nestedRecursion).toHaveProperty('issues');
       });
 
-      it.todo('should expose recursionInParallel check', async () => {
-        // Checks: recursion doesn't cross parallel boundaries
-        // MISSING: result.recursionInParallel not used
+      it('should expose recursionInParallel check', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result?.recursionInParallel).toBeDefined();
+        expect(result?.recursionInParallel).toHaveProperty('valid');
+        expect(result?.recursionInParallel).toHaveProperty('issues');
       });
 
-      it.todo('should expose forkJoinStructure check', async () => {
-        // Checks: parallel fork/join pairs match
-        // MISSING: result.forkJoinStructure not used
+      it('should expose forkJoinStructure check', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result?.forkJoinStructure).toBeDefined();
+        expect(result?.forkJoinStructure).toHaveProperty('valid');
+        expect(result?.forkJoinStructure).toHaveProperty('issues');
       });
 
-      it.todo('should expose selfCommunication check', async () => {
-        // Checks: no role sends to itself
-        // MISSING: result.selfCommunication not used
+      it('should expose selfCommunication check', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result?.selfCommunication).toBeDefined();
+        expect(result?.selfCommunication).toHaveProperty('valid');
+        expect(result?.selfCommunication).toHaveProperty('issues');
       });
 
-      it.todo('should expose emptyChoiceBranch check', async () => {
-        // Checks: choice branches aren't empty
-        // MISSING: result.emptyChoiceBranch not used
+      it('should expose emptyChoiceBranch check', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result?.emptyChoiceBranch).toBeDefined();
+        expect(result?.emptyChoiceBranch).toHaveProperty('valid');
+        expect(result?.emptyChoiceBranch).toHaveProperty('issues');
       });
 
-      it.todo('should expose mergeReachability check', async () => {
-        // Checks: all choice branches reach merge point
-        // MISSING: result.mergeReachability not used
+      it('should expose mergeReachability check', async () => {
+        const protocol = `
+          global protocol Simple(role A, role B) {
+            msg(int) from A to B;
+          }
+        `;
+
+        await parseProtocol(protocol);
+        const result = get(verificationResult);
+
+        expect(result?.mergeReachability).toBeDefined();
+        expect(result?.mergeReachability).toHaveProperty('valid');
+        expect(result?.mergeReachability).toHaveProperty('issues');
       });
     });
 

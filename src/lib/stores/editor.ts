@@ -30,13 +30,37 @@ export type ParseStatus = 'idle' | 'parsing' | 'success' | 'error';
 export const parseStatus = writable<ParseStatus>('idle');
 export const parseError = writable<string | null>(null);
 
-// Mock verification results (for UI demonstration)
+// Complete verification results (ALL 16 checks from backend)
+export interface VerificationCheckResult {
+  valid: boolean;
+  issues: string[];
+}
+
 export interface VerificationResult {
+  // Original properties (backward compatible)
   deadlockFree: boolean;
   livenessSatisfied: boolean;
   safetySatisfied: boolean;
   warnings: string[];
   errors: string[];
+
+  // ALL 16 verification checks (comprehensive backend contract)
+  structural: VerificationCheckResult;
+  deadlock: VerificationCheckResult;
+  liveness: VerificationCheckResult;
+  parallelDeadlock: VerificationCheckResult;
+  raceConditions: VerificationCheckResult;
+  progress: VerificationCheckResult;
+  choiceDeterminism: VerificationCheckResult;
+  choiceMergeability: VerificationCheckResult;
+  connectedness: VerificationCheckResult;
+  nestedRecursion: VerificationCheckResult;
+  recursionInParallel: VerificationCheckResult;
+  forkJoinStructure: VerificationCheckResult;
+  multicast: VerificationCheckResult;
+  selfCommunication: VerificationCheckResult;
+  emptyChoiceBranch: VerificationCheckResult;
+  mergeReachability: VerificationCheckResult;
 }
 
 export const verificationResult = writable<VerificationResult | null>(null);
@@ -157,53 +181,89 @@ export async function parseProtocol(content: string) {
     // Extract roles from projection result
     const roles = projectionResult.roles;
 
-    // 5. Collect errors and warnings from verification
-    const errors: string[] = [];
-    const warnings: string[] = [];
+    // 5. Extract ALL verification issues using contract handler
+    const { extractVerificationIssues } = await import('./contracts/editor-contract');
+    const issues = extractVerificationIssues(result);
 
-    // Deadlock
-    if (result.deadlock.hasDeadlock) {
-      errors.push(`Deadlock detected: ${result.deadlock.cycles.length} cycle(s)`);
-    }
+    // Combine errors, warnings, and critical issues
+    const allErrors = [...issues.errors, ...issues.criticalIssues];
+    const allWarnings = issues.warnings;
 
-    // Liveness
-    if (!result.liveness.isLive) {
-      errors.push(`Liveness violated: ${result.liveness.violations.length} violation(s)`);
-    }
-
-    // Parallel deadlock
-    if (result.parallelDeadlock.hasDeadlock) {
-      errors.push(`Parallel deadlock detected: ${result.parallelDeadlock.conflicts.length} conflict(s)`);
-    }
-
-    // Race conditions
-    if (result.raceConditions.hasRaces) {
-      warnings.push(`Race conditions detected: ${result.raceConditions.races.length} race(s)`);
-    }
-
-    // Progress
-    if (!result.progress.canProgress) {
-      errors.push(`Progress not satisfied: ${result.progress.blockedNodes.length} blocked node(s)`);
-    }
-
-    // Choice determinism
-    if (!result.choiceDeterminism.isDeterministic) {
-      errors.push(`Choice non-determinism: ${result.choiceDeterminism.violations.length} violation(s)`);
-    }
-
-    // Multicast warnings
-    if (result.multicast && result.multicast.warnings.length > 0) {
-      result.multicast.warnings.forEach(w => warnings.push(`Multicast: ${w.message}`));
-    }
-
-    // 6. Update stores
+    // 6. Update stores with COMPLETE verification results
     parseStatus.set('success');
     verificationResult.set({
+      // Original properties (backward compatible)
       deadlockFree: !result.deadlock.hasDeadlock,
       livenessSatisfied: result.liveness.isLive,
-      safetySatisfied: errors.length === 0,
-      warnings,
-      errors
+      safetySatisfied: allErrors.length === 0,
+      warnings: allWarnings,
+      errors: allErrors,
+
+      // ALL 16 verification checks (comprehensive)
+      structural: {
+        valid: issues.allChecks.structural,
+        issues: issues.allChecks.structural ? [] : ['Structural validity check failed']
+      },
+      deadlock: {
+        valid: issues.allChecks.deadlock,
+        issues: issues.allChecks.deadlock ? [] : [`Deadlock detected: ${result.deadlock.cycles.length} cycle(s)`]
+      },
+      liveness: {
+        valid: issues.allChecks.liveness,
+        issues: issues.allChecks.liveness ? [] : [`Liveness violated: ${result.liveness.violations.length} violation(s)`]
+      },
+      parallelDeadlock: {
+        valid: issues.allChecks.parallelDeadlock,
+        issues: issues.allChecks.parallelDeadlock ? [] : [`Parallel deadlock: ${result.parallelDeadlock.conflicts.length} conflict(s)`]
+      },
+      raceConditions: {
+        valid: issues.allChecks.raceConditions,
+        issues: issues.allChecks.raceConditions ? [] : [`Race conditions: ${result.raceConditions.races.length} race(s)`]
+      },
+      progress: {
+        valid: issues.allChecks.progress,
+        issues: issues.allChecks.progress ? [] : [`Progress blocked: ${result.progress.blockedNodes.length} node(s)`]
+      },
+      choiceDeterminism: {
+        valid: issues.allChecks.choiceDeterminism,
+        issues: issues.allChecks.choiceDeterminism ? [] : [`Non-deterministic choice: ${result.choiceDeterminism.violations.length} violation(s)`]
+      },
+      choiceMergeability: {
+        valid: issues.allChecks.choiceMergeability,
+        issues: issues.allChecks.choiceMergeability ? [] : [`Choice branches inconsistent: ${result.choiceMergeability.violations?.length || 0} violation(s)`]
+      },
+      connectedness: {
+        valid: issues.allChecks.connectedness,
+        issues: issues.allChecks.connectedness ? [] : [`Protocol not connected: ${result.connectedness.disconnectedRoles?.length || 0} role(s) orphaned`]
+      },
+      nestedRecursion: {
+        valid: issues.allChecks.nestedRecursion,
+        issues: issues.allChecks.nestedRecursion ? [] : [`Recursion scope violation: ${result.nestedRecursion.violations?.length || 0} violation(s)`]
+      },
+      recursionInParallel: {
+        valid: issues.allChecks.recursionInParallel,
+        issues: issues.allChecks.recursionInParallel ? [] : [`Recursion crosses parallel boundary: ${result.recursionInParallel.violations?.length || 0} violation(s)`]
+      },
+      forkJoinStructure: {
+        valid: issues.allChecks.forkJoinStructure,
+        issues: issues.allChecks.forkJoinStructure ? [] : [`Fork-join mismatch: ${result.forkJoinStructure.violations?.length || 0} violation(s)`]
+      },
+      multicast: {
+        valid: issues.allChecks.multicast,
+        issues: issues.allChecks.multicast ? [] : result.multicast.warnings.map(w => `Multicast: ${w.message}`)
+      },
+      selfCommunication: {
+        valid: issues.allChecks.selfCommunication,
+        issues: issues.allChecks.selfCommunication ? [] : [`Self-communication: ${result.selfCommunication.violations?.length || 0} violation(s)`]
+      },
+      emptyChoiceBranch: {
+        valid: issues.allChecks.emptyChoiceBranch,
+        issues: issues.allChecks.emptyChoiceBranch ? [] : [`Empty choice branches: ${result.emptyChoiceBranch.violations?.length || 0} branch(es)`]
+      },
+      mergeReachability: {
+        valid: issues.allChecks.mergeReachability,
+        issues: issues.allChecks.mergeReachability ? [] : [`Unreachable merge: ${result.mergeReachability.violations?.length || 0} violation(s)`]
+      }
     });
 
     // Helper to format CFSM action as display label
