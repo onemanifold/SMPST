@@ -78,6 +78,7 @@ export const verificationResult = writable<VerificationResult | null>(null);
 // Projection data with serialized local protocols
 export interface ProjectionData {
   role: string;
+  protocolName: string;
   states: string[];
   transitions: Array<{
     from: string;
@@ -86,6 +87,15 @@ export interface ProjectionData {
   }>;
   // Serialized Scribble local protocol text
   localProtocol: string;
+
+  // CFSM completeness properties (Phase 4)
+  initialState: string;
+  terminalStates: string[];  // Multiple terminal states (e.g., different choice outcomes)
+  parameters?: Array<{       // Protocol parameters for sub-protocol support
+    name: string;
+    type: 'role' | 'type' | 'sig';
+    typeValue?: string;
+  }>;
 }
 
 export const projectionData = writable<ProjectionData[]>([]);
@@ -338,24 +348,55 @@ export async function parseProtocol(content: string) {
         if (!cfsm) {
           return {
             role,
+            protocolName: '',
             states: [],
             transitions: [],
-            localProtocol: `// No projection for role ${role}`
+            localProtocol: `// No projection for role ${role}`,
+            initialState: '',
+            terminalStates: [],
+            parameters: undefined
           };
         }
 
         // Serialize CFSM to Scribble local protocol text
         const localProtocol = serializeCFSM(cfsm);
 
+        // Log warning if parameters present (Phase 4 - Sub-protocol support)
+        if (cfsm.parameters && cfsm.parameters.length > 0) {
+          console.warn(
+            `[Phase 4] Protocol "${cfsm.protocolName}" has ${cfsm.parameters.length} parameter(s). ` +
+            `These are preserved but not yet displayed in UI. ` +
+            `Parameters: ${cfsm.parameters.map(p => `${p.name}:${p.type}`).join(', ')}`
+          );
+        }
+
+        // Log info if multiple terminal states (Phase 4 - Choice outcomes)
+        if (cfsm.terminalStates.length > 1) {
+          console.info(
+            `[Phase 4] Role "${role}" has ${cfsm.terminalStates.length} terminal states: ` +
+            `${cfsm.terminalStates.join(', ')}. This indicates multiple protocol outcomes (e.g., choice branches).`
+          );
+        }
+
         return {
           role,
+          protocolName: cfsm.protocolName,
           states: cfsm.states.map(s => s.id),
           transitions: cfsm.transitions.map(t => ({
             from: t.from,
             to: t.to,
             label: formatActionLabel(t.action)
           })),
-          localProtocol
+          localProtocol,
+
+          // Phase 4: Complete CFSM properties
+          initialState: cfsm.initialState,
+          terminalStates: cfsm.terminalStates,
+          parameters: cfsm.parameters?.map(p => ({
+            name: p.name,
+            type: p.type,
+            typeValue: p.typeValue
+          }))
         };
       })
     );
