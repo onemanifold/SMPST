@@ -18,8 +18,8 @@
     <div class="panel-content">
       {#if $parseError}
       <div class="error-section">
-        <h4>Parse Error</h4>
-        <pre class="error-message">{$parseError}</pre>
+        <h4>Parse Error{#if $parseError.location} (Line {$parseError.location.line}, Column {$parseError.location.column}){/if}</h4>
+        <pre class="error-message">{$parseError.message}</pre>
       </div>
     {:else if $verificationResult}
       <div class="result-section">

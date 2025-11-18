@@ -27,8 +27,18 @@ export const generatedCode = writable<Record<string, string>>({});
 
 // Parse state
 export type ParseStatus = 'idle' | 'parsing' | 'success' | 'error';
+
+// Parse error with optional location information for precise error highlighting
+export interface ParseErrorInfo {
+  message: string;
+  location?: {
+    line: number;
+    column: number;
+  };
+}
+
 export const parseStatus = writable<ParseStatus>('idle');
-export const parseError = writable<string | null>(null);
+export const parseError = writable<ParseErrorInfo | null>(null);
 
 // Complete verification results (ALL 16 checks from backend)
 export interface VerificationCheckResult {
@@ -360,7 +370,20 @@ export async function parseProtocol(content: string) {
   } catch (error) {
     parseStatus.set('error');
     const message = error instanceof Error ? error.message : String(error);
-    parseError.set(message);
+
+    // Extract location information from error message if available
+    // Parser errors format: "Parser error at line X, column Y: message"
+    // Lexer errors format: "Lexer error at line X, column Y: message"
+    const locationMatch = message.match(/at line (\d+), column (\d+):/);
+    const errorInfo: ParseErrorInfo = {
+      message,
+      location: locationMatch ? {
+        line: parseInt(locationMatch[1], 10),
+        column: parseInt(locationMatch[2], 10)
+      } : undefined
+    };
+
+    parseError.set(errorInfo);
     return { success: false, error: message };
   }
 }
