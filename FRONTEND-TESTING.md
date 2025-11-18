@@ -137,6 +137,45 @@ If you forget to expose `lastError`, this test fails immediately.
 
 ---
 
+## Current Test Coverage
+
+### ✅ Simulation Store (simulation-v2.ts)
+**Status:** Complete contract tests
+**File:** `src/lib/stores/__tests__/simulation-v2.test.ts`
+**Coverage:**
+- Success contract (state, event exposed)
+- Error contract (errors exposed)
+- State reset and cleanup
+- Backend evolution tracking
+
+**Backend:** CFGSimulator from `core/simulation/cfg-simulator`
+
+### ✅ Editor Store (editor.ts)
+**Status:** Comprehensive tests with documented gaps
+**File:** `src/lib/stores/__tests__/editor.test.ts`
+**Coverage:**
+- Parse integration (AST contract)
+- CFG building (CFG contract)
+- **Verification integration (7/16 checks tested, 9 documented as gaps)**
+- Projection integration (projection errors documented as gap)
+- Serialization integration
+- Full pipeline integration
+
+**Backends:** Parser, CFG Builder, Verifier, Projector, Serializer
+
+**Critical Findings:**
+- **9 of 16 verification checks ignored** (structural, choiceMergeability, connectedness, nestedRecursion, recursionInParallel, forkJoinStructure, selfCommunication, emptyChoiceBranch, mergeReachability)
+- **Projection errors ignored** (can fail silently per role)
+- **AST location info discarded** (prevents precise error reporting)
+
+See `docs/EDITOR_BACKEND_CONTRACT_GAPS.md` for complete analysis and implementation plan.
+
+### ⏳ Protocol DB Store (protocol-db.ts)
+**Status:** Low priority (simple CRUD wrapper)
+**Backend:** Dexie (IndexedDB - external library)
+
+---
+
 ## Detailed Guide
 
 See `.claude/store-development-protocol.md` for:
