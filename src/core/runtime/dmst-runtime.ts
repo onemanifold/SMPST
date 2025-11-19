@@ -151,18 +151,11 @@ export function createDynamicParticipant(
   // Register participant
   participants.set(instanceId, participant);
 
-  // Send creation message (creator → created)
-  const creationMessage: Message = {
-    id: `create_${instanceId}_${Date.now()}`,
-    from: creator,
-    to: instanceId,
-    label: 'create',
-    payload: undefined,
-    timestamp: Date.now(),
-  };
-
-  // Queue creation message for participant
-  participant.state.pendingMessages.push(creationMessage);
+  // NOTE: The create message is sent by the creator's executor via the transport.
+  // The DMstSimulator intercepts this message in handleCreation() and creates
+  // the participant. The create message is NOT queued for the participant's CFSM
+  // execution - it's a meta-protocol message handled by the runtime infrastructure.
+  // The participant's protocol execution starts AFTER invitation completes.
 
   return participant;
 }

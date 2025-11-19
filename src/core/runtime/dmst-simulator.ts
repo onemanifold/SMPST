@@ -151,7 +151,13 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
         cfsmVersion: 1,
         protocolName: this.protocolName,
       };
-      this.executors.set(role, new DMstExecutor(config));
+      const executor = new DMstExecutor(config);
+      this.executors.set(role, executor);
+
+      // Propagate all observers to the new executor (including trace recorder from base class)
+      for (const observer of this.observers) {
+        executor.addObserver(observer);
+      }
     }
   }
 
@@ -407,6 +413,11 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
     const executor = new DMstExecutor(config);
     this.executors.set(instanceId, executor);
 
+    // Propagate all observers to the new executor (including trace recorder)
+    for (const observer of this.observers) {
+      executor.addObserver(observer);
+    }
+
     // Add to role names for fair scheduling (maintain sorted order)
     this.roleNames.push(instanceId);
     this.roleNames.sort();
@@ -415,6 +426,16 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
     const insertIndex = this.roleNames.indexOf(instanceId);
     if (insertIndex < this.nextRoleIndex) {
       this.nextRoleIndex++;
+    }
+
+    // Consume the create message from transport so it doesn't interfere with
+    // the participant's protocol execution. Create/invite are meta-protocol messages.
+    if (this.transport.hasMessage(instanceId)) {
+      const msg = await this.transport.receive(instanceId);
+      if (msg && msg.label !== 'create') {
+        // If it's not the create message, put it back (shouldn't happen)
+        await this.transport.send(msg);
+      }
     }
 
     // Record creation event
@@ -449,6 +470,17 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
     if (participant && !participant.invitationCompleted) {
       // Complete invitation immediately
       participant.invitationCompleted = true;
+      participant.state.blocked = false; // Unblock so participant can execute
+
+      // Consume the invite message from transport so it doesn't interfere with
+      // the participant's protocol execution. Create/invite are meta-protocol messages.
+      if (this.transport.hasMessage(invitee)) {
+        const msg = await this.transport.receive(invitee);
+        if (msg && msg.label !== 'invite') {
+          // If it's not the invite message, put it back
+          await this.transport.send(msg);
+        }
+      }
 
       // Remove from pending invitations
       const pending = this.state.pendingInvitations.get(inviter) || [];
@@ -567,6 +599,7 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
         // If participant now exists and hasn't been invited yet, complete invitation
         if (participant && !participant.invitationCompleted) {
           participant.invitationCompleted = true;
+          participant.state.blocked = false; // Unblock so participant can execute
 
           // Record event
           const event: InvitationCompleteEvent = {

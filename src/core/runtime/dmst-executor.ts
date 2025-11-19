@@ -386,6 +386,10 @@ export class DMstExecutor extends Executor {
   /**
    * Execute send action
    * Adapted from executor.ts:243-283
+   *
+   * DMst EXTENSION: Resolves dynamic role names to instance IDs.
+   * If sending to a dynamic role (e.g., "Worker"), resolves to actual instance
+   * (e.g., "Worker_1") based on created participants.
    */
   private async dmstExecuteSend(transition: CFSMTransition): Promise<ExecutionResult> {
     const action = transition.action;
@@ -402,11 +406,32 @@ export class DMstExecutor extends Executor {
     const transport = (this as any).transport as MessageTransport;
     const role = this.getState().role;
 
+    // Resolve recipient (may be role name or instance ID)
+    let recipientId = sendAction.to;
+    if (this.dynamicParticipants) {
+      // Check if recipient is already a valid role/instance ID
+      const executors = (this as any).cfsmRegistry as Map<string, Map<string, any>>;
+      const isStaticRole = Array.from((this as any).cfsm.states || []).length > 0; // Static role check
+
+      // If not a static role and not in dynamicParticipants, try to resolve
+      if (!this.dynamicParticipants.has(recipientId)) {
+        // Recipient is likely a role name, find matching instance
+        // Find most recently created instance of this role (created by this sender or any)
+        const candidates = Array.from(this.dynamicParticipants.values())
+          .filter(p => p.roleName === recipientId || p.instanceId === recipientId)
+          .sort((a, b) => b.createdAt - a.createdAt); // Most recent first
+
+        if (candidates.length > 0) {
+          recipientId = candidates[0].instanceId;
+        }
+      }
+    }
+
     // Create message
     const message: Message = {
       id: `msg_${Date.now()}_${Math.random()}`,
       from: role,
-      to: sendAction.to,
+      to: recipientId,
       label: sendAction.message.label,
       payload: sendAction.message.payload,
       timestamp: Date.now(),
@@ -675,9 +700,14 @@ export class DMstExecutor extends Executor {
    * [[p invites q]]_q = ?invite from p
    *
    * Implementation:
-   * 1. Send invitation message to target instance
-   * 2. Take transition
+   * 1. Resolve role name to actual instance ID
+   * 2. Send invitation message to target instance
+   * 3. Take transition
    * (Registry updates handled by DMstSimulator)
+   *
+   * NOTE: If action.target is a role name (e.g., "Worker"), we need to resolve it
+   * to an actual instance ID (e.g., "Worker_1" or "w1"). This implementation uses
+   * the most recently created instance of that role created by this inviter.
    */
   private async executeInvite(
     transition: CFSMTransition,
@@ -685,12 +715,37 @@ export class DMstExecutor extends Executor {
   ): Promise<ExecutionResult> {
     const transport = (this as any).transport as MessageTransport;
     const role = this.getState().role;
+    const targetName = action.target;
+
+    // Resolve target to instance ID
+    // If target is already an instance ID (exists in dynamicParticipants), use it
+    // Otherwise, search for the most recently created instance of that role
+    let resolvedTarget = targetName;
+
+    if (this.dynamicParticipants) {
+      // Check if target is already a valid instance ID
+      if (!this.dynamicParticipants.has(targetName)) {
+        // Target is likely a role name, find matching instance
+        // Find all instances of this role created by this inviter
+        const candidates = Array.from(this.dynamicParticipants.values())
+          .filter(p => p.roleName === targetName && p.creator === role)
+          .sort((a, b) => b.createdAt - a.createdAt); // Most recent first
+
+        if (candidates.length > 0) {
+          resolvedTarget = candidates[0].instanceId;
+        } else {
+          // No instances found - target might not exist yet
+          // In this case, keep the role name and let runtime handle it
+          // (participant might be created later, invitation will be pending)
+        }
+      }
+    }
 
     // Send invitation message
     const message: Message = {
-      id: `invite_${action.target}_${Date.now()}`,
+      id: `invite_${resolvedTarget}_${Date.now()}`,
       from: role,
-      to: action.target,
+      to: resolvedTarget,
       label: 'invite',
       payload: undefined,
       timestamp: Date.now(),
