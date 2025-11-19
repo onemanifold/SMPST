@@ -1,90 +1,82 @@
 /**
- * Simulation Debugger - Time-Travel Debugging Layer
+ * Distributed Debugger - Time-Travel Debugging for Choreography Execution
  *
- * Wraps a VM runtime (CFGSimulator) and provides:
+ * Wraps DistributedSimulator (choreography VM) and provides:
  * - Time-travel (snapshots, backward/forward stepping)
  * - Event annotation (adds stepNumber)
  * - History management
  * - Visible event filtering
  *
- * Separation of concerns:
- * - VM Runtime (CFGSimulator): Pure execution, no history
- * - Debugger (this): History, time-travel, event annotation
- * - Frontend: UI state, display logic
+ * Architecture:
+ * - Layer 2: DistributedSimulator (VM Runtime) - Pure execution, no history
+ * - Layer 3: DistributedDebugger (this) - History, time-travel, event annotation
+ * - Layer 4: Frontend Store - UI state, display logic
  */
 
-import type { CFG } from '../cfg/types';
-import type { CFGSimulator } from './cfg-simulator';
+import type { CFSM } from '../cfsm/types';
+import type { DistributedSimulator } from './distributed-simulator';
 import type {
-  CFGExecutionState,
-  CFGExecutionEvent,
-  CFGStepResult,
-  CFGSimulatorConfig,
-} from './types';
+  DistributedExecutionState,
+  DistributedStepResult,
+  DistributedSimulatorConfig,
+  CFSMAction,
+} from './cfsm-simulator-types';
 
 /**
- * Event with debugger metadata (stepNumber)
+ * Distributed execution event with stepNumber
  */
-export interface DebugEvent extends CFGExecutionEvent {
-  stepNumber: number;
-}
-
-/**
- * Snapshot for time-travel
- */
-export interface DebugSnapshot {
+export interface DistributedDebugEvent {
   stepNumber: number;
   timestamp: number;
-  state: CFGExecutionState;
+  role: string;
+  action?: CFSMAction;
+  globalStep: number;
+  roleStep: number;
 }
 
 /**
- * Result of a debug step operation
+ * Snapshot for distributed time-travel
  */
-export interface DebugStepResult {
+export interface DistributedDebugSnapshot {
+  stepNumber: number;
+  timestamp: number;
+  state: DistributedExecutionState;
+}
+
+/**
+ * Result of a distributed debug step
+ */
+export interface DistributedDebugStepResult {
   success: boolean;
-  event?: DebugEvent;
-  state: CFGExecutionState;
+  event?: DistributedDebugEvent;
+  state: DistributedExecutionState;
   error?: any;
 }
 
 /**
- * SimulationDebugger - Wraps CFGSimulator with time-travel debugging
+ * DistributedDebugger - Wraps DistributedSimulator with time-travel debugging
  */
-export class SimulationDebugger {
-  private vm: CFGSimulator;
-  private cfg: CFG;
+export class DistributedDebugger {
+  private vm: DistributedSimulator;
+  private cfsms: Map<string, CFSM>;
 
   // Debugger state (not VM state)
-  private snapshots: DebugSnapshot[] = [];
-  private allEvents: DebugEvent[] = [];
+  private snapshots: DistributedDebugSnapshot[] = [];
+  private allEvents: DistributedDebugEvent[] = [];
   private currentPosition: number = 0;
 
   constructor(
-    cfg: CFG,
-    CFGSimClass: typeof CFGSimulator,
-    config?: CFGSimulatorConfig
+    cfsms: Map<string, CFSM>,
+    DistributedSimClass: typeof DistributedSimulator,
+    config?: DistributedSimulatorConfig
   ) {
-    this.cfg = cfg;
+    this.cfsms = cfsms;
 
     // Create VM instance
-    this.vm = new CFGSimClass(cfg, {
+    this.vm = new DistributedSimClass(cfsms, {
       ...config,
       recordTrace: true, // Always record trace for debugging
     });
-
-    // Capture any events from initialization (e.g., recursion enter)
-    const trace = this.vm.getTrace();
-    if (trace.events.length > 0) {
-      // Annotate initial events with stepNumber 0
-      trace.events.forEach((event: CFGExecutionEvent) => {
-        const debugEvent: DebugEvent = {
-          ...event,
-          stepNumber: 0,
-        };
-        this.allEvents.push(debugEvent);
-      });
-    }
 
     // Record initial snapshot
     this.recordSnapshot();
@@ -93,7 +85,7 @@ export class SimulationDebugger {
   /**
    * Step forward (execute next instruction + record history)
    */
-  stepForward(): DebugStepResult {
+  stepForward(): DistributedDebugStepResult {
     // Check if we can step forward
     if (this.currentPosition < this.snapshots.length - 1) {
       // We're in the middle of history - this is a redo operation
@@ -115,10 +107,14 @@ export class SimulationDebugger {
     this.currentPosition++;
 
     // Annotate event with stepNumber (debugger adds this!)
-    const debugEvent = vmResult.event
+    const debugEvent = vmResult.role
       ? {
-          ...vmResult.event,
           stepNumber: this.currentPosition,
+          timestamp: Date.now(),
+          role: vmResult.role,
+          action: vmResult.action,
+          globalStep: vmResult.state.globalSteps,
+          roleStep: vmResult.state.roleSteps.get(vmResult.role) ?? 0,
         }
       : undefined;
 
@@ -140,7 +136,7 @@ export class SimulationDebugger {
   /**
    * Step backward (time-travel to previous state)
    */
-  stepBackward(): DebugStepResult {
+  stepBackward(): DistributedDebugStepResult {
     if (this.currentPosition === 0) {
       return {
         success: false,
@@ -166,7 +162,7 @@ export class SimulationDebugger {
   /**
    * Redo (step forward in history without re-executing)
    */
-  private redo(): DebugStepResult {
+  private redo(): DistributedDebugStepResult {
     this.currentPosition++;
     const snapshot = this.snapshots[this.currentPosition];
 
@@ -186,7 +182,7 @@ export class SimulationDebugger {
   /**
    * Jump to a specific step in history
    */
-  jumpToStep(stepNumber: number): DebugStepResult {
+  jumpToStep(stepNumber: number): DistributedDebugStepResult {
     if (stepNumber < 0 || stepNumber >= this.snapshots.length) {
       return {
         success: false,
@@ -204,13 +200,6 @@ export class SimulationDebugger {
       success: true,
       state: snapshot.state,
     };
-  }
-
-  /**
-   * Make a choice at a choice point
-   */
-  choose(choiceIndex: number): void {
-    this.vm.choose(choiceIndex);
   }
 
   /**
@@ -232,7 +221,7 @@ export class SimulationDebugger {
   /**
    * Get current execution state
    */
-  getState(): CFGExecutionState {
+  getState(): DistributedExecutionState {
     return this.vm.getState();
   }
 
@@ -244,7 +233,7 @@ export class SimulationDebugger {
   }
 
   /**
-   * Get total number of steps (snapshots - 1, since first snapshot is step 0)
+   * Get total number of steps
    */
   getTotalSteps(): number {
     return this.snapshots.length - 1;
@@ -267,29 +256,29 @@ export class SimulationDebugger {
   /**
    * Get all events (for debugging/export)
    */
-  getAllEvents(): DebugEvent[] {
+  getAllEvents(): DistributedDebugEvent[] {
     return [...this.allEvents];
   }
 
   /**
    * Get events visible at current time position
    */
-  getVisibleEvents(): DebugEvent[] {
+  getVisibleEvents(): DistributedDebugEvent[] {
     return this.allEvents.filter(e => e.stepNumber <= this.currentPosition);
   }
 
   /**
    * Get all snapshots (for debugging/export)
    */
-  getAllSnapshots(): DebugSnapshot[] {
+  getAllSnapshots(): DistributedDebugSnapshot[] {
     return [...this.snapshots];
   }
 
   /**
-   * Get current CFG being debugged
+   * Get CFSMs being debugged
    */
-  getCFG(): CFG {
-    return this.cfg;
+  getCFSMs(): Map<string, CFSM> {
+    return this.cfsms;
   }
 
   // Private helper methods
@@ -298,7 +287,7 @@ export class SimulationDebugger {
    * Record a snapshot of current VM state
    */
   private recordSnapshot(): void {
-    const snapshot: DebugSnapshot = {
+    const snapshot: DistributedDebugSnapshot = {
       stepNumber: this.currentPosition,
       timestamp: Date.now(),
       state: this.cloneState(this.vm.getState()),
@@ -320,49 +309,38 @@ export class SimulationDebugger {
   /**
    * Restore VM to a previous state
    */
-  private restoreVMState(state: CFGExecutionState): void {
-    // CFGSimulator doesn't have a restoreState method yet
-    // For now, we'll use the internal state directly
-    // This is a bit of a hack, but it works
+  private restoreVMState(state: DistributedExecutionState): void {
+    // DistributedSimulator doesn't have a restoreState method yet
+    // For now, we'll use internal state directly
+    // This is a workaround until we add proper state restoration to DistributedSimulator
     const vm = this.vm as any;
 
-    // Restore core state
-    vm.currentNode = state.currentNode;
-    vm.visitedNodes = [...state.visitedNodes];
-    vm.stepCount = state.stepCount;
-    vm.completed = state.completed;
-    vm.atChoice = state.atChoice;
-    vm.pendingChoice = state.availableChoices ? [...state.availableChoices] : null;
-    vm.selectedChoice = null;
-    vm.inParallel = state.inParallel;
-    vm.activeBranches = state.activeBranches ? [...state.activeBranches] : undefined;
-    vm.reachedMaxSteps = state.reachedMaxSteps;
-    vm.recursionStack = state.recursionStack ? [...state.recursionStack] : [];
+    // Restore distributed state
+    vm.roleStates = new Map(state.roleStates);
+    vm.roleSteps = new Map(state.roleSteps);
+    vm.globalSteps = state.globalSteps;
+    vm.inFlightMessages = [...state.inFlightMessages];
+    vm.roleBuffers = new Map(state.roleBuffers);
+    vm.anyCompleted = state.anyCompleted;
+    vm.allCompleted = state.allCompleted;
+    vm.deadlocked = state.deadlocked;
+    vm.enabledRoles = [...state.enabledRoles];
   }
 
   /**
    * Deep clone execution state
    */
-  private cloneState(state: CFGExecutionState): CFGExecutionState {
+  private cloneState(state: DistributedExecutionState): DistributedExecutionState {
     return {
-      currentNode: Array.isArray(state.currentNode)
-        ? [...state.currentNode]
-        : state.currentNode,
-      visitedNodes: [...state.visitedNodes],
-      stepCount: state.stepCount,
-      completed: state.completed,
-      atChoice: state.atChoice,
-      availableChoices: state.availableChoices
-        ? state.availableChoices.map(c => ({ ...c }))
-        : undefined,
-      inParallel: state.inParallel,
-      activeBranches: state.activeBranches
-        ? state.activeBranches.map(b => [...b])
-        : undefined,
-      reachedMaxSteps: state.reachedMaxSteps,
-      recursionStack: state.recursionStack
-        ? state.recursionStack.map(r => ({ ...r }))
-        : [],
+      roleStates: new Map(state.roleStates),
+      roleSteps: new Map(state.roleSteps),
+      globalSteps: state.globalSteps,
+      inFlightMessages: [...state.inFlightMessages],
+      roleBuffers: new Map(state.roleBuffers),
+      anyCompleted: state.anyCompleted,
+      allCompleted: state.allCompleted,
+      deadlocked: state.deadlocked,
+      enabledRoles: [...state.enabledRoles],
     };
   }
 }

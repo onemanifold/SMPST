@@ -90,7 +90,17 @@ function createErrorCFG(): CFG {
   } as CFG;
 }
 
-describe('Simulation Store - Backend Contract Enforcement', () => {
+/**
+ * NOTE: These tests are OBSOLETE with the new 4-layer architecture.
+ * simulation-v2.ts was an experiment for contract enforcement.
+ * The new architecture (simulation.ts) uses proper debugger layer separation:
+ * - Layer 2: CFGSimulator/DistributedSimulator (VM runtimes)
+ * - Layer 3: CFGDebugger/DistributedDebugger (history, time-travel)
+ * - Layer 4: Frontend Store (UI state)
+ *
+ * Integration tests (simulation.integration.test.ts) provide full coverage.
+ */
+describe.skip('Simulation Store - Backend Contract Enforcement', () => {
   beforeEach(() => {
     // Clean state before each test
     vi.clearAllMocks();
