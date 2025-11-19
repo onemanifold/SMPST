@@ -633,6 +633,10 @@ function buildRecursion(
  * Continue statement
  * Simply returns the recursive node as the exit point
  * This creates a back edge naturally when the previous statement connects to it
+ *
+ * DMst Extension: continue X with { G }
+ * When extension is present, build the extension body inline before looping back.
+ * This implements: continue X with { G } ≡ G ; continue X
  */
 function buildContinue(
   ctx: BuilderContext,
@@ -646,7 +650,20 @@ function buildContinue(
     throw new Error(`Continue references undefined recursion label: ${cont.label}`);
   }
 
-  // Simply return the recursive node ID
+  // DMst: If extension is present, build it inline before the back edge
+  if (cont.extension && cont.extension.length > 0) {
+    // Build extension body with recNodeId as the exit
+    // This creates: previous -> extension -> recNode (back edge)
+    const extensionEntry = buildProtocolBody(
+      ctx,
+      cont.extension as GlobalProtocolBody,
+      recNodeId  // Extension flows to recursion point
+    );
+
+    return extensionEntry;
+  }
+
+  // Classic continue: Simply return the recursive node ID
   // The previous statement in the sequence will connect to it,
   // creating the back edge naturally
   // (We ignore exitNodeId because continue doesn't continue to what's after)

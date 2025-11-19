@@ -245,7 +245,7 @@ function projectInteraction(
 
   // RULE 5: CONTINUE
   if (isContinue(interaction)) {
-    return projectContinue(interaction);
+    return projectContinue(interaction, role, options);
   }
 
   // RULE 6: DO (Sub-protocol)
@@ -482,15 +482,42 @@ function projectRecursion(
  * RULE 5: Continue Projection
  *
  * (continue X) ↓ r = continue X
+ * (continue X with { G }) ↓ r = continue X with { G ↓ r }
  *
- * Continue labels are preserved as-is
+ * Classic continue: Labels are preserved as-is
+ * Updatable continue (DMst): Project extension body for role
+ *
+ * From ECOOP 2023 Definition 13:
+ * The extension G is projected for the role to generate local behavior.
  */
-function projectContinue(cont: Continue): Continue {
-  return {
+function projectContinue(
+  cont: Continue,
+  role: string,
+  options: ProjectionOptions
+): Continue {
+  const result: Continue = {
     type: 'Continue',
     label: cont.label,
     location: cont.location,
   };
+
+  // DMst: Project extension if present (updatable recursion)
+  if (cont.extension) {
+    // Project the extension body for this role
+    const projectedExtension = projectBody(
+      cont.extension as GlobalInteraction[],
+      role,
+      options
+    );
+
+    // Only include extension if it has actions for this role
+    if (projectedExtension.length > 0) {
+      result.extension = projectedExtension;
+    }
+    // Otherwise tau-eliminate the extension for this role
+  }
+
+  return result;
 }
 
 /**

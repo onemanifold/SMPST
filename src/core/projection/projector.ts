@@ -28,6 +28,12 @@ import type {
   ForkNode,
   JoinNode,
   RecursiveNode,
+  // DMst action types
+  DynamicRoleDeclarationAction,
+  ProtocolCallAction,
+  CreateParticipantsAction,
+  InvitationAction,
+  UpdatableRecursionAction,
 } from '../cfg/types';
 import {
   isInitialNode,
@@ -40,6 +46,12 @@ import {
   isForkNode,
   isJoinNode,
   isRecursiveNode,
+  // DMst type guards
+  isDynamicRoleDeclarationAction,
+  isProtocolCallAction,
+  isCreateParticipantsAction,
+  isInvitationAction,
+  isUpdatableRecursionAction,
 } from '../cfg/types';
 import type {
   CFSM,
@@ -49,9 +61,14 @@ import type {
   SendAction,
   ReceiveAction,
   SubProtocolCallAction,
+  // DMst CFSM action types
+  CreateAction,
+  InviteAction,
+  ContinueWithAction,
   ProjectionResult,
   ProjectionError,
 } from './types';
+import type { IProtocolRegistry } from '../protocol-registry/registry';
 
 // ============================================================================
 // Main Projection Functions
@@ -525,6 +542,149 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
               lastStateId, // Keep same last state (epsilon)
             });
           }
+        } else if (isCreateParticipantsAction(action)) {
+          // DMst RULE: Create dynamic participant
+          // From ECOOP 2023 Definition 12:
+          // [[p creates r]]_p = CreateAction (creator)
+          // [[p creates r]]_r = CreateAction (created participant)
+          // [[p creates r]]_q = skip (other roles - tau-elimination)
+
+          if (action.creator === role || action.roleName === role) {
+            // Role is creator or created participant - emit CreateAction
+            const newState = createState(`after_create_${action.roleName}`);
+            cfgNodeToState.set(targetNode.id, newState.id);
+
+            const createAction: CreateAction = {
+              type: 'create',
+              role: action.roleName,
+              instance: action.instanceName,
+            };
+
+            createTransition(lastStateId, newState.id, createAction);
+
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId: newState.id,
+            });
+          } else {
+            // Role NOT involved - tau-elimination
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId,
+            });
+          }
+        } else if (isInvitationAction(action)) {
+          // DMst RULE: Invitation protocol
+          // From ECOOP 2023 Definition 12:
+          // [[p invites q]]_p = InviteAction (inviter)
+          // [[p invites q]]_q = InviteAction (invitee)
+          // [[p invites q]]_r = skip (other roles - tau-elimination)
+
+          if (action.inviter === role || action.invitee === role) {
+            // Role is inviter or invitee - emit InviteAction
+            const newState = createState(`after_invite_${action.invitee}`);
+            cfgNodeToState.set(targetNode.id, newState.id);
+
+            const inviteAction: InviteAction = {
+              type: 'invite',
+              target: action.invitee,
+            };
+
+            createTransition(lastStateId, newState.id, inviteAction);
+
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId: newState.id,
+            });
+          } else {
+            // Role NOT involved - tau-elimination
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId,
+            });
+          }
+        } else if (isProtocolCallAction(action)) {
+          // DMst RULE: Protocol call (dynamic protocol instantiation)
+          // Similar to sub-protocol call but with dynamic instantiation
+          // From ECOOP 2023: p calls Proto<T>(q, r)
+
+          const isInvolved = action.caller === role || action.roleArguments.includes(role);
+
+          if (isInvolved) {
+            // Role is involved in protocol call
+            const returnState = createState(`after_call_${action.protocol}`);
+
+            // Build role mapping
+            let roleMapping: Record<string, string> = {};
+            if (protocolRegistry && protocolRegistry.has(action.protocol)) {
+              const subProtocolDecl = protocolRegistry.resolve(action.protocol);
+              const formalParams = subProtocolDecl.roles.map(r => r.name);
+              const actualArgs = action.roleArguments;
+
+              // Validation
+              if (formalParams.length !== actualArgs.length) {
+                throw new Error(
+                  `Role arity mismatch in protocol call '${action.protocol}': ` +
+                  `expected ${formalParams.length} roles, got ${actualArgs.length}`
+                );
+              }
+
+              formalParams.forEach((formal, idx) => {
+                roleMapping[formal] = actualArgs[idx];
+              });
+            } else {
+              action.roleArguments.forEach((r, idx) => {
+                roleMapping[`role${idx}`] = r;
+              });
+            }
+
+            // Create sub-protocol call action (protocol calls use same CFSM action as do statements)
+            const subProtocolAction: SubProtocolCallAction = {
+              type: 'subprotocol',
+              protocol: action.protocol,
+              roleMapping,
+              returnState: returnState.id,
+            };
+
+            createTransition(lastStateId, returnState.id, subProtocolAction);
+
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId: returnState.id,
+            });
+          } else {
+            // Role NOT involved - tau-elimination
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId,
+            });
+          }
+        } else if (isUpdatableRecursionAction(action)) {
+          // DMst RULE: Updatable recursion (continue X with { G })
+          // From ECOOP 2023 Section 3.2 and Definition 13
+          //
+          // NOTE: Updatable recursion is handled at the CFG level by the builder
+          // creating a modified recursion structure. At projection time, this appears
+          // as a tau (skip) transition since the extension has already been integrated
+          // into the CFG structure by the builder.
+          //
+          // The runtime update mechanism (version broadcasting, etc.) is handled by
+          // DMstSimulator, not during projection.
+
+          // Tau-elimination: skip this meta-action
+          queue.push({
+            cfgNodeId: targetNode.id,
+            lastStateId,
+          });
+        } else if (isDynamicRoleDeclarationAction(action)) {
+          // DMst RULE: Dynamic role declaration (new role Worker)
+          // This is metadata only - doesn't affect projection
+          // Just skip and continue (tau-elimination for all roles)
+
+          queue.push({
+            cfgNodeId: targetNode.id,
+            lastStateId,
+          });
         } else {
           // RULE 2: Role NOT involved in message (tau-elimination)
           // (p→q:⟨U⟩.G) ↾ r = G↾r if r≠p, r≠q

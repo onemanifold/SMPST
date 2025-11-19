@@ -22,22 +22,32 @@ import type { MessageTransport } from './types';
 /**
  * Multi-role protocol simulator
  * Orchestrates multiple CFSM executors
+ *
+ * Generic parameters:
+ * - TTrace: Trace type (defaults to ExecutionTrace<TraceEvent> for base implementation)
+ * - TState: State type (defaults to SimulationState for base implementation)
+ *
+ * The TTrace constraint allows subclasses to use extended trace types with
+ * additional event types (e.g., DMst events).
  */
-export class Simulator {
-  private executors: Map<string, Executor> = new Map();
-  private transport: MessageTransport;
-  private options: SimulatorConfig['options'];
-  private observers: Set<ExecutionObserver> = new Set();
+export class Simulator<
+  TTrace extends ExecutionTrace<any> = ExecutionTrace,
+  TState extends SimulationState = SimulationState
+> {
+  protected executors: Map<string, Executor> = new Map();
+  protected transport: MessageTransport;
+  protected options: SimulatorConfig['options'];
+  protected observers: Set<ExecutionObserver> = new Set();
 
-  private stepCount: number = 0;
-  private trace: ExecutionTrace;
+  protected stepCount: number = 0;
+  protected trace: TTrace;
 
   // Fair scheduling: round-robin role selection
-  private nextRoleIndex: number = 0;
-  private roleNames: string[] = [];
+  protected nextRoleIndex: number = 0;
+  protected roleNames: string[] = [];
 
   // Pause/resume: run-specific closure (null when no run() active)
-  private currentRunPause: (() => void) | null = null;
+  protected currentRunPause: (() => void) | null = null;
 
   constructor(config: SimulatorConfig) {
     this.transport = config.transport || createInMemoryTransport();
@@ -76,8 +86,10 @@ export class Simulator {
 
   /**
    * Get current simulation state
+   *
+   * Subclasses can override to return more specific state types
    */
-  getState(): SimulationState {
+  getState(): TState {
     const roles = new Map<string, ExecutionState>();
     for (const [role, executor] of this.executors.entries()) {
       roles.set(role, executor.getState());
@@ -107,7 +119,7 @@ export class Simulator {
       step: this.stepCount,
       completed,
       deadlocked,
-    };
+    } as TState;
   }
 
   /**
@@ -370,12 +382,14 @@ export class Simulator {
 
   /**
    * Get execution trace
+   *
+   * Returns a copy to prevent external mutation
    */
-  getTrace(): ExecutionTrace {
+  getTrace(): TTrace {
     return {
       ...this.trace,
       events: [...this.trace.events],
-    };
+    } as TTrace;
   }
 
   /**

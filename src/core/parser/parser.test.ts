@@ -612,6 +612,59 @@ describe('Scribble Parser - Recursion', () => {
     expect(innerRec.type).toBe('Recursion');
     expect(innerRec.label).toBe('Inner');
   });
+
+  it('should parse updatable recursion (continue with extension)', () => {
+    const source = `
+      protocol UpdatableLoop(role Coordinator, role Worker) {
+        rec X {
+          Coordinator -> Worker: Task();
+          Worker -> Coordinator: Result();
+          choice at Coordinator {
+            continue X;
+          } or {
+            continue X with {
+              Worker -> Coordinator: Log();
+              Coordinator -> Worker: Ack();
+            };
+          }
+        }
+      }
+    `;
+
+    const ast = parse(source);
+    const protocol = ast.declarations[0] as GlobalProtocolDeclaration;
+    const recursion = protocol.body[0] as Recursion;
+
+    expect(recursion.type).toBe('Recursion');
+    expect(recursion.label).toBe('X');
+
+    // Should have: Task, Result, choice
+    expect(recursion.body).toHaveLength(3);
+
+    const choice = recursion.body[2] as Choice;
+    expect(choice.type).toBe('Choice');
+    expect(choice.branches).toHaveLength(2);
+
+    // First branch: simple continue
+    const branch1 = choice.branches[0];
+    expect(branch1).toHaveLength(1);
+    expect(branch1[0].type).toBe('Continue');
+    expect((branch1[0] as Continue).label).toBe('X');
+    expect((branch1[0] as Continue).extension).toBeUndefined();
+
+    // Second branch: continue with extension
+    const branch2 = choice.branches[1];
+    expect(branch2).toHaveLength(1);
+    expect(branch2[0].type).toBe('Continue');
+    expect((branch2[0] as Continue).label).toBe('X');
+
+    // Check extension is present and has correct structure
+    const continueWithExt = branch2[0] as Continue;
+    expect(continueWithExt.extension).toBeDefined();
+    expect(continueWithExt.extension).toHaveLength(2);
+    expect(continueWithExt.extension![0].type).toBe('MessageTransfer');
+    expect(continueWithExt.extension![1].type).toBe('MessageTransfer');
+  });
 });
 
 describe('Scribble Parser - Do Statement', () => {
