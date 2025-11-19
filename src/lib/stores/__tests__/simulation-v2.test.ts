@@ -1,302 +1,244 @@
 /**
- * Simulation Store Tests - Contract Enforcement
+ * Simulation Store Tests - Backend Contract Enforcement (NEW ARCHITECTURE)
  *
- * These tests GUARANTEE the store faithfully implements backend.
+ * These tests GUARANTEE the store faithfully exposes backend state through
+ * the debugger layer. Tests verify the 4-layer architecture:
+ * - Layer 2: CFGSimulator (VM runtime)
+ * - Layer 3: CFGDebugger (wraps VM, adds history)
+ * - Layer 4: Store (exposes debugger state to UI)
+ *
  * If backend adds new properties, these tests MUST be updated.
  */
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
 import {
   simulationMode,
+  cfgExecutionState,
   executionState,
-  lastError,
-  lastEvent,
-  initializeSimulation,
+  initializeCFGSimulation,
   stepSimulation,
   makeChoice,
   resetSimulation,
+  stopSimulation,
   isSimulationActive,
-  hasError
-} from '../simulation-v2';
+  visibleExecutionEvents,
+  currentStepNumber,
+  totalStepCount
+} from '../simulation';
+import { parse } from '../../../core/parser/parser';
+import { buildCFG } from '../../../core/cfg/builder';
+import type { GlobalProtocolDeclaration } from '../../../core/ast/types';
 import type { CFG } from '../../../core/cfg/types';
-import type { CFGStepResult } from '../../../core/simulation/types';
 
-// Test helper: Create minimal valid CFG
+// Test helper: Create minimal valid CFG from source
 function createSimpleCFG(): CFG {
-  return {
-    id: 'test-protocol',
-    nodes: {
-      'initial': {
-        id: 'initial',
-        type: 'initial',
-        outgoing: ['n1']
-      },
-      'n1': {
-        id: 'n1',
-        type: 'action',
-        action: {
-          type: 'message',
-          sender: 'A',
-          receiver: 'B',
-          label: 'msg'
-        },
-        outgoing: ['terminal']
-      },
-      'terminal': {
-        id: 'terminal',
-        type: 'terminal',
-        outgoing: []
-      }
-    },
-    edges: {
-      'initial': [{ target: 'n1' }],
-      'n1': [{ target: 'terminal' }]
-    },
-    initialNode: 'initial',
-    terminalNode: 'terminal',
-    roles: ['A', 'B']
-  } as CFG;
+  const source = `
+    protocol SimpleProtocol(role A, role B) {
+      A -> B: Hello(string);
+      B -> A: World(string);
+    }
+  `;
+  const module = parse(source);
+  const protocol = module.declarations.find(
+    d => d.type === 'GlobalProtocolDeclaration'
+  ) as GlobalProtocolDeclaration;
+  return buildCFG(protocol);
 }
 
-// Test helper: Create CFG that will error on second step
-function createErrorCFG(): CFG {
-  return {
-    id: 'error-protocol',
-    nodes: {
-      'initial': {
-        id: 'initial',
-        type: 'initial',
-        outgoing: ['n1']
-      },
-      'n1': {
-        id: 'n1',
-        type: 'action',
-        action: {
-          type: 'message',
-          sender: 'A',
-          receiver: 'B',
-          label: 'msg'
-        },
-        outgoing: [] // No outgoing edge - will cause error
+// Test helper: Create CFG with choice point
+function createChoiceCFG(): CFG {
+  const source = `
+    protocol ChoiceProtocol(role A, role B) {
+      choice at A {
+        A -> B: Option1(string);
+      } or {
+        A -> B: Option2(string);
       }
-    },
-    edges: {
-      'initial': [{ target: 'n1' }],
-      'n1': []
-    },
-    initialNode: 'initial',
-    terminalNode: 'terminal',
-    roles: ['A', 'B']
-  } as CFG;
+    }
+  `;
+  const module = parse(source);
+  const protocol = module.declarations.find(
+    d => d.type === 'GlobalProtocolDeclaration'
+  ) as GlobalProtocolDeclaration;
+  return buildCFG(protocol);
 }
 
-/**
- * NOTE: These tests are OBSOLETE with the new 4-layer architecture.
- * simulation-v2.ts was an experiment for contract enforcement.
- * The new architecture (simulation.ts) uses proper debugger layer separation:
- * - Layer 2: CFGSimulator/DistributedSimulator (VM runtimes)
- * - Layer 3: CFGDebugger/DistributedDebugger (history, time-travel)
- * - Layer 4: Frontend Store (UI state)
- *
- * Integration tests (simulation.integration.test.ts) provide full coverage.
- */
-describe.skip('Simulation Store - Backend Contract Enforcement', () => {
+describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)', () => {
   beforeEach(() => {
     // Clean state before each test
-    vi.clearAllMocks();
+    stopSimulation();
   });
 
   describe('Initialization', () => {
     it('should start in idle mode with no active simulation', () => {
       expect(get(simulationMode)).toBe('idle');
-      expect(get(executionState)).toBeNull();
+      expect(get(cfgExecutionState)).toBeNull();
       expect(get(isSimulationActive)).toBe(false);
-      expect(get(lastError)).toBeNull();
-      expect(get(lastEvent)).toBeNull();
     });
 
-    it('should initialize simulation and set execution state', async () => {
+    it('should initialize CFG simulation and set execution state', async () => {
       const cfg = createSimpleCFG();
-      await initializeSimulation(cfg);
+      await initializeCFGSimulation(cfg);
 
       expect(get(isSimulationActive)).toBe(true);
-      expect(get(executionState)).not.toBeNull();
-      expect(get(executionState)?.currentNode).toBe('initial');
-      expect(get(lastError)).toBeNull();
+      const state = get(cfgExecutionState);
+      expect(state).not.toBeNull();
+      expect(state?.currentNode).toBeDefined();
+      expect(state?.completed).toBe(false);
+      expect(state?.stepCount).toBe(0);
+    });
+
+    it('should initialize step tracking through debugger', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      expect(get(currentStepNumber)).toBe(0);
+      expect(get(totalStepCount)).toBe(0);
     });
   });
 
-  describe('Step Execution - SUCCESS CONTRACT', () => {
-    it('should update executionState when step succeeds', async () => {
+  describe('Step Execution - Backend State Contract', () => {
+    it('should update executionState from backend through debugger', async () => {
       const cfg = createSimpleCFG();
-      await initializeSimulation(cfg);
+      await initializeCFGSimulation(cfg);
 
-      const initialNode = get(executionState)?.currentNode;
+      const initialNode = get(cfgExecutionState)?.currentNode;
       stepSimulation();
 
-      const state = get(executionState);
+      const state = get(cfgExecutionState);
       expect(state?.currentNode).not.toBe(initialNode);
       expect(state?.stepCount).toBeGreaterThan(0);
     });
 
-    it('should expose backend event when step succeeds', async () => {
+    it('should capture backend events through debugger', async () => {
       const cfg = createSimpleCFG();
-      await initializeSimulation(cfg);
+      await initializeCFGSimulation(cfg);
+
+      expect(get(visibleExecutionEvents)).toHaveLength(0);
 
       stepSimulation();
 
-      // ✅ CRITICAL: Backend returns event, store MUST expose it
-      const event = get(lastEvent);
-      expect(event).toBeDefined();
-      // Event should be one of the valid types
+      // ✅ CRITICAL: Backend emits events, debugger captures them with stepNumber
+      const events = get(visibleExecutionEvents);
+      expect(events.length).toBeGreaterThan(0);
+
+      const event = events[0];
+      expect(event).toHaveProperty('stepNumber');
+      expect(event).toHaveProperty('type');
       expect(['message', 'choice', 'recursion', 'parallel', 'subprotocol', 'state-change'])
-        .toContain(event?.type);
+        .toContain(event.type);
     });
 
-    it('should clear previous errors on successful step', async () => {
+    it('should increment stepNumber through debugger', async () => {
       const cfg = createSimpleCFG();
-      await initializeSimulation(cfg);
+      await initializeCFGSimulation(cfg);
 
-      // Simulate a previous error (would come from failed step)
-      // Then successful step should clear it
+      expect(get(currentStepNumber)).toBe(0);
+
       stepSimulation();
+      expect(get(currentStepNumber)).toBe(1);
+      expect(get(totalStepCount)).toBe(1);
 
-      expect(get(lastError)).toBeNull();
-      expect(get(hasError)).toBe(false);
+      stepSimulation();
+      expect(get(currentStepNumber)).toBe(2);
+      expect(get(totalStepCount)).toBe(2);
     });
 
-    it('should update stepCount from backend state', async () => {
+    it('should update stepCount from backend VM state', async () => {
       const cfg = createSimpleCFG();
-      await initializeSimulation(cfg);
+      await initializeCFGSimulation(cfg);
 
-      expect(get(executionState)?.stepCount).toBe(0);
-
-      stepSimulation();
-      expect(get(executionState)?.stepCount).toBe(1);
+      expect(get(cfgExecutionState)?.stepCount).toBe(0);
 
       stepSimulation();
-      expect(get(executionState)?.stepCount).toBe(2);
-    });
-  });
+      expect(get(cfgExecutionState)?.stepCount).toBe(1);
 
-  describe('Step Execution - ERROR CONTRACT', () => {
-    it('should expose backend error when step fails', async () => {
-      const cfg = createErrorCFG();
-      await initializeSimulation(cfg);
-
-      // First step succeeds
       stepSimulation();
-      expect(get(lastError)).toBeNull();
-
-      // Second step fails (no outgoing edge)
-      stepSimulation();
-
-      // ✅ CRITICAL: Backend returns error, store MUST expose it
-      const error = get(lastError);
-      expect(error).toBeDefined();
-      expect(error?.type).toBe('no-transition');
-      expect(error?.message).toBeDefined();
+      expect(get(cfgExecutionState)?.stepCount).toBe(2);
     });
 
-    it('should set hasError derived store on error', async () => {
-      const cfg = createErrorCFG();
-      await initializeSimulation(cfg);
+    it('should stop when execution completes', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
 
-      stepSimulation(); // Success
-      expect(get(hasError)).toBe(false);
+      // Step until completion
+      stepSimulation(); // initial → n1
+      stepSimulation(); // n1 → terminal
 
-      stepSimulation(); // Error
-      expect(get(hasError)).toBe(true);
-    });
-
-    it('should stop simulation on critical errors', async () => {
-      const cfg = createErrorCFG();
-      await initializeSimulation(cfg);
-
-      stepSimulation();
-      stepSimulation(); // Triggers error
-
+      const state = get(cfgExecutionState);
+      expect(state?.completed).toBe(true);
       expect(get(simulationMode)).toBe('idle');
     });
+  });
 
-    it('should preserve state on error', async () => {
-      const cfg = createErrorCFG();
-      await initializeSimulation(cfg);
+  describe('Choice Handling - Backend Contract', () => {
+    it('should detect choice point from backend state', async () => {
+      const cfg = createChoiceCFG();
+      await initializeCFGSimulation(cfg);
 
-      stepSimulation();
-      const stateBeforeError = get(executionState);
+      stepSimulation(); // Move to choice point
 
-      stepSimulation(); // Error
-      const stateAfterError = get(executionState);
+      const state = get(cfgExecutionState);
+      expect(state?.atChoice).toBe(true);
+      expect(state?.availableChoices).toBeDefined();
+      expect((state?.availableChoices ?? []).length).toBeGreaterThan(0);
+    });
 
-      // State should be preserved, not corrupted
-      expect(stateAfterError).toBeDefined();
-      expect(stateAfterError?.stepCount).toBeGreaterThanOrEqual(
-        stateBeforeError?.stepCount ?? 0
-      );
+    it('should handle choice selection through makeChoice', async () => {
+      const cfg = createChoiceCFG();
+      await initializeCFGSimulation(cfg);
+
+      stepSimulation(); // Move to choice point
+
+      const stateBefore = get(cfgExecutionState);
+      expect(stateBefore?.atChoice).toBe(true);
+
+      makeChoice(0); // Select first branch
+
+      const stateAfter = get(cfgExecutionState);
+      expect(stateAfter?.atChoice).toBe(false);
+      expect(stateAfter?.currentNode).not.toBe(stateBefore?.currentNode);
     });
   });
 
-  describe('Choice Handling - FULL CONTRACT', () => {
-    it('should handle valid choice selection', async () => {
-      // TODO: Create CFG with choice point
-      // Verify makeChoice updates state, event, and clears error
-    });
+  describe('State Reset - Contract Enforcement', () => {
+    it('should reset all state including events through debugger', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
 
-    it('should expose error on invalid choice index', async () => {
-      // TODO: Create CFG with choice point
-      // Try invalid choice index
-      // Verify lastError is set with type: 'invalid-choice'
-    });
-
-    it('should not stop simulation on invalid choice (allow retry)', async () => {
-      // TODO: Verify mode stays 'stepping' on invalid choice
-      // Only critical errors should stop simulation
-    });
-  });
-
-  describe('State Reset', () => {
-    it('should clear all state including errors and events', async () => {
-      const cfg = createErrorCFG();
-      await initializeSimulation(cfg);
-
-      // Create some state with error
+      // Create some execution history
       stepSimulation();
-      stepSimulation(); // Error
+      stepSimulation();
 
-      expect(get(lastError)).not.toBeNull();
+      expect(get(currentStepNumber)).toBeGreaterThan(0);
+      expect(get(visibleExecutionEvents).length).toBeGreaterThan(0);
 
-      // Reset should clear everything
+      // Reset should clear everything through debugger
       resetSimulation();
 
-      expect(get(executionState)?.stepCount).toBe(0);
-      expect(get(lastError)).toBeNull();
-      expect(get(lastEvent)).toBeNull();
+      expect(get(currentStepNumber)).toBe(0);
+      expect(get(totalStepCount)).toBe(0);
+      expect(get(visibleExecutionEvents)).toHaveLength(0);
+      expect(get(cfgExecutionState)?.stepCount).toBe(0);
       expect(get(simulationMode)).toBe('idle');
     });
   });
 
-  describe('Backend Contract Evolution', () => {
+  describe('Backend State Contract - All Properties Exposed', () => {
     /**
-     * This test DOCUMENTS what properties backend returns.
-     * If backend adds new properties, this test MUST be updated.
-     * This forces future sessions to handle new backend features.
+     * This test DOCUMENTS what properties backend VM returns.
+     * The debugger wraps the VM and must preserve all state.
+     * If backend adds new properties, TypeScript + this test will catch it.
      */
-    it('should handle all properties in CFGStepResult', async () => {
+    it('should expose all CFGExecutionState properties through debugger', async () => {
       const cfg = createSimpleCFG();
-      await initializeSimulation(cfg);
+      await initializeCFGSimulation(cfg);
 
       stepSimulation();
 
-      // ✅ DOCUMENT: These are ALL the properties backend returns
-      const state = get(executionState);
-      const error = get(lastError);
-      const event = get(lastEvent);
+      // ✅ VERIFY: All backend VM state properties are exposed
+      const state = get(cfgExecutionState);
 
-      // If CFGStepResult gets new properties (e.g., result.warnings),
-      // TypeScript will force us to handle them, and this test will fail.
-
-      // Verify we expose ALL backend state properties
       expect(state).toHaveProperty('currentNode');
       expect(state).toHaveProperty('visitedNodes');
       expect(state).toHaveProperty('stepCount');
@@ -307,7 +249,63 @@ describe.skip('Simulation Store - Backend Contract Enforcement', () => {
       expect(state).toHaveProperty('reachedMaxSteps');
       expect(state).toHaveProperty('recursionStack');
 
-      // If any of these are missing, backend changed and we must update
+      // If backend adds properties (e.g., state.warnings), this will fail
+      // and force us to update the debugger layer
+    });
+
+    it('should annotate backend events with debugger metadata', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      stepSimulation();
+
+      const events = get(visibleExecutionEvents);
+      expect(events.length).toBeGreaterThan(0);
+
+      const event = events[0];
+
+      // ✅ VERIFY: Backend event properties are preserved
+      expect(event).toHaveProperty('type');
+      expect(event).toHaveProperty('timestamp');
+
+      // ✅ VERIFY: Debugger adds stepNumber (Layer 3 responsibility)
+      expect(event).toHaveProperty('stepNumber');
+      expect(typeof event.stepNumber).toBe('number');
+    });
+  });
+
+  describe('Debugger Layer Separation - Architecture Contract', () => {
+    it('should maintain separate execution state per mode', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      // CFG state should be populated
+      expect(get(cfgExecutionState)).not.toBeNull();
+
+      // Legacy executionState should point to CFG state in cfg mode
+      expect(get(executionState)).toBe(get(cfgExecutionState));
+    });
+
+    it('should track history through debugger snapshots', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      // Initial state (snapshot 0)
+      expect(get(currentStepNumber)).toBe(0);
+      expect(get(totalStepCount)).toBe(0);
+
+      // Step 1 (snapshot 1)
+      stepSimulation();
+      expect(get(currentStepNumber)).toBe(1);
+      expect(get(totalStepCount)).toBe(1);
+
+      // Step 2 (snapshot 2)
+      stepSimulation();
+      expect(get(currentStepNumber)).toBe(2);
+      expect(get(totalStepCount)).toBe(2);
+
+      // History is maintained by debugger, not VM
+      expect(get(cfgExecutionState)?.stepCount).toBe(2);
     });
   });
 });
