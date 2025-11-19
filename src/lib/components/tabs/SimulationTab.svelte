@@ -3,6 +3,8 @@
   import CFGSequence from '../visualizations/CFGSequence.svelte';
   import SimulationControls from '../controls/SimulationControls.svelte';
   import EventLog from '../panels/EventLog.svelte';
+  import BisimulationResults from '../panels/BisimulationResults.svelte';
+  import SimulationSettings from '../controls/SimulationSettings.svelte';
 
   let splitPos = 50; // percentage
   let eventLogHeight = 200; // pixels
@@ -10,6 +12,10 @@
 
 <div class="simulation-tab">
   <SimulationControls />
+
+  <BisimulationResults />
+
+  <SimulationSettings />
 
   <div class="main-content">
     <div class="split-container" style="--split-pos: {splitPos}%">

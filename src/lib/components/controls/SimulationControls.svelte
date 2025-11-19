@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     simulationMode,
+    executionMode,
     executionState,
     isSimulationActive,
     isPlaying,
@@ -13,11 +14,34 @@
     resetSimulation,
     makeChoice,
     playbackSpeed,
+    switchExecutionMode,
+    currentCFG,
+    currentCFSMs,
+    choiceStrategy,
+    type ExecutionMode,
+    type ChoiceStrategy,
   } from '$lib/stores/simulation';
   import TimelineControls from './TimelineControls.svelte';
   import ChoicePreview from '../panels/ChoicePreview.svelte';
 
   let selectedChoice: number | null = null;
+
+  async function handleModeChange(event: Event) {
+    const target = event.target as HTMLSelectElement;
+    const newMode = target.value as ExecutionMode;
+    await switchExecutionMode(newMode);
+    selectedChoice = null;
+  }
+
+  async function handleStrategyChange(event: Event) {
+    const target = event.target as HTMLSelectElement;
+    const newStrategy = target.value as ChoiceStrategy;
+    choiceStrategy.set(newStrategy);
+    // Re-initialize to apply new strategy
+    if ($currentCFG) {
+      await switchExecutionMode($executionMode);
+    }
+  }
 
   function handleChoiceSelect(index: number) {
     selectedChoice = index;
@@ -69,6 +93,45 @@
 
 {#if $isSimulationActive}
   <div class="simulation-controls">
+    <div class="mode-selector-group">
+      <label for="execution-mode">Mode:</label>
+      <select
+        id="execution-mode"
+        class="mode-select"
+        value={$executionMode}
+        on:change={handleModeChange}
+        disabled={$isPlaying}
+        title="Execution mode"
+      >
+        <option value="cfg">CFG (Orchestration)</option>
+        <option value="distributed" disabled={!$currentCFSMs || $currentCFSMs.size === 0}>
+          Distributed (Choreography)
+        </option>
+        <option value="bisimulation" disabled={!$currentCFG || !$currentCFSMs || $currentCFSMs.size === 0}>
+          Bisimulation (Verify)
+        </option>
+      </select>
+    </div>
+
+    {#if $executionMode === 'cfg' || $executionMode === 'bisimulation'}
+      <div class="strategy-selector-group">
+        <label for="choice-strategy">Strategy:</label>
+        <select
+          id="choice-strategy"
+          class="strategy-select"
+          value={$choiceStrategy}
+          on:change={handleStrategyChange}
+          disabled={$isPlaying}
+          title="Choice selection strategy"
+        >
+          <option value="manual">Manual</option>
+          <option value="random">Random</option>
+          <option value="first">First Branch</option>
+          <option value="explore-all">Explore All</option>
+        </select>
+      </div>
+    {/if}
+
     <div class="control-group">
       <button
         class="control-btn"
@@ -100,7 +163,15 @@
 
     <div class="status-group">
       <div class="status-item">
-        <span class="label">Step:</span>
+        <span class="label">
+          {#if $executionMode === 'distributed'}
+            Action:
+          {:else if $executionMode === 'bisimulation'}
+            Both:
+          {:else}
+            Step:
+          {/if}
+        </span>
         <span class="value">{$executionState?.stepCount ?? 0}</span>
       </div>
 
@@ -185,6 +256,80 @@
     font-style: italic;
     font-size: 13px;
     margin: 0;
+  }
+
+  .mode-selector-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 8px;
+    border-right: 1px solid #555;
+  }
+
+  .mode-selector-group label {
+    color: #888;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .mode-select {
+    background: #3d3d3d;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .mode-select:hover:not(:disabled) {
+    background: #4d4d4d;
+    border-color: #007acc;
+  }
+
+  .mode-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .mode-select option:disabled {
+    color: #666;
+  }
+
+  .strategy-selector-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 8px;
+    border-right: 1px solid #555;
+  }
+
+  .strategy-selector-group label {
+    color: #888;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .strategy-select {
+    background: #3d3d3d;
+    color: #ccc;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .strategy-select:hover:not(:disabled) {
+    background: #4d4d4d;
+    border-color: #007acc;
+  }
+
+  .strategy-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .control-group {

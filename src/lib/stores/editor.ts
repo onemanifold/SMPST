@@ -401,9 +401,12 @@ export async function parseProtocol(content: string) {
       })
     );
 
-    // 6. Initialize simulation with CFG
-    const { initializeSimulation } = await import('./simulation');
+    // 6. Initialize simulation with both CFG and CFSMs
+    const { initializeSimulation, currentCFSMs } = await import('./simulation');
     await initializeSimulation(cfg);
+
+    // Store CFSMs for mode switching (without changing active mode)
+    currentCFSMs.set(projectionResult.cfsms);
 
     // TODO: 7. Generate TypeScript (future)
 
