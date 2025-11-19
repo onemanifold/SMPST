@@ -164,10 +164,10 @@ describe('DMst Dynamic Participants Runtime', () => {
 
       // Verify create and invite events in trace
       const createEvent = trace.events.find(
-        e => e.type === 'participant-creation'
+        e => e.type === 'participant_created'
       );
       const inviteEvent = trace.events.find(
-        e => e.type === 'invitation-complete'
+        e => e.type === 'participant_invited'
       );
 
       expect(createEvent).toBeDefined();
@@ -201,7 +201,7 @@ describe('DMst Dynamic Participants Runtime', () => {
 
       // Verify both invitations occurred
       const inviteEvents = trace.events.filter(
-        e => e.type === 'invitation-complete'
+        e => e.type === 'participant_invited'
       );
 
       expect(inviteEvents.length).toBeGreaterThanOrEqual(1);
@@ -406,10 +406,10 @@ describe('DMst Dynamic Participants Runtime', () => {
 
       // Verify trace contains lifecycle events
       const createEvent = trace.events.find(
-        e => e.type === 'participant-creation'
+        e => e.type === 'participant_created'
       );
       const inviteEvent = trace.events.find(
-        e => e.type === 'invitation-complete'
+        e => e.type === 'participant_invited'
       );
 
       expect(createEvent).toBeDefined();
@@ -529,7 +529,7 @@ describe('DMst Dynamic Participants Runtime', () => {
       const trace = simulator.getTrace();
 
       const createEvent = trace.events.find(
-        e => e.type === 'participant-creation'
+        e => e.type === 'participant_created'
       );
 
       expect(createEvent).toBeDefined();
@@ -557,7 +557,7 @@ describe('DMst Dynamic Participants Runtime', () => {
       const trace = simulator.getTrace();
 
       const inviteEvent = trace.events.find(
-        e => e.type === 'invitation-complete'
+        e => e.type === 'participant_invited'
       );
 
       expect(inviteEvent).toBeDefined();
