@@ -46,9 +46,8 @@
     }
   }
 
-  onMount(() => {
-    if (!editorContainer) return;
-
+  // Function to set up Monaco environment and register language
+  function setupMonaco() {
     // Set up Monaco environment (needed for worker loading)
     (window as any).MonacoEnvironment = (window as any).MonacoEnvironment || {
       getWorkerUrl: function (_moduleId: string, label: string) {
@@ -110,8 +109,13 @@
         }
       });
     }
+  }
 
-    // Create editor immediately (no setTimeout needed)
+  // Reactive statement to create editor when container becomes available
+  // This handles the case where the component mounts before any protocol is loaded
+  $: if (editorContainer && !editor) {
+    setupMonaco();
+
     try {
       // Create read-only Monaco editor with current localScribble value
       editor = monaco.editor.create(editorContainer, {
@@ -134,6 +138,10 @@
     } catch (e) {
       console.error('Failed to create Monaco editor:', e);
     }
+  }
+
+  onMount(() => {
+    setupMonaco();
   });
 
   onDestroy(() => {
