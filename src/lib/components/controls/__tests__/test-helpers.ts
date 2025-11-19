@@ -99,8 +99,9 @@ export function createCFGAndCFSMs() {
   const cfg = buildCFG(protocol);
 
   // Generate CFSMs
-  const { projectAll } = require('../../../../core/projection/projector');
-  const result = projectAll(cfg);
+  // Dynamic import for test environment
+  const projectorModule = await import('../../../../core/projection/projector');
+  const result = projectorModule.projectAll(cfg);
 
   return { cfg, cfsms: result.cfsms };
 }
