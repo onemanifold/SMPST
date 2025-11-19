@@ -73,7 +73,7 @@ export interface DynamicParticipantRegistry {
  * Event when a dynamic participant is created.
  */
 export interface ParticipantCreationEvent {
-  type: 'participant-creation';
+  type: 'participant_created';
   timestamp: number;
   creator: string;
   roleName: string;
@@ -84,7 +84,7 @@ export interface ParticipantCreationEvent {
  * Event when invitation protocol completes.
  */
 export interface InvitationCompleteEvent {
-  type: 'invitation-complete';
+  type: 'participant_invited';
   timestamp: number;
   inviter: string;
   invitee: string;
