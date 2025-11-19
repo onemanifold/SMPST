@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { parseStatus } from '$lib/stores/editor';
   import { currentCFG, executionState } from '$lib/stores/simulation';
   import * as d3 from 'd3';
@@ -280,11 +280,18 @@
   }
 
   // Re-render on CFG or execution state change
+  // Use tick() to ensure DOM elements are bound before rendering
   $: if ($currentCFG || $executionState) {
-    renderSequenceDiagram();
+    tick().then(() => {
+      if (svgElement && containerElement) {
+        renderSequenceDiagram();
+      }
+    });
   }
 
-  onMount(() => {
+  onMount(async () => {
+    // Wait for next tick to ensure DOM is ready
+    await tick();
     renderSequenceDiagram();
     window.addEventListener('resize', renderSequenceDiagram);
   });

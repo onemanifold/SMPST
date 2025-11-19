@@ -21,15 +21,28 @@
   $: localScribble = currentProjection?.localProtocol || '';
 
   // Update editor content when selected role changes
-  $: if (editor && localScribble !== editor.getValue()) {
-    try {
-      const currentPosition = editor.getPosition();
-      editor.setValue(localScribble);
-      if (currentPosition) {
-        editor.setPosition(currentPosition);
+  // Force update even if values are equal to handle initial load case
+  $: if (editor) {
+    const currentValue = editor.getValue();
+    if (localScribble !== currentValue) {
+      try {
+        const currentPosition = editor.getPosition();
+        editor.setValue(localScribble);
+        if (currentPosition) {
+          editor.setPosition(currentPosition);
+        }
+      } catch (e) {
+        console.error('Failed to update editor:', e);
       }
-    } catch (e) {
-      console.error('Failed to update editor:', e);
+    }
+  }
+
+  // Also watch for projection data changes to trigger editor update
+  $: if (editor && $projectionData.length > 0) {
+    // Ensure editor shows content when data arrives
+    const content = currentProjection?.localProtocol || '';
+    if (content && editor.getValue() !== content) {
+      editor.setValue(content);
     }
   }
 
@@ -98,33 +111,29 @@
       });
     }
 
-    // Small delay to ensure container is fully rendered
-    setTimeout(() => {
-      if (!editorContainer) return;
-
-      try {
-        // Create read-only Monaco editor
-        editor = monaco.editor.create(editorContainer, {
-          value: localScribble,
-          language: 'scribble',
-          theme: 'scribble-dark',
-          automaticLayout: true,
-          minimap: { enabled: false },
-          fontSize: 13,
-          lineNumbers: 'on',
-          renderWhitespace: 'selection',
-          scrollBeyondLastLine: false,
-          readOnly: true,
-          domReadOnly: true,
-          contextmenu: false,
-          folding: false,
-          lineDecorationsWidth: 0,
-          lineNumbersMinChars: 3,
-        });
-      } catch (e) {
-        console.error('Failed to create Monaco editor:', e);
-      }
-    }, 100);
+    // Create editor immediately (no setTimeout needed)
+    try {
+      // Create read-only Monaco editor with current localScribble value
+      editor = monaco.editor.create(editorContainer, {
+        value: localScribble,
+        language: 'scribble',
+        theme: 'scribble-dark',
+        automaticLayout: true,
+        minimap: { enabled: false },
+        fontSize: 13,
+        lineNumbers: 'on',
+        renderWhitespace: 'selection',
+        scrollBeyondLastLine: false,
+        readOnly: true,
+        domReadOnly: true,
+        contextmenu: false,
+        folding: false,
+        lineDecorationsWidth: 0,
+        lineNumbersMinChars: 3,
+      });
+    } catch (e) {
+      console.error('Failed to create Monaco editor:', e);
+    }
   });
 
   onDestroy(() => {
