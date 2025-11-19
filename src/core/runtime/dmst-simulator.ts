@@ -390,7 +390,8 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
       creator,
       roleName,
       cfsmTemplate,
-      this.transport
+      this.transport,
+      instanceId  // Use instance name from create message
     );
 
     // Create executor for dynamic participant
@@ -418,7 +419,7 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
 
     // Record creation event
     const event: ParticipantCreationEvent = {
-      type: 'participant-creation',
+      type: 'participant_created',
       timestamp: Date.now(),
       creator,
       roleName,
@@ -547,7 +548,7 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
 
           // Record event
           const event: InvitationCompleteEvent = {
-            type: 'invitation-complete',
+            type: 'participant_invited',
             timestamp: Date.now(),
             inviter,
             invitee: inviteeId,

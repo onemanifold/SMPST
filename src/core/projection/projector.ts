@@ -545,12 +545,12 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
         } else if (isCreateParticipantsAction(action)) {
           // DMst RULE: Create dynamic participant
           // From ECOOP 2023 Definition 12:
-          // [[p creates r]]_p = CreateAction (creator)
-          // [[p creates r]]_r = CreateAction (created participant)
+          // [[p creates r]]_p = CreateAction (creator sends create)
+          // [[p creates r]]_r = skip (created participant is spawned, doesn't "execute" create)
           // [[p creates r]]_q = skip (other roles - tau-elimination)
 
-          if (action.creator === role || action.roleName === role) {
-            // Role is creator or created participant - emit CreateAction
+          if (action.creator === role) {
+            // Role is creator - emit CreateAction
             const newState = createState(`after_create_${action.roleName}`);
             cfgNodeToState.set(targetNode.id, newState.id);
 
@@ -567,7 +567,8 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
               lastStateId: newState.id,
             });
           } else {
-            // Role NOT involved - tau-elimination
+            // Role is created participant OR uninvolved - tau-elimination
+            // Created participant is spawned by simulator, doesn't execute create action
             queue.push({
               cfgNodeId: targetNode.id,
               lastStateId,

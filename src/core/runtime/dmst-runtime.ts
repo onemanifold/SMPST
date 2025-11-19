@@ -107,6 +107,7 @@ export interface InvitationCompleteEvent {
  * @param roleName - Role type to create
  * @param cfsm - Projected CFSM for this dynamic role
  * @param transport - Message transport for communication
+ * @param instanceName - Optional instance name (e.g., 'w1'), defaults to auto-generated
  * @returns New participant instance
  */
 export function createDynamicParticipant(
@@ -115,12 +116,18 @@ export function createDynamicParticipant(
   creator: string,
   roleName: string,
   cfsm: CFSM,
-  transport: MessageTransport
+  transport: MessageTransport,
+  instanceName?: string
 ): DynamicParticipant {
-  // Generate unique instance ID
-  const nextId = nextInstanceId.get(roleName) || 1;
-  const instanceId = `${roleName}_${nextId}`;
-  nextInstanceId.set(roleName, nextId + 1);
+  // Use provided instance name or generate one
+  let instanceId: string;
+  if (instanceName) {
+    instanceId = instanceName;
+  } else {
+    const nextId = nextInstanceId.get(roleName) || 1;
+    instanceId = `${roleName}_${nextId}`;
+    nextInstanceId.set(roleName, nextId + 1);
+  }
 
   // Create participant
   const participant: DynamicParticipant = {

@@ -192,8 +192,24 @@ export function buildCFG(protocol: GlobalProtocolDeclaration): CFG {
   // Don't reset counters - maintain global uniqueness across protocol builds
   // resetCounters();
 
+  // Extract static roles from protocol header
   const roles = protocol.roles.map(r => r.name);
-  const ctx = createContext(roles);
+
+  // Extract dynamic roles from protocol body (DMst extension)
+  // Dynamic roles need to be in cfg.roles so they can be projected
+  const dynamicRoles = protocol.body
+    .filter((i): i is DynamicRoleDeclaration => i.type === 'DynamicRoleDeclaration')
+    .map(d => d.roleName);
+
+  // Combine static and dynamic roles for projection
+  const allRoles = [...roles];
+  for (const dynamicRole of dynamicRoles) {
+    if (!allRoles.includes(dynamicRole)) {
+      allRoles.push(dynamicRole);
+    }
+  }
+
+  const ctx = createContext(allRoles);
 
   // Create initial and terminal nodes
   const initial = addNode(ctx, createInitialNode());
