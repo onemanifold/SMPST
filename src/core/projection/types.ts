@@ -46,7 +46,10 @@ export type CFSMAction =
   | ReceiveAction
   | TauAction       // Silent/internal action (epsilon)
   | ChoiceAction    // Internal choice (branch selection)
-  | SubProtocolCallAction;  // Sub-protocol invocation
+  | SubProtocolCallAction  // Sub-protocol invocation
+  | CreateAction    // DMst: Create dynamic participant
+  | InviteAction    // DMst: Invite dynamic participant
+  | ContinueWithAction;  // DMst: Updatable recursion (continue X with { G })
 
 /**
  * Send action: ! ⟨p, l⟨U⟩⟩
@@ -127,6 +130,53 @@ export interface SubProtocolCallAction {
   protocol: string;           // Sub-protocol name
   roleMapping: Record<string, string>;  // Formal parameter → actual role mapping
   returnState: string;        // State to return to after sub-protocol completes
+}
+
+/**
+ * Create action: p creates r
+ * DMst-specific action for creating dynamic participants
+ *
+ * From ECOOP 2023 Definition 12:
+ * [[p creates r]]_p = !create(r) (creator sends)
+ * [[p creates r]]_r = ?create from p (created receives)
+ */
+export interface CreateAction {
+  type: 'create';
+  role: string;        // Dynamic role name (e.g., 'Worker')
+  instance?: string;   // Instance ID (e.g., 'Worker_1'), generated if not provided
+}
+
+/**
+ * Invite action: p invites q
+ * DMst-specific action for invitation protocol synchronization
+ *
+ * From ECOOP 2023 Definition 12:
+ * [[p invites q]]_p = !invite to q
+ * [[p invites q]]_q = ?invite from p
+ */
+export interface InviteAction {
+  type: 'invite';
+  target: string;      // Instance ID to invite
+}
+
+/**
+ * Continue-with action: continue X with { G }
+ * DMst-specific action for updatable recursion
+ *
+ * From ECOOP 2023 Definition 3 and Section 3.2:
+ * Operational semantics: continue X with { G' } ≡ G' ; (rec X { G' ; (unfold X) })
+ *
+ * This action triggers a protocol update:
+ * 1. Creates extended CFSM (extension ; original)
+ * 2. Registers new version in version registry
+ * 3. Applies update to all active executors
+ * 4. Future iterations use extended version
+ */
+export interface ContinueWithAction {
+  type: 'continue-with';
+  recursionVar: string;     // Recursion variable being updated (e.g., "X")
+  extension: CFSM;          // Extension behavior to add
+  returnState: string;      // State to return to after extension
 }
 
 /**

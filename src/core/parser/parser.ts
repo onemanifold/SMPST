@@ -271,7 +271,7 @@ export class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.protocolCall) },
       { ALT: () => this.SUBRULE(this.createParticipants) },
       { ALT: () => this.SUBRULE(this.invitation) },
-      { ALT: () => this.SUBRULE(this.updatableRecursion) },
+      // Note: updatableRecursion is handled by continueStatement (with optional extension)
       // TODO: Re-enable Exception Handling (Phase 4)
       // DISABLED: Not yet needed; enable after core projection complete
       // Requires: Exception propagation semantics, projection rules
@@ -374,6 +374,15 @@ export class ScribbleParser extends CstParser {
   private continueStatement = this.RULE('continueStatement', () => {
     this.CONSUME(tokens.Continue);
     this.CONSUME(tokens.Identifier, { LABEL: 'label' });
+
+    // Optional: with { GlobalProtocolBody } for updatable recursion (DMst)
+    this.OPTION(() => {
+      this.CONSUME(tokens.With);
+      this.CONSUME(tokens.LCurly);
+      this.SUBRULE(this.globalProtocolBody, { LABEL: 'extension' });
+      this.CONSUME(tokens.RCurly);
+    });
+
     this.CONSUME(tokens.Semicolon);
   });
 
@@ -882,9 +891,7 @@ class ScribbleToAstVisitor extends BaseCstVisitor {
     if (ctx.invitation) {
       return this.visit(ctx.invitation);
     }
-    if (ctx.updatableRecursion) {
-      return this.visit(ctx.updatableRecursion);
-    }
+    // Note: updatableRecursion is handled by continueStatement visitor
     throw new Error('Unknown global interaction');
   }
 
@@ -1003,7 +1010,18 @@ class ScribbleToAstVisitor extends BaseCstVisitor {
     };
   }
 
-  continueStatement(ctx: any): AST.Continue {
+  continueStatement(ctx: any): AST.Continue | AST.UpdatableRecursion {
+    // If extension present, create UpdatableRecursion node (DMst)
+    if (ctx.extension) {
+      return {
+        type: 'UpdatableRecursion',
+        label: ctx.label[0].image,
+        updateBody: this.visit(ctx.extension),
+        location: this.getLocation(ctx),
+      };
+    }
+
+    // Otherwise, create regular Continue node
     return {
       type: 'Continue',
       label: ctx.label[0].image,
