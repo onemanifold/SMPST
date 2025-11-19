@@ -621,7 +621,10 @@
 
   // Re-render on data change or execution state change
   // Use tick() to ensure DOM elements are bound before rendering
-  $: if ($projectionData || $executionState) {
+  // Use block syntax to ensure both stores are tracked as dependencies
+  $: {
+    $projectionData;
+    $executionState;
     tick().then(() => {
       if (svgElement && containerElement) {
         renderCFSMNetwork();
