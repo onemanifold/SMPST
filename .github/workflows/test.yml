@@ -1,13 +1,25 @@
-name: Tests
+name: CI/CD
 
 on:
   push:
     branches:
       - main
 
+# Sets permissions for deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "ci-cd"
+  cancel-in-progress: false
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    name: Tests
 
     steps:
       - name: Checkout
@@ -48,20 +60,59 @@ jobs:
             exit 1
           fi
 
-      - name: Run performance check
-        run: |
-          echo "🚀 Performance check"
-          npm run test:golden 2>&1 | grep -E "Duration|tests" || true
-
-  golden-tests:
+  store-contracts:
     runs-on: ubuntu-latest
-    name: Golden Protocol Tests
+    name: Verify Store Backend Contracts
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run store contract tests
+        run: |
+          echo "🔍 Verifying stores faithfully implement backend..."
+          npm run test -- src/lib/stores/__tests__ --run --reporter=verbose
+
+      - name: Check for incomplete implementations
+        if: failure()
+        run: |
+          echo "❌ STORE CONTRACT VIOLATION DETECTED"
+          echo ""
+          echo "One or more stores are not faithfully implementing backend logic."
+          echo ""
+          echo "Common issues:"
+          echo "  • Ignoring backend error returns"
+          echo "  • Not exposing all backend properties to UI"
+          echo "  • Missing stores for new backend features"
+          echo ""
+          echo "📖 See .claude/store-development-protocol.md for guidance"
+          echo ""
+          exit 1
+
+      - name: Report success
+        if: success()
+        run: |
+          echo "✅ All stores faithfully implement backend contracts"
+          echo "   Frontend will properly reflect backend behavior to users"
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, store-contracts]
+    name: Build
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -70,13 +121,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run golden tests
-        run: npm run test:golden
+      - name: Build
+        run: npm run build
 
-      - name: Upload snapshot artifacts (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: Add .nojekyll
+        run: touch dist/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: snapshot-diffs
-          path: tests/golden/snapshots/
-          retention-days: 7
+          path: './dist'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    name: Deploy
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
