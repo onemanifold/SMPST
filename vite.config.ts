@@ -31,7 +31,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    environment: 'node', // Changed from 'jsdom' - tests don't use DOM
+    environment: 'jsdom', // Use jsdom for Svelte component tests
     setupFiles: ['./src/test/setup.ts']
   },
   optimizeDeps: {
