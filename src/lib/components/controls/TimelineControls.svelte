@@ -15,18 +15,18 @@
   // Sync slider with current step
   $: sliderValue = $currentStepNumber;
 
-  function handleSliderChange(event: Event) {
+  async function handleSliderChange(event: Event) {
     const target = event.target as HTMLInputElement;
     const stepNumber = parseInt(target.value, 10);
-    jumpToStep(stepNumber);
+    await jumpToStep(stepNumber);
   }
 
-  function handleStepBack() {
-    stepBack();
+  async function handleStepBack() {
+    await stepBack();
   }
 
-  function handleStepForward() {
-    stepForward();
+  async function handleStepForward() {
+    await stepForward();
   }
 </script>
 

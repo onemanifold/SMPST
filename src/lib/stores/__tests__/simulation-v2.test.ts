@@ -339,11 +339,11 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       expect(get(currentStepNumber)).toBe(0);
       expect(get(totalStepCount)).toBe(0);
 
-      await await stepSimulation();
+      await stepSimulation();
       expect(get(currentStepNumber)).toBe(1);
       expect(get(totalStepCount)).toBe(1);
 
-      await await stepSimulation();
+      await stepSimulation();
       expect(get(currentStepNumber)).toBe(2);
       expect(get(totalStepCount)).toBe(2);
     });

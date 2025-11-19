@@ -244,7 +244,11 @@ export function startPlaying() {
 
   const speed = get(playbackSpeed);
   playInterval = setInterval(() => {
-    stepSimulation();
+    // Handle async stepSimulation - fire and forget in auto-play mode
+    stepSimulation().catch(err => {
+      console.error('Step error in auto-play:', err);
+      stopPlaying();
+    });
   }, speed);
 }
 

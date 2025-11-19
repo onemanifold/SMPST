@@ -31,12 +31,12 @@
     pauseSimulation();
   }
 
-  function handleStep() {
+  async function handleStep() {
     if ($isAtChoice && selectedChoice !== null) {
       makeChoice(selectedChoice);
       selectedChoice = null;
     } else {
-      stepSimulation();
+      await stepSimulation();
     }
   }
 
