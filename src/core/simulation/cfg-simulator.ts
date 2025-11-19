@@ -119,7 +119,7 @@ import { ExecutionHistory } from './execution-history';
  */
 export class CFGSimulator {
   private cfg: CFG;
-  private config: Required<Omit<CFGSimulatorConfig, 'protocolRegistry' | 'callStackManager' | 'executionHistory'>>;
+  private config: Required<Omit<CFGSimulatorConfig, 'protocolRegistry' | 'callStackManager' | 'executionHistory' | 'cfsms'>>;
 
   // Sub-protocol support (optional)
   private protocolRegistry?: IProtocolRegistry;
@@ -159,6 +159,10 @@ export class CFGSimulator {
   private steppingMode: 'into' | 'over' | 'out' | null = null;
   private stepOverDepth: number = 0; // Track call stack depth for step-over
 
+  // CFSM state tracking (for visualization)
+  private cfsms?: Map<string, any>; // Map<role, CFSM>
+  private cfsmStates: Map<string, string> = new Map(); // Map<role, currentState>
+
   constructor(cfg: CFG, config: CFGSimulatorConfig = {}) {
     this.cfg = cfg;
     this.config = {
@@ -171,6 +175,16 @@ export class CFGSimulator {
     // Store optional sub-protocol support
     this.protocolRegistry = config.protocolRegistry;
     this.callStackManager = config.callStackManager;
+
+    // Store CFSMs for state tracking
+    this.cfsms = config.cfsms;
+
+    // Initialize CFSM states to initial states
+    if (this.cfsms) {
+      this.cfsms.forEach((cfsm, role) => {
+        this.cfsmStates.set(role, cfsm.initialState);
+      });
+    }
 
     // Initialize execution history
     this.executionHistory = config.executionHistory || new ExecutionHistory({
@@ -322,6 +336,7 @@ export class CFGSimulator {
       activeBranches: this.inParallel ? this.parallelBranches : undefined,
       reachedMaxSteps: this.reachedMaxSteps,
       recursionStack: [...this.recursionStack],
+      cfsmStates: this.cfsms ? new Map(this.cfsmStates) : undefined,
     };
   }
 
@@ -598,6 +613,9 @@ export class CFGSimulator {
         payloadType: action.payloadType,
         nodeId: node.id,
       };
+
+      // Update CFSM states for sender and receiver(s)
+      this.updateCFSMStatesForMessage(action.from, action.to, action.label);
 
       // Emit message event for subscribers
       this.emit('message', {
@@ -1433,6 +1451,14 @@ export class CFGSimulator {
     this.steppingMode = null;
     this.stepOverDepth = 0;
 
+    // Reset CFSM states to initial states
+    this.cfsmStates.clear();
+    if (this.cfsms) {
+      this.cfsms.forEach((cfsm, role) => {
+        this.cfsmStates.set(role, cfsm.initialState);
+      });
+    }
+
     this.trace = {
       events: [],
       startTime: Date.now(),
@@ -1679,6 +1705,51 @@ export class CFGSimulator {
    */
   getExecutionHistory(): IExecutionHistory {
     return this.executionHistory;
+  }
+
+  /**
+   * Update CFSM states for a message action
+   * Finds the corresponding transitions in sender and receiver CFSMs and updates their states
+   */
+  private updateCFSMStatesForMessage(from: string, to: string | string[], label: string): void {
+    if (!this.cfsms) return; // No CFSMs provided, skip state tracking
+
+    // Update sender state
+    const senderCFSM = this.cfsms.get(from);
+    if (senderCFSM) {
+      const senderCurrentState = this.cfsmStates.get(from);
+      if (senderCurrentState) {
+        // Find send transition with matching label from current state
+        const sendTransition = senderCFSM.transitions.find((t: any) =>
+          t.from === senderCurrentState &&
+          t.action.type === 'send' &&
+          t.action.message.label === label
+        );
+        if (sendTransition) {
+          this.cfsmStates.set(from, sendTransition.to);
+        }
+      }
+    }
+
+    // Update receiver state(s)
+    const receivers = Array.isArray(to) ? to : [to];
+    receivers.forEach((receiver: string) => {
+      const receiverCFSM = this.cfsms.get(receiver);
+      if (receiverCFSM) {
+        const receiverCurrentState = this.cfsmStates.get(receiver);
+        if (receiverCurrentState) {
+          // Find receive transition with matching label from current state
+          const recvTransition = receiverCFSM.transitions.find((t: any) =>
+            t.from === receiverCurrentState &&
+            t.action.type === 'receive' &&
+            t.action.message.label === label
+          );
+          if (recvTransition) {
+            this.cfsmStates.set(receiver, recvTransition.to);
+          }
+        }
+      }
+    });
   }
 
   /**

@@ -128,9 +128,13 @@ export async function initializeCFGSimulation(cfg: CFG) {
   const { CFGDebugger } = await import('../../core/simulation/cfg-debugger');
   const { CFGSimulator } = await import('../../core/simulation/cfg-simulator');
 
+  // Get CFSMs if available (for CFSM state tracking)
+  const cfsms = get(currentCFSMs);
+
   cfgDebugger = new CFGDebugger(cfg, CFGSimulator, {
     choiceStrategy: get(choiceStrategy),
     maxSteps: get(maxStepsConfig),
+    cfsms: cfsms || undefined,
   });
 
   currentCFG.set(cfg);
@@ -177,6 +181,7 @@ export async function initializeBisimulation(cfg: CFG, cfsms: Map<string, CFSM>)
   cfgDebugger = new CFGDebugger(cfg, CFGSimulator, {
     choiceStrategy: get(choiceStrategy),
     maxSteps: get(maxStepsConfig),
+    cfsms: cfsms,
   });
 
   distributedDebugger = new DistributedDebugger(cfsms, DistributedSimulator, {

@@ -81,21 +81,13 @@
     return false;
   }
 
-  // Check if a state has been visited
-  function isStateVisited(stateId: string): boolean {
-    if (!$executionState) return false;
-    return $executionState.visitedNodes.some(nodeId => nodeId.includes(stateId));
-  }
+  // Check if currently AT a state (using tracked CFSM states)
+  function isStateAtCurrent(projection: typeof $projectionData[0], stateId: string): boolean {
+    if (!$executionState || !$executionState.cfsmStates) return false;
 
-  // Check if currently AT a state (not executing FROM it)
-  function isStateAtCurrent(stateId: string): boolean {
-    if (!$executionState) return false;
-
-    const currentNodeId = typeof $executionState.currentNode === 'string'
-      ? $executionState.currentNode
-      : $executionState.currentNode[0];
-
-    return currentNodeId.includes(stateId);
+    // Get the current CFSM state for this role from the tracked states
+    const currentState = $executionState.cfsmStates.get(projection.role);
+    return currentState === stateId;
   }
 
   // Check if state is the SOURCE of an active transition
@@ -426,8 +418,7 @@
 
       const isInitial = i === 0;
       const isFinal = i === projection.states.length - 1;
-      const isVisited = isStateVisited(state);
-      const isAtState = isStateAtCurrent(state);
+      const isAtState = isStateAtCurrent(projection, state);
       const isSource = isStateSource(projection, state);
       const isTarget = isStateTarget(projection, state);
 
@@ -446,11 +437,6 @@
         fillColor = '#2d5f5f';
         strokeColor = '#4EC9B0';
         strokeWidth = 3;
-      } else if (isVisited) {
-        // Visited but not current
-        fillColor = '#2d4d3d';
-        strokeColor = '#4EC9B0';
-        strokeWidth = 2;
       } else if (isInitial) {
         fillColor = '#2d5f2d';
         strokeColor = '#90ee90';
