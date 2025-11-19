@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { projectionData, parseStatus } from '$lib/stores/editor';
   import { currentCFG, executionState } from '$lib/stores/simulation';
   import * as d3 from 'd3';
@@ -619,12 +619,22 @@
     }
   }
 
-  // Re-render on data change, execution state change, or window resize
-  $: if ($projectionData || $executionState) {
-    renderCFSMNetwork();
+  // Re-render on data change or execution state change
+  // Use tick() to ensure DOM elements are bound before rendering
+  // Use block syntax to ensure both stores are tracked as dependencies
+  $: {
+    $projectionData;
+    $executionState;
+    tick().then(() => {
+      if (svgElement && containerElement) {
+        renderCFSMNetwork();
+      }
+    });
   }
 
-  onMount(() => {
+  onMount(async () => {
+    // Wait for next tick to ensure DOM is ready
+    await tick();
     renderCFSMNetwork();
     window.addEventListener('resize', renderCFSMNetwork);
   });

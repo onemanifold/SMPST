@@ -2,6 +2,17 @@
 
 Modern web-based IDE for Multiparty Session Types with CFG-based verification.
 
+## 📚 Documentation
+
+**→ [Complete Documentation Index](./docs/index.md)** - Start here for comprehensive guides, theory, and architecture docs
+
+**Quick Links:**
+- **[Getting Started](./docs/getting-started/cli-quickstart.md)** - 5-minute quickstart
+- **[Architecture Overview](./docs/architecture/overview.md)** - System design
+- **[Implementation Lessons](./docs/implementation-lessons.md)** - Theory to code insights
+- **[Theory & Foundations](./docs/theory/)** - Formal MPST theory
+- **[Current Status](./docs/STATUS.md)** - Implementation progress
+
 ## Architecture
 
 This project follows a layered architecture where the **Control Flow Graph (CFG)** is the central semantic artifact:
@@ -10,7 +21,7 @@ This project follows a layered architecture where the **Control Flow Graph (CFG)
 Scribble Source → AST → CFG → CFSM → State Machine → Code
 ```
 
-See [docs/architecture-overview.md](./docs/architecture-overview.md) for a complete explanation.
+See [docs/architecture/overview.md](./docs/architecture/overview.md) for a complete explanation.
 
 ## Tech Stack
 
@@ -97,9 +108,9 @@ echo "protocol Test(role A, role B) { A -> B: Hello(); }" | npm run project -- -
 ```
 
 **Documentation:**
-- 📖 [CLI Quick Start](./docs/CLI_QUICKSTART.md) - Get started in 5 minutes
-- 📚 [Full CLI Documentation](./docs/CLI.md) - Complete reference and examples
-- 🔬 [Projection Theory](./docs/LOCAL_PROTOCOL_PROJECTION.md) - Formal specification
+- 📖 [CLI Quick Start](./docs/getting-started/cli-quickstart.md) - Get started in 5 minutes
+- 📚 [Full CLI Documentation](./docs/reference/cli.md) - Complete reference and examples
+- 🔬 [Projection Theory](./docs/reference/projection-spec.md) - Formal specification
 
 **Example Protocols:**
 - `examples/request-response.scr` - Simple message passing
@@ -160,18 +171,21 @@ SMPST/
 
 ## Documentation
 
+**For complete documentation, see [docs/index.md](./docs/index.md)**
+
 ### Core Documentation
 - **[Formal Foundations](./docs/foundations.md)** - MPST theory, LTS, Scribble semantics
-- **[Architecture Overview](./docs/architecture-overview.md)** - Complete explanation of CFG-based architecture
-- **[CFG Design](./docs/cfg-design.md)** - CFG structure and verification algorithms
+- **[Architecture Overview](./docs/architecture/overview.md)** - Complete explanation of CFG-based architecture
+- **[CFG Design](./docs/architecture/cfg.md)** - CFG structure and verification algorithms
+- **[CFSM Architecture](./docs/architecture/cfsm.md)** - CFSM semantics and tau transitions
 - **[Implementation Status](./docs/STATUS.md)** - Current status, test coverage, recent changes
-- **[Scribble 2.0 Syntax](./docs/scribble-2.0-syntax.md)** - EBNF grammar and examples
-- **[AST Design](./docs/ast-design.md)** - TypeScript AST type definitions
+- **[Implementation Lessons](./docs/implementation-lessons.md)** - Critical insights from theory to code
 
-### CLI & Projection
-- **[CLI Quick Start](./docs/CLI_QUICKSTART.md)** - Get started with CLI tools in 5 minutes
-- **[CLI Documentation](./docs/CLI.md)** - Complete CLI reference with examples
-- **[Local Protocol Projection](./docs/LOCAL_PROTOCOL_PROJECTION.md)** - Formal projection specification
+### Reference & Tutorials
+- **[Scribble Syntax](./docs/reference/scribble-syntax.md)** - EBNF grammar and examples
+- **[CLI Reference](./docs/reference/cli.md)** - Complete CLI documentation
+- **[Projection Tutorial](./docs/tutorials/projection-tutorial.md)** - Learn global-to-local projection
+- **[Theory Documentation](./docs/theory/)** - Formal theory and verification
 
 ## Deployment
 
