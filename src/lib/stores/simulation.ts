@@ -195,7 +195,7 @@ export async function initializeSimulation(cfg: CFG) {
 /**
  * Step forward one execution step (mode-aware)
  */
-export function stepSimulation() {
+export async function stepSimulation() {
   const mode = get(executionMode);
 
   if (mode === 'cfg' && cfgDebugger) {
@@ -204,12 +204,12 @@ export function stepSimulation() {
     stateVersion.update(v => v + 1);
     if (result.state.completed) simulationMode.set('idle');
   } else if (mode === 'distributed' && distributedDebugger) {
-    const result = distributedDebugger.stepForward();
+    const result = await distributedDebugger.stepForward();
     distributedExecutionState.set(result.state);
     stateVersion.update(v => v + 1);
     if (result.state.allCompleted) simulationMode.set('idle');
   } else if (mode === 'bisimulation' && bisimulationValidator) {
-    const result = bisimulationValidator.stepBoth();
+    await bisimulationValidator.stepBoth();
     if (cfgDebugger) cfgExecutionState.set(cfgDebugger.getState());
     if (distributedDebugger) distributedExecutionState.set(distributedDebugger.getState());
     stateVersion.update(v => v + 1);
@@ -278,7 +278,7 @@ export function pauseSimulation() {
 /**
  * Step backward (mode-aware)
  */
-export function stepBack() {
+export async function stepBack() {
   const mode = get(executionMode);
 
   if (mode === 'cfg' && cfgDebugger) {
@@ -288,13 +288,13 @@ export function stepBack() {
       stateVersion.update(v => v + 1);
     }
   } else if (mode === 'distributed' && distributedDebugger) {
-    const result = distributedDebugger.stepBackward();
+    const result = await distributedDebugger.stepBackward();
     if (result.success) {
       distributedExecutionState.set(result.state);
       stateVersion.update(v => v + 1);
     }
   } else if (mode === 'bisimulation' && bisimulationValidator) {
-    bisimulationValidator.stepBackBoth();
+    await bisimulationValidator.stepBackBoth();
     if (cfgDebugger) cfgExecutionState.set(cfgDebugger.getState());
     if (distributedDebugger) distributedExecutionState.set(distributedDebugger.getState());
     stateVersion.update(v => v + 1);
@@ -311,7 +311,7 @@ export function stepForward() {
 /**
  * Jump to a specific step
  */
-export function jumpToStep(stepNumber: number) {
+export async function jumpToStep(stepNumber: number) {
   const mode = get(executionMode);
 
   if (mode === 'cfg' && cfgDebugger) {
@@ -321,7 +321,7 @@ export function jumpToStep(stepNumber: number) {
       stateVersion.update(v => v + 1);
     }
   } else if (mode === 'distributed' && distributedDebugger) {
-    const result = distributedDebugger.jumpToStep(stepNumber);
+    const result = await distributedDebugger.jumpToStep(stepNumber);
     if (result.success) {
       distributedExecutionState.set(result.state);
       stateVersion.update(v => v + 1);

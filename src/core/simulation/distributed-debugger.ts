@@ -85,7 +85,7 @@ export class DistributedDebugger {
   /**
    * Step forward (execute next instruction + record history)
    */
-  stepForward(): DistributedDebugStepResult {
+  async stepForward(): Promise<DistributedDebugStepResult> {
     // Check if we can step forward
     if (this.currentPosition < this.snapshots.length - 1) {
       // We're in the middle of history - this is a redo operation
@@ -93,7 +93,7 @@ export class DistributedDebugger {
     }
 
     // Execute VM step
-    const vmResult = this.vm.step();
+    const vmResult = await this.vm.step();
 
     if (!vmResult.success) {
       return {
@@ -136,7 +136,7 @@ export class DistributedDebugger {
   /**
    * Step backward (time-travel to previous state)
    */
-  stepBackward(): DistributedDebugStepResult {
+  async stepBackward(): Promise<DistributedDebugStepResult> {
     if (this.currentPosition === 0) {
       return {
         success: false,
@@ -182,7 +182,7 @@ export class DistributedDebugger {
   /**
    * Jump to a specific step in history
    */
-  jumpToStep(stepNumber: number): DistributedDebugStepResult {
+  async jumpToStep(stepNumber: number): Promise<DistributedDebugStepResult> {
     if (stepNumber < 0 || stepNumber >= this.snapshots.length) {
       return {
         success: false,

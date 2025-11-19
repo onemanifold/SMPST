@@ -103,7 +103,7 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       await initializeCFGSimulation(cfg);
 
       const initialNode = get(cfgExecutionState)?.currentNode;
-      stepSimulation();
+      await stepSimulation();
 
       const state = get(cfgExecutionState);
       expect(state?.currentNode).not.toBe(initialNode);
@@ -116,7 +116,7 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
 
       expect(get(visibleExecutionEvents)).toHaveLength(0);
 
-      stepSimulation();
+      await stepSimulation();
 
       // ✅ CRITICAL: Backend emits events, debugger captures them with stepNumber
       const events = get(visibleExecutionEvents);
@@ -135,11 +135,11 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
 
       expect(get(currentStepNumber)).toBe(0);
 
-      stepSimulation();
+      await stepSimulation();
       expect(get(currentStepNumber)).toBe(1);
       expect(get(totalStepCount)).toBe(1);
 
-      stepSimulation();
+      await stepSimulation();
       expect(get(currentStepNumber)).toBe(2);
       expect(get(totalStepCount)).toBe(2);
     });
@@ -150,10 +150,10 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
 
       expect(get(cfgExecutionState)?.stepCount).toBe(0);
 
-      stepSimulation();
+      await stepSimulation();
       expect(get(cfgExecutionState)?.stepCount).toBe(1);
 
-      stepSimulation();
+      await stepSimulation();
       expect(get(cfgExecutionState)?.stepCount).toBe(2);
     });
 
@@ -162,8 +162,8 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       await initializeCFGSimulation(cfg);
 
       // Step until completion
-      stepSimulation(); // initial → n1
-      stepSimulation(); // n1 → terminal
+      await stepSimulation(); // initial → n1
+      await stepSimulation(); // n1 → terminal
 
       const state = get(cfgExecutionState);
       expect(state?.completed).toBe(true);
@@ -176,7 +176,7 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const cfg = createChoiceCFG();
       await initializeCFGSimulation(cfg);
 
-      stepSimulation(); // Move to choice point
+      await stepSimulation(); // Move to choice point
 
       const state = get(cfgExecutionState);
       expect(state?.atChoice).toBe(true);
@@ -188,7 +188,7 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const cfg = createChoiceCFG();
       await initializeCFGSimulation(cfg);
 
-      stepSimulation(); // Move to choice point
+      await stepSimulation(); // Move to choice point
 
       const stateBefore = get(cfgExecutionState);
       expect(stateBefore?.atChoice).toBe(true);
@@ -207,8 +207,8 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       await initializeCFGSimulation(cfg);
 
       // Create some execution history
-      stepSimulation();
-      stepSimulation();
+      await stepSimulation();
+      await stepSimulation();
 
       expect(get(currentStepNumber)).toBeGreaterThan(0);
       expect(get(visibleExecutionEvents).length).toBeGreaterThan(0);
@@ -234,7 +234,7 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const cfg = createSimpleCFG();
       await initializeCFGSimulation(cfg);
 
-      stepSimulation();
+      await stepSimulation();
 
       // ✅ VERIFY: All backend VM state properties are exposed
       const state = get(cfgExecutionState);
@@ -257,7 +257,7 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const cfg = createSimpleCFG();
       await initializeCFGSimulation(cfg);
 
-      stepSimulation();
+      await stepSimulation();
 
       const events = get(visibleExecutionEvents);
       expect(events.length).toBeGreaterThan(0);
@@ -295,17 +295,260 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       expect(get(totalStepCount)).toBe(0);
 
       // Step 1 (snapshot 1)
-      stepSimulation();
+      await stepSimulation();
       expect(get(currentStepNumber)).toBe(1);
       expect(get(totalStepCount)).toBe(1);
 
       // Step 2 (snapshot 2)
-      stepSimulation();
+      await stepSimulation();
       expect(get(currentStepNumber)).toBe(2);
       expect(get(totalStepCount)).toBe(2);
 
       // History is maintained by debugger, not VM
       expect(get(cfgExecutionState)?.stepCount).toBe(2);
+    });
+  });
+
+  describe('Distributed Mode - DistributedDebugger Contract', () => {
+    it('should initialize distributed simulation with CFSMs', async () => {
+      const cfg = createSimpleCFG();
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeDistributedSimulation } = await import('../simulation');
+      await initializeDistributedSimulation(cfsms);
+
+      const { executionMode, distributedExecutionState } = await import('../simulation');
+      expect(get(executionMode)).toBe('distributed');
+      expect(get(isSimulationActive)).toBe(true);
+
+      const state = get(distributedExecutionState);
+      expect(state).not.toBeNull();
+      expect(state?.roleStates).toBeDefined();
+      expect(state?.roleStates.size).toBe(cfg.roles.length);
+    });
+
+    it('should track distributed execution through DistributedDebugger', async () => {
+      const cfg = createSimpleCFG();
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeDistributedSimulation } = await import('../simulation');
+      await initializeDistributedSimulation(cfsms);
+
+      expect(get(currentStepNumber)).toBe(0);
+      expect(get(totalStepCount)).toBe(0);
+
+      await await stepSimulation();
+      expect(get(currentStepNumber)).toBe(1);
+      expect(get(totalStepCount)).toBe(1);
+
+      await await stepSimulation();
+      expect(get(currentStepNumber)).toBe(2);
+      expect(get(totalStepCount)).toBe(2);
+    });
+
+    it('should expose distributed state properties through debugger', async () => {
+      const cfg = createSimpleCFG();
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeDistributedSimulation, distributedExecutionState } = await import('../simulation');
+      await initializeDistributedSimulation(cfsms);
+
+      await stepSimulation();
+
+      const state = get(distributedExecutionState);
+
+      // ✅ VERIFY: All DistributedExecutionState properties exposed
+      expect(state).toHaveProperty('roleStates');
+      expect(state).toHaveProperty('roleSteps');
+      expect(state).toHaveProperty('globalSteps');
+      expect(state).toHaveProperty('inFlightMessages');
+      expect(state).toHaveProperty('roleBuffers');
+      expect(state).toHaveProperty('anyCompleted');
+      expect(state).toHaveProperty('allCompleted');
+      expect(state).toHaveProperty('deadlocked');
+      expect(state).toHaveProperty('enabledRoles');
+    });
+
+    it('should capture distributed events with role information', async () => {
+      const cfg = createSimpleCFG();
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeDistributedSimulation } = await import('../simulation');
+      await initializeDistributedSimulation(cfsms);
+
+      await stepSimulation();
+
+      const events = get(visibleExecutionEvents);
+      expect(events.length).toBeGreaterThan(0);
+
+      // ✅ VERIFY: Distributed events have role information
+      const event = events[0] as any;
+      expect(event).toHaveProperty('stepNumber');
+      expect(event).toHaveProperty('role');
+      expect(event).toHaveProperty('timestamp');
+    });
+  });
+
+  describe('Bisimulation Mode - BisimulationValidator Contract', () => {
+    it('should initialize bisimulation with both CFG and CFSMs', async () => {
+      const cfg = createSimpleCFG();
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeBisimulation } = await import('../simulation');
+      await initializeBisimulation(cfg, cfsms);
+
+      const { executionMode } = await import('../simulation');
+      expect(get(executionMode)).toBe('bisimulation');
+      expect(get(isSimulationActive)).toBe(true);
+
+      // Both states should be populated
+      expect(get(cfgExecutionState)).not.toBeNull();
+
+      const { distributedExecutionState } = await import('../simulation');
+      expect(get(distributedExecutionState)).not.toBeNull();
+    });
+
+    it('should step both debuggers in parallel', async () => {
+      const cfg = createSimpleCFG();
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeBisimulation } = await import('../simulation');
+      await initializeBisimulation(cfg, cfsms);
+
+      const cfgStepBefore = get(cfgExecutionState)?.stepCount;
+      const { distributedExecutionState } = await import('../simulation');
+      const distStepBefore = get(distributedExecutionState)?.globalSteps;
+
+      await stepSimulation(); // Should step both
+
+      const cfgStepAfter = get(cfgExecutionState)?.stepCount;
+      const distStepAfter = get(distributedExecutionState)?.globalSteps;
+
+      // Both should have advanced
+      expect(cfgStepAfter).toBeGreaterThan(cfgStepBefore ?? 0);
+      expect(distStepAfter).toBeGreaterThan(distStepBefore ?? 0);
+    });
+
+    it('should provide bisimulation trace', async () => {
+      const cfg = createSimpleCFG();
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeBisimulation, bisimulationTrace } = await import('../simulation');
+      await initializeBisimulation(cfg, cfsms);
+
+      await stepSimulation();
+      await stepSimulation();
+
+      const trace = get(bisimulationTrace);
+      expect(trace).not.toBeNull();
+      expect(trace).toHaveProperty('cfgTrace');
+      expect(trace).toHaveProperty('distributedTrace');
+      expect(trace).toHaveProperty('equivalent');
+    });
+
+    it('should provide equivalence checking result', async () => {
+      const cfg = createSimpleCFG();
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeBisimulation, bisimulationResult } = await import('../simulation');
+      await initializeBisimulation(cfg, cfsms);
+
+      await stepSimulation();
+
+      const result = get(bisimulationResult);
+      expect(result).not.toBeNull();
+      expect(result).toHaveProperty('equivalent');
+      expect(result).toHaveProperty('stepsCompared');
+    });
+  });
+
+  describe('Mode Switching - Execution Mode Contract', () => {
+    it('should switch from CFG to Distributed mode', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      const { executionMode } = await import('../simulation');
+      expect(get(executionMode)).toBe('cfg');
+
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeDistributedSimulation } = await import('../simulation');
+      await initializeDistributedSimulation(cfsms);
+
+      expect(get(executionMode)).toBe('distributed');
+    });
+
+    it('should switch from CFG to Bisimulation mode', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      const { executionMode } = await import('../simulation');
+      expect(get(executionMode)).toBe('cfg');
+
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeBisimulation } = await import('../simulation');
+      await initializeBisimulation(cfg, cfsms);
+
+      expect(get(executionMode)).toBe('bisimulation');
+    });
+
+    it('should maintain separate state per mode', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      await stepSimulation();
+      const cfgStep = get(currentStepNumber);
+
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+
+      const { initializeDistributedSimulation } = await import('../simulation');
+      await initializeDistributedSimulation(cfsms);
+
+      // Distributed mode starts fresh
+      expect(get(currentStepNumber)).toBe(0);
+
+      await stepSimulation();
+      const distStep = get(currentStepNumber);
+      expect(distStep).toBe(1);
+
+      // CFG state is gone (modes don't share state)
+      expect(get(cfgExecutionState)).toBeNull();
+    });
+
+    it('should use mode-aware derived stores', async () => {
+      const cfg = createSimpleCFG();
+
+      // CFG mode
+      await initializeCFGSimulation(cfg);
+      await stepSimulation();
+      const cfgEvents = get(visibleExecutionEvents);
+      expect(cfgEvents.length).toBeGreaterThan(0);
+
+      // Switch to distributed mode
+      const { projectAll } = await import('../../../core/projection/projector');
+      const { cfsms } = projectAll(cfg);
+      const { initializeDistributedSimulation } = await import('../simulation');
+      await initializeDistributedSimulation(cfsms);
+
+      // Events should be from distributed debugger now
+      const distEventsInitial = get(visibleExecutionEvents);
+      expect(distEventsInitial).toHaveLength(0);
+
+      await stepSimulation();
+      const distEventsAfterStep = get(visibleExecutionEvents);
+      expect(distEventsAfterStep.length).toBeGreaterThan(0);
     });
   });
 });

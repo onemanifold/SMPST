@@ -73,16 +73,16 @@ export class BisimulationValidator {
   /**
    * Step both debuggers forward in parallel
    */
-  stepBoth(): {
+  async stepBoth(): Promise<{
     cfg: { success: boolean; event?: DebugEvent };
     distributed: { success: boolean; event?: DistributedDebugEvent };
     equivalent: boolean;
-  } {
+  }> {
     // Step CFG debugger
     const cfgResult = this.cfgDebugger.stepForward();
 
     // Step distributed debugger
-    const distResult = this.distributedDebugger.stepForward();
+    const distResult = await this.distributedDebugger.stepForward();
 
     // Compare events for equivalence
     const equivalent = this.compareEvents(cfgResult.event, distResult.event);
@@ -103,12 +103,12 @@ export class BisimulationValidator {
   /**
    * Step backward in both debuggers
    */
-  stepBackBoth(): {
+  async stepBackBoth(): Promise<{
     cfg: { success: boolean };
     distributed: { success: boolean };
-  } {
+  }> {
     const cfgResult = this.cfgDebugger.stepBackward();
-    const distResult = this.distributedDebugger.stepBackward();
+    const distResult = await this.distributedDebugger.stepBackward();
 
     return {
       cfg: { success: cfgResult.success },
