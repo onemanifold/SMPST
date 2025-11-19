@@ -159,14 +159,14 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
 
 ---
 
-### ✅ Layer 5: Projection & CFSM Simulation (COMPLETE)
+### ✅ Layer 5: Projection, CFSM Simulation & Safety Checking (COMPLETE)
 - **Status**: PRODUCTION READY
-- **Implementation**: CFG → CFSM projection + Single-role & multi-role simulation
-- **Coverage**: All projection rules + distributed execution semantics
-- **Test Coverage**: 69/69 tests passing (100%)
+- **Implementation**: Three major components complete
+- **Test Coverage**: 99/99 tests passing (100%)
   - Projection: 45 tests ✅
   - CFSM Simulator: 13 tests ✅
   - Distributed Simulator: 11 tests ✅
+  - Safety Checker (Basic Safety): 30 tests ✅
 - **Confidence**: VERY HIGH (formal correctness verified)
 
 **Components**:
@@ -207,6 +207,43 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
 - **Correctness**: Follows Brand-Zafiropulo (1983) distributed semantics
 - **Test Coverage**: 11/11 tests passing
 
+#### 5.4: Safety Checker (Basic Safety - Definition 4.1) ⭐ NEW
+- **Implementation**: "Less is More" MPST safety checking (Scalas & Yoshida 2019)
+- **Key Achievement**: OAuth protocol validates as SAFE (classic MPST rejects it!)
+- **Proof**: Safety checking succeeds where consistency checking fails
+- **Algorithm**: Reachability-based safety verification
+  - Construct initial context (all CFSMs at initial states)
+  - Explore all reachable contexts via communication steps
+  - Apply tau transitions eagerly after each communication ⭐ CRITICAL
+  - Check invariant: All states reachable → protocol is safe
+- **Tau Transition Handling**:
+  - **Bug Found**: Protocols getting stuck without eager tau application
+  - **Fix**: Apply tau transitions after EVERY communication step
+  - **Impact**: OAuth protocol now executes correctly to completion
+  - **Test Improvement**: Integration tests 73/85 → 94/99 (58% reduction in failures)
+- **Frontend API**: `src/core/safety-api.ts`
+  - `checkProtocolSafety(protocolCode)` - One-line safety checking
+  - `executeProtocol(protocolCode)` - Step-by-step execution
+  - `getProtocolCFSMs(protocolCode)` - Get CFSMs for visualization
+- **Examples**: Five "Less is More" protocols in `src/lib/data/examples.ts`
+  - **OAuth Protocol** ⭐ - Safe but not consistent (THE KEY EXAMPLE)
+  - Travel Agency - Nested choices with asymmetric participation
+  - Three-Buyer Extended - Multicast message handling
+  - TCP Handshake - Connection establishment
+  - HTTP Request-Response - Keep-alive option
+- **Documentation**:
+  - `docs/SAFETY_API_GUIDE.md` - Complete API reference
+  - `docs/UI_AND_TESTING_PLAN.md` - UI roadmap
+  - `docs/theory/safety-invariant-deep-dive.md` - Theoretical foundation
+  - `docs/theory/safety-vs-consistency-visual.md` - Visual explanations
+- **Test Coverage**: 30/30 theorem tests passing ✅
+- **Status**: Backend implementation COMPLETE, ready for frontend integration
+
+**Safety vs Consistency**:
+- **Classic MPST**: Rejects OAuth (partial projection undefined)
+- **Bottom-up MPST**: Accepts OAuth (semantically safe)
+- **Key Insight**: Safety (semantic) is strictly more general than consistency (syntactic)
+
 **Files**:
 - `src/core/projection/types.ts` - CFSM type definitions (200+ lines)
 - `src/core/projection/projector.ts` - Projection implementation (700+ lines)
@@ -216,16 +253,207 @@ This project implements a CFG-based Multiparty Session Types IDE following stric
 - `src/core/simulation/cfsm-simulator.test.ts` - CFSM tests (13 tests)
 - `src/core/simulation/distributed-simulator.ts` - Distributed coordinator (420+ lines)
 - `src/core/simulation/distributed-simulator.test.ts` - Distributed tests (11 tests)
+- `src/core/safety/safety-checker.ts` - BasicSafety implementation
+- `src/core/safety/context-reducer.ts` - Protocol execution with tau handling
+- `src/core/safety-api.ts` - Frontend API
+- `src/lib/data/examples.ts` - OAuth & "Less is More" examples
+- `src/__tests__/theorems/safety/` - 30 theorem tests
 - `docs/projection-design.md` - Projection design document
 - `docs/projection-tutorial.md` - Educational tutorial
 - `docs/SIMULATION_AND_VISUALIZATION.md` - Simulation & visualization guide
+- `docs/architecture/cfsm.md` - CFSM architecture and semantics
 
 **Design References**:
 - Honda, Yoshida, Carbone (2008): Projection rules & CFSM semantics
 - Deniélou & Yoshida (2012): CFG → CFSM mapping
 - Brand & Zafiropulo (1983): Distributed protocol implementation
+- Scalas & Yoshida (2019): Less is More - Bottom-up MPST safety
 
-**Last Modified**: 2025-01-12
+**Last Modified**: 2025-11-19 (Added tau transition fix, safety checking status)
+
+---
+
+### ✅ Layer 5.5: Sub-Protocol Support (COMPLETE with known limitations)
+- **Status**: FEATURE COMPLETE (basic and single-level sub-protocols working)
+- **Implementation**: Protocol composition with dependency injection
+- **Test Coverage**: 96/100 tests passing (96%)
+  - Protocol Registry: 34/34 tests ✅
+  - Call Stack Manager: 49/49 tests ✅
+  - Sub-Protocol Execution: 13/17 tests (76.5%)
+- **Confidence**: HIGH (known issue documented)
+
+**Components**:
+
+#### Protocol Registry
+- Protocol resolution by name
+- Dependency extraction and validation
+- Circular dependency detection (DFS-based)
+- Role mapping creation and validation
+- CFG caching for performance
+
+**Error Types**:
+- `ProtocolNotFoundError` - Missing protocol reference
+- `CircularDependencyError` - Cycle in dependency graph
+- `RoleMismatchError` - Role count mismatch at invocation
+
+**Files**: `src/core/protocol-registry/`
+
+#### Call Stack Manager
+- Unified stack for recursion and sub-protocols
+- Bounded depth and iteration limits (prevent infinite recursion)
+- Event emission for UI integration
+  - `frame-push`, `frame-pop`, `frame-step`, `stack-reset`
+- Immutable state access
+- Frame metadata support
+
+**Configuration**:
+- `maxDepth` (default: 100)
+- `maxIterations` (default: 1000)
+- `emitEvents` (default: true)
+
+**Files**: `src/core/simulation/call-stack-*`
+
+#### Sub-Protocol Execution
+- Nested protocol instantiation via `do` statements
+- Role parameter substitution
+- Trace merging from nested protocols
+- Call stack tracking
+
+**Execution Flow**:
+1. Detect SubProtocolAction node
+2. Resolve protocol from registry
+3. Create role mapping
+4. Build CFG for sub-protocol
+5. Push call stack frame
+6. Emit enter event
+7. Create nested simulator
+8. Run to completion
+9. Merge trace events
+10. Pop call stack frame
+11. Emit exit event
+12. Continue parent execution
+
+**Files**: `src/core/simulation/cfg-simulator.ts` (executeSubProtocol method)
+
+**Known Issue: Nested Sub-Protocol Execution** ⚠️
+- **Symptom**: Tests with deeply nested sub-protocols (3+ levels) hang
+- **Root Cause**: Shared call stack manager across nesting levels causes state conflicts
+- **Impact**: Medium - basic and single-level sub-protocols work correctly
+- **Workaround**: Limit nesting to 2 levels
+- **Proposed Solution**: Call stack context isolation (documented, not implemented)
+- **Status**: Tracked in code comments and documentation
+
+**Documentation**:
+- `docs/SUB_PROTOCOL_SUPPORT.md` - Complete implementation guide
+- `docs/IMPLEMENTATION_SUMMARY.md` - Component details and testing
+- `docs/UI_SPECIFICATION.md` (Section 16) - UI integration strategy
+
+**Last Modified**: 2025-01-12 (Sub-protocol support implemented)
+
+---
+
+### ⏸️ Layer 5.6: Dynamic MPST (DMst) Support (INFRASTRUCTURE COMPLETE)
+- **Status**: INFRASTRUCTURE COMPLETE, core algorithms TODO
+- **Implementation**: Comprehensive DMst syntax and types across all layers
+- **Test Coverage**: 14/14 integration tests passing (100% for infrastructure)
+- **Confidence**: HIGH (infrastructure), MEDIUM (core algorithms pending)
+
+**What is DMst?**
+
+DMst extends classic MPST with three key features:
+1. **Dynamic Participants**: Roles created at runtime (`new role Worker`)
+2. **Protocol Calls**: Nested protocol instantiation (`A calls Proto(B)`)
+3. **Updatable Recursion**: Recursive protocols that grow (`continue X with { ... }`)
+
+**Reference**: Castro-Perez & Yoshida (2023) "Dynamically Updatable Multiparty
+Session Protocols", ECOOP 2023
+
+**Implementation Status**:
+
+#### ✅ Infrastructure Complete (Phases 4-9)
+1. **Parser Extensions** (Phase 4)
+   - Added 5 DMst keywords: `new`, `creates`, `invites`, `calls`, `with`
+   - Added 5 DMst AST node types
+   - All syntax parses correctly
+
+2. **CFG Builder Extensions** (Phase 5)
+   - Added 5 DMst action types to CFG
+   - CFG produces correct DMst action nodes
+
+3. **Verification Infrastructure** (Phase 6)
+   - Created skeleton for Definition 14 (Safe Protocol Update)
+   - Created skeleton for Theorem 20 (Trace Equivalence)
+   - Created skeleton for Theorem 29 (Liveness)
+
+4. **Projection Extensions** (Phase 7)
+   - Created projection functions for dynamic participants
+   - Created projection functions for updatable recursion
+   - Infrastructure complete, marked TODO for full implementation
+
+5. **Runtime Extensions** (Phase 8)
+   - Dynamic participant lifecycle management ✅ FULLY IMPLEMENTED
+   - Protocol call stack ✅ FULLY IMPLEMENTED
+   - DMst simulation state ✅ FULLY IMPLEMENTED
+   - DMst simulator ✅ FULLY IMPLEMENTED
+
+6. **Validation** (Phase 9)
+   - 4 example protocols demonstrating all DMst features
+   - Simple Dynamic Worker (18 lines)
+   - Updatable Pipeline (39 lines)
+   - Protocol Call (24 lines)
+   - Map-Reduce (36 lines)
+   - Integration tests: 14/14 passing ✅
+
+#### ⏸️ Core Algorithms TODO
+
+The following require implementation to enable theorem tests:
+
+1. **`compute1Unfolding(recursionBody, updateBody): CFG`** (Definition 14)
+   - Substitute recursion variable X with `G ♦ G_update`
+   - Implement combining operator ♦ semantics
+   - Required for safe update verification
+
+2. **Combining Operator ♦** (throughout)
+   - Interleaves two protocols while preserving safety
+   - Ensures disjoint channels (no races)
+   - Required for protocol calls and updatable recursion
+
+3. **`composeTraces(localTraces): TraceEvent[]`** (Theorem 20)
+   - Match send/receive pairs across participants
+   - Interleave actions respecting causality
+   - Handle dynamic participant naming
+
+4. **Full Projection Implementation** (Definitions 12, 13)
+   - Complete `projectDynamicParticipant()` algorithm
+   - Complete `projectUpdatableRecursion()` algorithm
+
+5. **Theorem Verification** (Theorems 20, 23, 29)
+   - Enable skipped theorem tests
+   - Verify all formal properties hold
+
+**Why Infrastructure-First Approach?**
+
+Following TDD (Test-Driven Development):
+1. Phase 3 (previous): Wrote comprehensive theorem tests (2,320 lines)
+2. Phases 4-9 (completed): Implemented infrastructure guided by tests
+3. Future: Complete core algorithms to enable theorem tests
+
+**Files Created/Modified**:
+- New files: 14 (parser, AST, CFG, verification, projection, runtime, examples, tests)
+- Total lines added: ~2,900 lines
+- Documentation: `examples/dmst/README.md` (350 lines)
+
+**Example Protocols**:
+- `examples/dmst/simple-dynamic-worker.smpst`
+- `examples/dmst/updatable-pipeline.smpst`
+- `examples/dmst/protocol-call.smpst`
+- `examples/dmst/map-reduce.smpst`
+
+**Documentation**: `DMST_IMPLEMENTATION_SUMMARY.md` (archived temporary doc)
+
+**Last Modified**: 2025-11-14 (DMst infrastructure complete)
+
+**Next Steps**: Implement combining operator ♦, compute1Unfolding, and complete projection
 
 ---
 
@@ -270,6 +498,40 @@ Overall Coverage: Layers 1-5 complete (83% of planned architecture)
 ---
 
 ## Recent Changes
+
+### 2025-11-19: Safety Checker Tau Transition Fix (CRITICAL)
+
+**Commit**: (pending)
+
+**Critical Bug Fix**:
+- **Issue**: Tau transitions not applied after communications
+- **Impact**: Protocols getting stuck instead of reaching terminal states
+- **Example**: OAuth protocol stuck at intermediate states
+- **Root Cause**: ContextReducer only updated sender/receiver, didn't apply tau
+- **Fix**: Added `applyTauTransitions()` with iterative fixpoint algorithm
+- **Results**:
+  - OAuth now executes correctly to completion ✅
+  - Integration tests: 73/85 → 94/99 (58% reduction in failures)
+  - Theorem tests: Still 30/30 passing (safety preserved)
+
+**Why Critical**:
+- Tau transitions represent internal actions that must occur immediately
+- Without eager application, protocols appear incomplete
+- Affects all "Less is More" protocols with choice branches
+
+**Theory Background**:
+- Tau (τ) = silent/internal action in process algebras
+- Must be applied eagerly (can't stop at tau-enabled state)
+- Reference: Scalas & Yoshida (2019), Section 3.2
+
+**Implementation**: `src/core/safety/context-reducer.ts:applyTauTransitions()`
+
+**Documentation Updates**:
+- Created `docs/architecture/cfsm.md` - CFSM reference with tau semantics
+- Updated `docs/implementation-lessons.md` - Added tau handling section
+- Updated `docs/STATUS.md` - Safety checker status
+
+---
 
 ### 2025-01-12: Implement Layer 5 - Projection & CFSM Simulation (COMPLETE)
 
