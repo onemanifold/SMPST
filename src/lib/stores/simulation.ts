@@ -54,6 +54,19 @@ export const simulationMode = writable<SimulationMode>('idle');
 // Playback speed (UI preference)
 export const playbackSpeed = writable<number>(300);
 
+// Choice strategy (CFG mode only)
+export type ChoiceStrategy = 'manual' | 'random' | 'first' | 'explore-all';
+export const choiceStrategy = writable<ChoiceStrategy>('manual');
+
+// Advanced configuration
+export const maxStepsConfig = writable<number>(1000);
+
+// Distributed mode configuration
+export type SchedulingStrategy = 'manual' | 'round-robin' | 'fair' | 'random';
+export type DeliveryModel = 'FIFO' | 'unordered' | 'lossy';
+export const schedulingStrategy = writable<SchedulingStrategy>('manual');
+export const deliveryModel = writable<DeliveryModel>('FIFO');
+
 // Reactivity trigger - increment when debugger state changes
 const stateVersion = writable(0);
 
@@ -116,8 +129,8 @@ export async function initializeCFGSimulation(cfg: CFG) {
   const { CFGSimulator } = await import('../../core/simulation/cfg-simulator');
 
   cfgDebugger = new CFGDebugger(cfg, CFGSimulator, {
-    choiceStrategy: 'manual',
-    maxSteps: 1000,
+    choiceStrategy: get(choiceStrategy),
+    maxSteps: get(maxStepsConfig),
   });
 
   currentCFG.set(cfg);
@@ -137,8 +150,9 @@ export async function initializeDistributedSimulation(cfsms: Map<string, CFSM>) 
   const { DistributedSimulator } = await import('../../core/simulation/distributed-simulator');
 
   distributedDebugger = new DistributedDebugger(cfsms, DistributedSimulator, {
-    schedulingStrategy: 'manual',
-    maxSteps: 1000,
+    schedulingStrategy: get(schedulingStrategy),
+    deliveryModel: get(deliveryModel),
+    maxSteps: get(maxStepsConfig),
   });
 
   currentCFSMs.set(cfsms);
@@ -161,13 +175,14 @@ export async function initializeBisimulation(cfg: CFG, cfsms: Map<string, CFSM>)
   const { BisimulationValidator } = await import('../../core/simulation/bisimulation-validator');
 
   cfgDebugger = new CFGDebugger(cfg, CFGSimulator, {
-    choiceStrategy: 'manual',
-    maxSteps: 1000,
+    choiceStrategy: get(choiceStrategy),
+    maxSteps: get(maxStepsConfig),
   });
 
   distributedDebugger = new DistributedDebugger(cfsms, DistributedSimulator, {
-    schedulingStrategy: 'manual',
-    maxSteps: 1000,
+    schedulingStrategy: get(schedulingStrategy),
+    deliveryModel: get(deliveryModel),
+    maxSteps: get(maxStepsConfig),
   });
 
   bisimulationValidator = new BisimulationValidator(cfgDebugger, distributedDebugger);
@@ -186,6 +201,45 @@ export async function initializeBisimulation(cfg: CFG, cfsms: Map<string, CFSM>)
  */
 export async function initializeSimulation(cfg: CFG) {
   return initializeCFGSimulation(cfg);
+}
+
+/**
+ * Switch execution mode (requires both CFG and CFSMs to be available)
+ */
+export async function switchExecutionMode(mode: ExecutionMode) {
+  const cfg = get(currentCFG);
+  const cfsms = get(currentCFSMs);
+
+  if (!cfg && !cfsms) {
+    console.warn('Cannot switch mode: no protocol loaded');
+    return;
+  }
+
+  switch (mode) {
+    case 'cfg':
+      if (!cfg) {
+        console.warn('Cannot switch to CFG mode: no CFG available');
+        return;
+      }
+      await initializeCFGSimulation(cfg);
+      break;
+
+    case 'distributed':
+      if (!cfsms) {
+        console.warn('Cannot switch to distributed mode: no CFSMs available');
+        return;
+      }
+      await initializeDistributedSimulation(cfsms);
+      break;
+
+    case 'bisimulation':
+      if (!cfg || !cfsms) {
+        console.warn('Cannot switch to bisimulation mode: need both CFG and CFSMs');
+        return;
+      }
+      await initializeBisimulation(cfg, cfsms);
+      break;
+  }
 }
 
 // ============================================================================
