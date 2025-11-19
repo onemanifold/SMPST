@@ -49,6 +49,12 @@ export interface CFGSimulatorConfig {
    * Optional - if not provided, a default one will be created with history disabled
    */
   executionHistory?: IExecutionHistory;
+
+  /**
+   * CFSMs for tracking role states (for visualization)
+   * Optional - if provided, enables CFSM state tracking in execution state
+   */
+  cfsms?: Map<string, any>; // Map<role, CFSM>
 }
 
 /**
@@ -105,6 +111,13 @@ export interface CFGExecutionState {
    * Current recursion context stack
    */
   recursionStack: RecursionContext[];
+
+  /**
+   * Current CFSM state for each role (for visualization)
+   * Maps role name to current state ID
+   * Example: { "Alice": "s0", "Bob": "s1" }
+   */
+  cfsmStates?: Map<string, string>;
 }
 
 /**
