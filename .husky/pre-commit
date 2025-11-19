@@ -1,0 +1,16 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit checks..."
+
+# Run tests for stores (fast, critical)
+echo "  → Testing store contracts..."
+npm run test -- src/lib/stores/__tests__ --run --reporter=dot
+
+if [ $? -ne 0 ]; then
+  echo "❌ Store tests failed - backend contract violated!"
+  echo "   Review test output above to see which backend properties are missing."
+  exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"

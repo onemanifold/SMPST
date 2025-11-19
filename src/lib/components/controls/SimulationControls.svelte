@@ -14,8 +14,14 @@
     makeChoice,
     playbackSpeed,
   } from '$lib/stores/simulation';
+  import TimelineControls from './TimelineControls.svelte';
+  import ChoicePreview from '../panels/ChoicePreview.svelte';
 
   let selectedChoice: number | null = null;
+
+  function handleChoiceSelect(index: number) {
+    selectedChoice = index;
+  }
 
   function handlePlay() {
     startPlaying();
@@ -25,12 +31,12 @@
     pauseSimulation();
   }
 
-  function handleStep() {
+  async function handleStep() {
     if ($isAtChoice && selectedChoice !== null) {
       makeChoice(selectedChoice);
       selectedChoice = null;
     } else {
-      stepSimulation();
+      await stepSimulation();
     }
   }
 
@@ -123,32 +129,35 @@
       <span class="speed-value">{$playbackSpeed}ms</span>
     </div>
 
-    {#if $isAtChoice}
-      <div class="choice-group" class:auto-selecting={$isPlaying}>
-        <span class="choice-label">
-          {$isPlaying ? '⚡ Auto-selecting:' : 'Choose branch:'}
-        </span>
-        <div class="choice-buttons">
+    <TimelineControls />
+
+    <!-- Phase 3: Compact choice display for auto-play mode -->
+    {#if $isAtChoice && $isPlaying}
+      <div class="choice-group-compact" class:auto-selecting={$isPlaying}>
+        <span>⚡ Auto-selecting:</span>
+        <div class="choice-buttons-compact">
           {#each $availableChoices as choice, index}
-            <button
-              class="choice-btn"
-              class:selected={selectedChoice === index}
-              class:auto-selected={$isPlaying && selectedChoice === index}
-              on:click={() => {
-                if (!$isPlaying) {
-                  selectedChoice = index;
-                }
-              }}
-              disabled={$isPlaying}
-              title={choice.description || `Branch ${index + 1}`}
+            <div
+              class="choice-btn-compact"
+              class:auto-selected={selectedChoice === index}
             >
               {choice.label || `Branch ${index + 1}`}
-            </button>
+            </div>
           {/each}
         </div>
       </div>
     {/if}
   </div>
+
+  <!-- Phase 3: Enhanced Choice Previews (outside controls bar for more space) -->
+  {#if $isAtChoice && !$isPlaying}
+    <ChoicePreview
+      choices={$availableChoices}
+      selectedChoice={selectedChoice}
+      onSelectChoice={handleChoiceSelect}
+      disabled={$isPlaying}
+    />
+  {/if}
 {:else}
   <div class="simulation-controls empty">
     <p class="placeholder-text">Parse a protocol to start simulation</p>
@@ -325,66 +334,46 @@
     text-align: right;
   }
 
-  .choice-group {
+  /* Phase 3: Auto-play mode compact choice display */
+  .choice-group-compact {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     padding-left: 6px;
     border-left: 1px solid #555;
-    transition: background-color 0.3s;
   }
 
-  .choice-group.auto-selecting {
+  .choice-group-compact.auto-selecting {
     background: rgba(45, 77, 127, 0.2);
     border-left-color: #66b3ff;
-    padding: 2px 6px;
+    padding: 4px 8px;
     border-radius: 4px;
   }
 
-  .choice-label {
-    color: #ccc;
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .choice-group.auto-selecting .choice-label {
+  .choice-group-compact > span {
     color: #66b3ff;
+    font-size: 12px;
+    font-weight: 600;
   }
 
-  .choice-buttons {
+  .choice-buttons-compact {
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
   }
 
-  .choice-btn {
+  .choice-btn-compact {
     padding: 4px 10px;
     background: #3d3d3d;
     color: #ccc;
     border: 1px solid #555;
     border-radius: 4px;
     font-size: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
     white-space: nowrap;
+    transition: all 0.2s;
   }
 
-  .choice-btn:hover:not(:disabled) {
-    background: #4d4d4d;
-    border-color: #007acc;
-  }
-
-  .choice-btn:disabled {
-    cursor: not-allowed;
-  }
-
-  .choice-btn.selected {
-    background: #007acc;
-    border-color: #007acc;
-    color: #fff;
-  }
-
-  .choice-btn.auto-selected {
+  .choice-btn-compact.auto-selected {
     background: #66b3ff;
     border-color: #66b3ff;
     color: #fff;

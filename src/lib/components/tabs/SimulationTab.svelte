@@ -2,24 +2,32 @@
   import CFSMNetwork from '../visualizations/CFSMNetwork.svelte';
   import CFGSequence from '../visualizations/CFGSequence.svelte';
   import SimulationControls from '../controls/SimulationControls.svelte';
+  import EventLog from '../panels/EventLog.svelte';
 
   let splitPos = 50; // percentage
+  let eventLogHeight = 200; // pixels
 </script>
 
 <div class="simulation-tab">
   <SimulationControls />
 
-  <div class="split-container" style="--split-pos: {splitPos}%">
-    <div class="left-pane">
-      <div class="pane-header">CFSM Network</div>
-      <CFSMNetwork />
+  <div class="main-content">
+    <div class="split-container" style="--split-pos: {splitPos}%">
+      <div class="left-pane">
+        <div class="pane-header">CFSM Network</div>
+        <CFSMNetwork />
+      </div>
+
+      <div class="resize-handle" />
+
+      <div class="right-pane">
+        <div class="pane-header">CFG Sequence</div>
+        <CFGSequence />
+      </div>
     </div>
 
-    <div class="resize-handle" />
-
-    <div class="right-pane">
-      <div class="pane-header">CFG Sequence</div>
-      <CFGSequence />
+    <div class="event-log-container" style="height: {eventLogHeight}px">
+      <EventLog />
     </div>
   </div>
 </div>
@@ -32,9 +40,21 @@
     background: #1e1e1e;
   }
 
+  .main-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+
   .split-container {
     display: flex;
     flex: 1;
+    overflow: hidden;
+  }
+
+  .event-log-container {
+    border-top: 2px solid #333;
     overflow: hidden;
   }
 

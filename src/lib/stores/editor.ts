@@ -27,16 +27,50 @@ export const generatedCode = writable<Record<string, string>>({});
 
 // Parse state
 export type ParseStatus = 'idle' | 'parsing' | 'success' | 'error';
-export const parseStatus = writable<ParseStatus>('idle');
-export const parseError = writable<string | null>(null);
 
-// Mock verification results (for UI demonstration)
+// Parse error with optional location information for precise error highlighting
+export interface ParseErrorInfo {
+  message: string;
+  location?: {
+    line: number;
+    column: number;
+  };
+}
+
+export const parseStatus = writable<ParseStatus>('idle');
+export const parseError = writable<ParseErrorInfo | null>(null);
+
+// Complete verification results (ALL 16 checks from backend)
+export interface VerificationCheckResult {
+  valid: boolean;
+  issues: string[];
+}
+
 export interface VerificationResult {
+  // Original properties (backward compatible)
   deadlockFree: boolean;
   livenessSatisfied: boolean;
   safetySatisfied: boolean;
   warnings: string[];
   errors: string[];
+
+  // ALL 16 verification checks (comprehensive backend contract)
+  structural: VerificationCheckResult;
+  deadlock: VerificationCheckResult;
+  liveness: VerificationCheckResult;
+  parallelDeadlock: VerificationCheckResult;
+  raceConditions: VerificationCheckResult;
+  progress: VerificationCheckResult;
+  choiceDeterminism: VerificationCheckResult;
+  choiceMergeability: VerificationCheckResult;
+  connectedness: VerificationCheckResult;
+  nestedRecursion: VerificationCheckResult;
+  recursionInParallel: VerificationCheckResult;
+  forkJoinStructure: VerificationCheckResult;
+  multicast: VerificationCheckResult;
+  selfCommunication: VerificationCheckResult;
+  emptyChoiceBranch: VerificationCheckResult;
+  mergeReachability: VerificationCheckResult;
 }
 
 export const verificationResult = writable<VerificationResult | null>(null);
@@ -44,6 +78,7 @@ export const verificationResult = writable<VerificationResult | null>(null);
 // Projection data with serialized local protocols
 export interface ProjectionData {
   role: string;
+  protocolName: string;
   states: string[];
   transitions: Array<{
     from: string;
@@ -52,9 +87,28 @@ export interface ProjectionData {
   }>;
   // Serialized Scribble local protocol text
   localProtocol: string;
+
+  // CFSM completeness properties (Phase 4)
+  initialState: string;
+  terminalStates: string[];  // Multiple terminal states (e.g., different choice outcomes)
+  parameters?: Array<{       // Protocol parameters for sub-protocol support
+    name: string;
+    type: 'role' | 'type' | 'sig';
+    typeValue?: string;
+  }>;
 }
 
 export const projectionData = writable<ProjectionData[]>([]);
+
+// Projection errors (from projectAll)
+export interface ProjectionErrorInfo {
+  role: string;
+  message: string;
+  nodeId?: string;
+  phase?: 'merging' | 'continuation' | 'projection';
+}
+
+export const projectionErrors = writable<ProjectionErrorInfo[]>([]);
 
 // Mock simulation state
 export interface SimulationState {
@@ -89,6 +143,11 @@ export const canSimulate = derived(
     $parseStatus === 'success' && $verificationResult?.deadlockFree === true
 );
 
+export const hasProjectionErrors = derived(
+  projectionErrors,
+  $errors => $errors.length > 0
+);
+
 // Actions
 export function setEditorContent(content: string) {
   editorContent.set(content);
@@ -114,6 +173,7 @@ export function clearEditor() {
   parseError.set(null);
   verificationResult.set(null);
   projectionData.set([]);
+  projectionErrors.set([]);
 }
 
 // Real parse action (integrates parser, CFG builder, verifier)
@@ -157,53 +217,110 @@ export async function parseProtocol(content: string) {
     // Extract roles from projection result
     const roles = projectionResult.roles;
 
-    // 5. Collect errors and warnings from verification
-    const errors: string[] = [];
-    const warnings: string[] = [];
+    // 5. Extract ALL verification issues using contract handler
+    const { extractVerificationIssues, handleProjectionResult, formatProjectionErrors } = await import('./contracts/editor-contract');
+    const issues = extractVerificationIssues(result);
 
-    // Deadlock
-    if (result.deadlock.hasDeadlock) {
-      errors.push(`Deadlock detected: ${result.deadlock.cycles.length} cycle(s)`);
-    }
+    // Combine errors, warnings, and critical issues
+    const allErrors = [...issues.errors, ...issues.criticalIssues];
+    const allWarnings = [...issues.warnings];
 
-    // Liveness
-    if (!result.liveness.isLive) {
-      errors.push(`Liveness violated: ${result.liveness.violations.length} violation(s)`);
-    }
+    // 4b. Handle projection errors using contract handler
+    handleProjectionResult(projectionResult, {
+      onSuccess: (result) => {
+        // All roles projected successfully - clear any previous errors
+        projectionErrors.set([]);
+      },
+      onPartialFailure: (result, errors) => {
+        // Some roles failed to project - expose errors
+        const formattedErrors = formatProjectionErrors(errors);
+        projectionErrors.set(errors.map(err => ({
+          role: err.role || 'unknown',
+          message: err.message,
+          nodeId: err.nodeId,
+          phase: err.phase
+        })));
 
-    // Parallel deadlock
-    if (result.parallelDeadlock.hasDeadlock) {
-      errors.push(`Parallel deadlock detected: ${result.parallelDeadlock.conflicts.length} conflict(s)`);
-    }
+        // Also add to warnings so users see them
+        allWarnings.push(...formattedErrors);
+      }
+    });
 
-    // Race conditions
-    if (result.raceConditions.hasRaces) {
-      warnings.push(`Race conditions detected: ${result.raceConditions.races.length} race(s)`);
-    }
-
-    // Progress
-    if (!result.progress.canProgress) {
-      errors.push(`Progress not satisfied: ${result.progress.blockedNodes.length} blocked node(s)`);
-    }
-
-    // Choice determinism
-    if (!result.choiceDeterminism.isDeterministic) {
-      errors.push(`Choice non-determinism: ${result.choiceDeterminism.violations.length} violation(s)`);
-    }
-
-    // Multicast warnings
-    if (result.multicast && result.multicast.warnings.length > 0) {
-      result.multicast.warnings.forEach(w => warnings.push(`Multicast: ${w.message}`));
-    }
-
-    // 6. Update stores
+    // 6. Update stores with COMPLETE verification results
     parseStatus.set('success');
     verificationResult.set({
+      // Original properties (backward compatible)
       deadlockFree: !result.deadlock.hasDeadlock,
       livenessSatisfied: result.liveness.isLive,
-      safetySatisfied: errors.length === 0,
-      warnings,
-      errors
+      safetySatisfied: allErrors.length === 0,
+      warnings: allWarnings,
+      errors: allErrors,
+
+      // ALL 16 verification checks (comprehensive)
+      structural: {
+        valid: issues.allChecks.structural,
+        issues: issues.allChecks.structural ? [] : ['Structural validity check failed']
+      },
+      deadlock: {
+        valid: issues.allChecks.deadlock,
+        issues: issues.allChecks.deadlock ? [] : [`Deadlock detected: ${result.deadlock.cycles.length} cycle(s)`]
+      },
+      liveness: {
+        valid: issues.allChecks.liveness,
+        issues: issues.allChecks.liveness ? [] : [`Liveness violated: ${result.liveness.violations.length} violation(s)`]
+      },
+      parallelDeadlock: {
+        valid: issues.allChecks.parallelDeadlock,
+        issues: issues.allChecks.parallelDeadlock ? [] : [`Parallel deadlock: ${result.parallelDeadlock.conflicts.length} conflict(s)`]
+      },
+      raceConditions: {
+        valid: issues.allChecks.raceConditions,
+        issues: issues.allChecks.raceConditions ? [] : [`Race conditions: ${result.raceConditions.races.length} race(s)`]
+      },
+      progress: {
+        valid: issues.allChecks.progress,
+        issues: issues.allChecks.progress ? [] : [`Progress blocked: ${result.progress.blockedNodes.length} node(s)`]
+      },
+      choiceDeterminism: {
+        valid: issues.allChecks.choiceDeterminism,
+        issues: issues.allChecks.choiceDeterminism ? [] : [`Non-deterministic choice: ${result.choiceDeterminism.violations.length} violation(s)`]
+      },
+      choiceMergeability: {
+        valid: issues.allChecks.choiceMergeability,
+        issues: issues.allChecks.choiceMergeability ? [] : [`Choice branches inconsistent: ${result.choiceMergeability.violations?.length || 0} violation(s)`]
+      },
+      connectedness: {
+        valid: issues.allChecks.connectedness,
+        issues: issues.allChecks.connectedness ? [] : [`Protocol not connected: ${result.connectedness.disconnectedRoles?.length || 0} role(s) orphaned`]
+      },
+      nestedRecursion: {
+        valid: issues.allChecks.nestedRecursion,
+        issues: issues.allChecks.nestedRecursion ? [] : [`Recursion scope violation: ${result.nestedRecursion.violations?.length || 0} violation(s)`]
+      },
+      recursionInParallel: {
+        valid: issues.allChecks.recursionInParallel,
+        issues: issues.allChecks.recursionInParallel ? [] : [`Recursion crosses parallel boundary: ${result.recursionInParallel.violations?.length || 0} violation(s)`]
+      },
+      forkJoinStructure: {
+        valid: issues.allChecks.forkJoinStructure,
+        issues: issues.allChecks.forkJoinStructure ? [] : [`Fork-join mismatch: ${result.forkJoinStructure.violations?.length || 0} violation(s)`]
+      },
+      multicast: {
+        valid: issues.allChecks.multicast,
+        issues: issues.allChecks.multicast ? [] : result.multicast.warnings.map(w => `Multicast: ${w.message}`)
+      },
+      selfCommunication: {
+        valid: issues.allChecks.selfCommunication,
+        issues: issues.allChecks.selfCommunication ? [] : [`Self-communication: ${result.selfCommunication.violations?.length || 0} violation(s)`]
+      },
+      emptyChoiceBranch: {
+        valid: issues.allChecks.emptyChoiceBranch,
+        issues: issues.allChecks.emptyChoiceBranch ? [] : [`Empty choice branches: ${result.emptyChoiceBranch.violations?.length || 0} branch(es)`]
+      },
+      mergeReachability: {
+        valid: issues.allChecks.mergeReachability,
+        issues: issues.allChecks.mergeReachability ? [] : [`Unreachable merge: ${result.mergeReachability.violations?.length || 0} violation(s)`]
+      }
     });
 
     // Helper to format CFSM action as display label
@@ -231,24 +348,55 @@ export async function parseProtocol(content: string) {
         if (!cfsm) {
           return {
             role,
+            protocolName: '',
             states: [],
             transitions: [],
-            localProtocol: `// No projection for role ${role}`
+            localProtocol: `// No projection for role ${role}`,
+            initialState: '',
+            terminalStates: [],
+            parameters: undefined
           };
         }
 
         // Serialize CFSM to Scribble local protocol text
         const localProtocol = serializeCFSM(cfsm);
 
+        // Log warning if parameters present (Phase 4 - Sub-protocol support)
+        if (cfsm.parameters && cfsm.parameters.length > 0) {
+          console.warn(
+            `[Phase 4] Protocol "${cfsm.protocolName}" has ${cfsm.parameters.length} parameter(s). ` +
+            `These are preserved but not yet displayed in UI. ` +
+            `Parameters: ${cfsm.parameters.map(p => `${p.name}:${p.type}`).join(', ')}`
+          );
+        }
+
+        // Log info if multiple terminal states (Phase 4 - Choice outcomes)
+        if (cfsm.terminalStates.length > 1) {
+          console.info(
+            `[Phase 4] Role "${role}" has ${cfsm.terminalStates.length} terminal states: ` +
+            `${cfsm.terminalStates.join(', ')}. This indicates multiple protocol outcomes (e.g., choice branches).`
+          );
+        }
+
         return {
           role,
+          protocolName: cfsm.protocolName,
           states: cfsm.states.map(s => s.id),
           transitions: cfsm.transitions.map(t => ({
             from: t.from,
             to: t.to,
             label: formatActionLabel(t.action)
           })),
-          localProtocol
+          localProtocol,
+
+          // Phase 4: Complete CFSM properties
+          initialState: cfsm.initialState,
+          terminalStates: cfsm.terminalStates,
+          parameters: cfsm.parameters?.map(p => ({
+            name: p.name,
+            type: p.type,
+            typeValue: p.typeValue
+          }))
         };
       })
     );
@@ -263,7 +411,20 @@ export async function parseProtocol(content: string) {
   } catch (error) {
     parseStatus.set('error');
     const message = error instanceof Error ? error.message : String(error);
-    parseError.set(message);
+
+    // Extract location information from error message if available
+    // Parser errors format: "Parser error at line X, column Y: message"
+    // Lexer errors format: "Lexer error at line X, column Y: message"
+    const locationMatch = message.match(/at line (\d+), column (\d+):/);
+    const errorInfo: ParseErrorInfo = {
+      message,
+      location: locationMatch ? {
+        line: parseInt(locationMatch[1], 10),
+        column: parseInt(locationMatch[2], 10)
+      } : undefined
+    };
+
+    parseError.set(errorInfo);
     return { success: false, error: message };
   }
 }
