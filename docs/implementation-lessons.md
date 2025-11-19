@@ -12,8 +12,10 @@ This document captures **critical implementation insights** learned while buildi
 
 1. [Layer 3: Verification Algorithms](#layer-3-verification-algorithms)
 2. [Layer 4: Projection Algorithms](#layer-4-projection-algorithms)
-3. [Cross-Cutting Concerns](#cross-cutting-concerns)
-4. [Testing Strategy Insights](#testing-strategy-insights)
+3. [Layer 5: Async/Concurrent Execution Architecture](#layer-5-asyncconcurrent-execution-architecture)
+4. [Cross-Cutting Concerns](#cross-cutting-concerns)
+5. [Testing Strategy Insights](#testing-strategy-insights)
+6. [Summary: Key Implementation Patterns](#summary-key-implementation-patterns)
 
 ---
 
@@ -839,6 +841,634 @@ CFSM Projection - Parallel Composition (4 tests)
 - **Clear organization** - Easy to find relevant tests
 - **Feature coverage** - Can see at a glance what's tested
 - **Incremental development** - Implement one category at a time
+
+---
+
+---
+
+### 4.6 Tau Transitions: Eager Application is Critical
+
+**Critical Discovery**: Tau transitions must be applied **immediately and eagerly** after
+every communication step, not lazily.
+
+#### The Bug
+
+Initially, the ContextReducer would advance sender and receiver states after a
+communication, but would NOT apply tau transitions. This caused protocols to get
+stuck in intermediate states:
+
+```typescript
+// Before fix:
+reduceBy(context, comm) {
+  // Update sender state
+  // Update receiver state
+  return newContext;  // ❌ Missing tau application!
+}
+```
+
+#### Why This Matters
+
+In projected CFSMs, tau transitions represent:
+1. **Post-choice transitions** - Moving from choice state to continuation after branch selected
+2. **Merge point transitions** - Synchronizing after parallel branches
+3. **Terminal transitions** - Reaching final state after last action
+
+**Without eager tau application**:
+- Protocol appears incomplete (not at terminal)
+- `isTerminal()` returns false
+- Integration tests fail (protocols "stuck")
+
+**Example Impact**: OAuth protocol in "Less is More" examples was stuck at intermediate
+states instead of reaching terminals.
+
+#### The Solution
+
+Apply tau transitions in a **loop until fixpoint**:
+
+```typescript
+private applyTauTransitions(context: TypingContext): TypingContext {
+  let current = context;
+  let changed = true;
+
+  // Loop until no more tau transitions enabled
+  while (changed) {
+    changed = false;
+    const newCFSMs = new Map(current.cfsms);
+
+    for (const [role, instance] of current.cfsms) {
+      const tauTrans = this.getEnabledTauTransition(instance.machine, instance.currentState);
+      if (tauTrans) {
+        // Apply tau transition
+        newCFSMs.set(role, {
+          machine: instance.machine,
+          currentState: tauTrans.to,
+        });
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      current = { session: current.session, cfsms: newCFSMs };
+    }
+  }
+
+  return current;
+}
+```
+
+**Key insight**: Must iterate because applying one tau might enable another tau in a
+different role. Stop only when no role has enabled tau transitions.
+
+#### When to Apply
+
+**After every communication** in the reduction step:
+
+```typescript
+reduceBy(context: TypingContext, comm: Communication): TypingContext {
+  // 1. Advance sender and receiver states
+  let newContext = { ... };
+
+  // 2. Apply tau transitions eagerly for ALL roles
+  newContext = this.applyTauTransitions(newContext);
+
+  return newContext;
+}
+```
+
+#### Results
+
+**Test improvements**:
+- Integration tests: 73/85 → 94/99 passing (58% reduction in failures)
+- OAuth protocol: Now executes correctly to completion
+- Theorem tests: Still 30/30 passing (safety preserved)
+
+#### Lessons Learned
+
+1. **Fixpoint iteration is necessary** - One tau can enable another
+2. **Apply after every step** - Don't defer tau application
+3. **All roles must be checked** - Tau in one role independent of others
+4. **Test with complete protocols** - Integration tests caught this, unit tests didn't
+
+**Implementation**: `src/core/safety/context-reducer.ts:applyTauTransitions()`
+
+**Reference**: Scalas & Yoshida (2019), Section 3.2 (CFSM operational semantics)
+
+---
+
+## Layer 5: Async/Concurrent Execution Architecture
+
+### 5.1 Two Execution Modes
+
+**Key Design Decision**: Support both **scheduled synchronous** and **concurrent
+asynchronous** execution.
+
+#### Mode 1: Scheduled Simulation (Deterministic)
+
+**Use Case**: Testing, debugging, bisimulation verification
+
+```typescript
+class DistributedSimulator {
+  async run(): Promise<Result> {
+    while (!allComplete && !deadlocked) {
+      const enabled = this.getEnabledRoles();
+      const role = this.selectRole(enabled);  // Round-robin/fair/random
+
+      await simulator.step();  // Await async step
+      this.globalSteps++;
+    }
+    return { success: !deadlocked };
+  }
+}
+```
+
+**Characteristics**:
+- Coordinator orchestrates (chooses which role executes)
+- Deterministic with fixed scheduling strategy
+- Reproducible execution traces
+- Good for CFG bisimulation testing
+
+#### Mode 2: Concurrent Runtime (Realistic)
+
+**Use Case**: Performance testing, realistic network simulation, actor model
+
+```typescript
+class DistributedRuntime {
+  async runConcurrently(): Promise<Result> {
+    // Launch ALL roles in parallel
+    const executionPromises = Array.from(this.executors.values()).map(executor =>
+      this.runExecutor(executor)
+    );
+
+    // Wait for all to complete OR deadlock detection
+    const result = await Promise.race([
+      Promise.all(executionPromises),
+      this.detectDeadlock()
+    ]);
+
+    return result;
+  }
+
+  private async runExecutor(executor: CFSMSimulator): Promise<void> {
+    while (!executor.isComplete()) {
+      const result = await executor.step();
+
+      if (!result.success && result.error?.type === 'message-not-ready') {
+        // Blocked - wait and retry
+        await this.delay(10);
+        continue;
+      }
+    }
+  }
+}
+```
+
+**Characteristics**:
+- Each participant executes autonomously
+- True concurrency (actor model)
+- Coordinator only observes (doesn't orchestrate)
+- Async message passing with configurable delays
+
+### 5.2 Event-Driven Coordination
+
+**Core Principle**: Coordinator doesn't orchestrate, it **observes**.
+
+#### Events Emitted by Participants
+
+```typescript
+// Execution lifecycle
+'step-start': { stepCount, currentState }
+'step-end': { stepCount, result, state }
+'complete': { role, steps }
+
+// Sub-protocol navigation
+'step-into': { protocol, depth, roleMapping }
+'step-out': { protocol, depth }
+
+// User interaction needed
+'choice-required': { role, options: CFSMTransition[] }
+
+// Actions
+'send': { messageId, to, label, payloadType }
+'receive': { messageId, from, label, payloadType }
+'tau': { stateId }
+
+// Errors
+'error': { type, message, state }
+'deadlock': { role, state }
+```
+
+#### Coordinator Event Handling
+
+```typescript
+class DistributedRuntime {
+  private handleChoiceRequired(event: ChoiceRequiredEvent): void {
+    // Pause execution for this role
+    // Present options to UI
+    // Wait for user selection via selectTransition()
+    this.emit('ui-choice-needed', event);
+  }
+
+  private handleError(event: ErrorEvent): void {
+    if (event.type === 'message-not-ready') {
+      // Normal blocking - executor will retry
+      return;
+    }
+    // Fatal error - may need to abort
+    this.emit('ui-error', event);
+  }
+}
+```
+
+### 5.3 Message Transport with Configurable Delays
+
+**Testing Strategy**: Test at multiple levels of realism
+
+#### Synchronous (No Delay)
+```typescript
+const transport = new InMemoryTransport({});
+```
+**Use**: Unit testing, immediate message delivery
+
+#### Microtask Delay
+```typescript
+const transport = new InMemoryTransport({ useMicrotaskDelay: true });
+```
+**Use**: Fast async testing via Promise.resolve()
+
+#### Fixed Delay
+```typescript
+const transport = new InMemoryTransport({ messageDelay: 50 });
+```
+**Use**: Simulate network latency (50ms)
+
+#### Random Delay (Network Jitter)
+```typescript
+const transport = new InMemoryTransport({ messageDelay: [10, 100] });
+```
+**Use**: Realistic network with variable delays
+
+### 5.4 Deadlock Detection in Concurrent Mode
+
+**Challenge**: Detect global deadlock when roles execute independently
+
+**Solution**: Periodic global state check
+
+```typescript
+private async detectDeadlock(): Promise<{ deadlocked: boolean }> {
+  while (true) {
+    await this.delay(100);  // Check every 100ms
+
+    const allBlocked = Array.from(this.executors.values()).every(e =>
+      e.isComplete() || e.isBlocked()
+    );
+
+    const anyNotCompleted = Array.from(this.executors.values()).some(e =>
+      !e.isComplete()
+    );
+
+    const messagesInFlight = this.transport.getTotalPendingMessages();
+
+    if (allBlocked && anyNotCompleted && messagesInFlight === 0) {
+      return { deadlocked: true };
+    }
+
+    const allComplete = Array.from(this.executors.values()).every(e => e.isComplete());
+    if (allComplete) {
+      return { deadlocked: false };
+    }
+  }
+}
+```
+
+**Key**: Deadlock = all roles blocked AND no messages in-flight AND not all completed
+
+### 5.5 Blocked vs Error
+
+**Critical distinction**: Waiting for message is normal, not an error
+
+```typescript
+// Normal blocking (retry)
+{ type: 'message-not-ready' }
+
+// Fatal deadlock (halt)
+{ type: 'deadlock' }
+```
+
+**Why**: In asynchronous execution, roles frequently wait for messages. Only flag as
+deadlock when **all** roles blocked simultaneously.
+
+### 5.6 Implementation Status
+
+**Current**: Scheduled synchronous mode fully implemented
+**Planned**: Concurrent asynchronous mode (architecture designed, not implemented)
+
+**Files**:
+- `src/core/simulation/distributed-simulator.ts` - Scheduled mode ✅
+- Design doc: `ASYNC_CONCURRENT_ARCHITECTURE_PLAN.md` (archived)
+
+---
+
+## Cross-Cutting Concern: Theorem-Driven Testing
+
+### 6.1 Behavioral vs Theorem-Driven Testing
+
+#### Traditional Behavioral Testing
+
+```typescript
+it('should project protocol correctly', () => {
+  const protocol = `...`;
+  const projected = project(protocol, 'A');
+  expect(projected).toBeDefined();
+  expect(projected.actions.length).toBeGreaterThan(0);
+});
+```
+
+**Characteristics**:
+- ✅ Easy to write
+- ✅ Quick feedback
+- ❌ Unclear what "correct" means
+- ❌ No formal grounding
+- ❌ Incomplete coverage (what's missing?)
+
+#### Theorem-Driven Testing
+
+```typescript
+/**
+ * THEOREM 4.7 (Honda et al. JACM 2016): Projection Completeness
+ * ∀ a ∈ actions(G), ∃ r ∈ Roles, a ∈ actions(G ↓ r)
+ */
+it('proves: every message appears in sender and receiver projections', () => {
+  const protocol = `...`;
+  const projections = projectAll(cfg);
+
+  // Theorem 4.7: Every global action must appear in projections
+  for (const action of globalActions) {
+    const appearsInSender = contains(projections.get(action.from), action);
+    const appearsInReceiver = contains(projections.get(action.to), action);
+
+    expect(appearsInSender).toBe(true); // Formal requirement
+    expect(appearsInReceiver).toBe(true); // Formal requirement
+  }
+});
+```
+
+**Characteristics**:
+- ✅ **Formal grounding**: Every test proves a theorem
+- ✅ **Precise semantics**: Know exactly what "correct" means
+- ✅ **Complete coverage**: All proof obligations tested
+- ✅ **Better debugging**: Failure = theorem violation
+- ✅ **Documentation**: Tests explain theory
+- ⚠️ **Higher initial cost**: More setup required
+- ⚠️ **Exposes gaps**: Reveals missing implementation
+
+### 6.2 Value Delivered
+
+**API Gaps Discovered**:
+- Projection returns incomplete CFSMs (critical gap)
+- Race detector too conservative (false positives)
+- ProtocolRegistry API undocumented
+- Multicast syntax not implemented
+
+**Theorem-driven tests found these because they test formal properties, not just behaviors.**
+
+### 6.3 Tests as Executable Proofs
+
+Each theorem test is a **correctness invariant**:
+
+```typescript
+describe('Theorem 5.10: Progress (Honda 2016)', () => {
+  // Reading the test teaches you the theorem
+  // Passing test proves implementation is correct
+  // Failing test shows exactly which property violated
+});
+```
+
+**Benefits**:
+1. **Formal correctness verification** - Mathematical certainty, not empirical confidence
+2. **Regression prevention** - Future changes can't violate theorems
+3. **Living documentation** - Executable specifications of formal properties
+4. **Trust in implementation** - "Theorem 4.7 verified ✓" > "tests pass"
+
+### 6.4 Comparison Matrix
+
+| Aspect | Behavioral Testing | Theorem-Driven Testing |
+|--------|-------------------|------------------------|
+| **Clarity** | "Test passes" | "Theorem X.Y verified" |
+| **Coverage** | Unknown gaps | Complete (all proof obligations) |
+| **Debugging** | "Something broke" | "Theorem 4.7 violated at line X" |
+| **Documentation** | Implicit | Explicit (cites papers) |
+| **Confidence** | Empirical | Mathematical |
+| **Maintenance** | Fragile (tests may be wrong) | Robust (theorems are correct) |
+| **API Discovery** | Slow | **Fast** (gaps immediately visible) |
+| **Value** | Catches bugs | **Proves correctness** |
+
+### 6.5 Implementation Approach
+
+**Our Process**:
+1. Identify formal theorem from academic literature
+2. Write test that encodes theorem as executable code
+3. Implement minimal code to satisfy theorem
+4. Verify implementation passes all theorem tests
+
+**Example Theorems Tested**:
+- Theorem 4.7 (Projection Completeness) - 9 tests
+- Theorem 3.1 (Soundness) - 7 tests
+- Theorem 5.3 (Composability) - 9 tests
+- Lemma 3.6 (Preservation) - 4 tests
+
+**Files**: `src/__tests__/theorems/` - 110 tests across 12 theorem categories
+
+**Status**: 75/110 passing (68% - gaps identified and documented)
+
+### 6.6 Lessons Learned
+
+1. **Theorem tests expose real gaps** - Not just edge cases, but fundamental missing features
+2. **Failing tests are features** - They reveal what needs to be implemented
+3. **Tests teach theory** - Reading theorem tests is an education in formal methods
+4. **Investment pays off** - Higher initial cost, lower long-term maintenance
+
+**Reference**: `THEOREM_TESTING_FINDINGS.md` (archived temporary doc)
+
+---
+
+## Layer 5.5: Sub-Protocol Support Patterns
+
+### 7.1 Protocol Registry Pattern
+
+**Problem**: Need to resolve sub-protocol references during execution
+
+**Solution**: Dependency injection with validation
+
+```typescript
+interface IProtocolRegistry {
+  resolve(name: string): GlobalProtocolDeclaration;
+  has(name: string): boolean;
+  validateDependencies(): ValidationResult;
+  getDependencies(name: string): string[];
+  createRoleMapping(protocol: string, roles: string[]): RoleMapping;
+  getCFG(protocolName: string): CFG;
+}
+```
+
+**Key Features**:
+1. **Protocol resolution by name** - Look up sub-protocols during execution
+2. **Dependency extraction from AST** - Analyze `do` statements
+3. **Circular dependency detection** - DFS-based cycle detection
+4. **Role mapping validation** - Ensure arity matches
+5. **CFG caching** - Build once, reuse
+
+**Implementation**: `src/core/protocol-registry/registry.ts`
+
+### 7.2 Call Stack Manager Pattern
+
+**Problem**: Track nested protocol execution context
+
+**Solution**: Unified stack for recursion and sub-protocols with event emission
+
+```typescript
+interface ICallStackManager {
+  getState(): CallStackState;
+  push(frame): ProtocolCallFrame;
+  pop(): ProtocolCallFrame;
+  step(nodeId: string, action?: string): void;
+  reset(): void;
+  on(eventType: string, handler): void;
+  off(eventType: string, handler): void;
+}
+```
+
+**Key Design Decisions**:
+
+#### Unified Stack
+```typescript
+type ProtocolCallFrame =
+  | RecursionFrame   // rec/continue
+  | SubProtocolFrame // do statement
+```
+
+Why: Both recursion and sub-protocols need context tracking. Unified stack simplifies.
+
+#### Event-Driven
+```typescript
+'frame-push': { frame, depth }
+'frame-pop': { frame, duration }
+'frame-step': { nodeId, action, stepCount }
+'stack-reset': { previousDepth }
+```
+
+Why: UI needs real-time call stack visualization for debugging.
+
+#### Bounded Limits
+```typescript
+interface CallStackConfig {
+  maxDepth?: number;        // Default: 100
+  maxIterations?: number;   // Default: 1000
+  emitEvents?: boolean;     // Default: true
+}
+```
+
+Why: Prevent infinite recursion, detect tail-recursion violations.
+
+**Implementation**: `src/core/simulation/call-stack-manager.ts`
+
+### 7.3 Sub-Protocol Execution Pattern
+
+**Execution Flow**:
+```
+1. Detect SubProtocolAction node
+2. Resolve protocol from registry
+3. Create role mapping
+4. Build CFG for sub-protocol
+5. Push call stack frame
+6. Emit enter event
+7. Create nested simulator
+8. Run to completion
+9. Merge trace events
+10. Pop call stack frame
+11. Emit exit event
+12. Continue parent execution
+```
+
+**Implementation**:
+```typescript
+async executeSubProtocol(node: Node, action: SubProtocolAction): Promise<Result> {
+  // 1. Resolve protocol
+  const protocol = registry.resolve(action.protocol);
+
+  // 2. Create role mapping
+  const roleMapping = registry.createRoleMapping(action.protocol, action.roleArguments);
+
+  // 3. Build CFG
+  const subCFG = buildCFG(protocol);
+
+  // 4. Push call stack
+  callStackManager.push({
+    type: 'subprotocol',
+    protocol: action.protocol,
+    roleMapping
+  });
+
+  // 5. Emit enter event
+  this.emit('subprotocol', { action: 'enter', ... });
+
+  // 6. Create nested simulator
+  const subSimulator = new CFGSimulator(subCFG, {
+    protocolRegistry: this.protocolRegistry,
+    callStackManager: this.callStackManager
+  });
+
+  // 7. Run to completion
+  const subResult = await subSimulator.run();
+
+  // 8. Merge traces
+  this.trace.push(...subResult.trace);
+
+  // 9. Pop call stack
+  callStackManager.pop();
+
+  // 10. Emit exit event
+  this.emit('subprotocol', { action: 'exit', ... });
+
+  // 11. Continue parent
+  return { success: true };
+}
+```
+
+### 7.4 Known Issue: Nested Sub-Protocol Execution
+
+**Problem**: Shared call stack manager across nested simulators causes state conflicts
+
+**Symptom**: Tests with deeply nested sub-protocols (3+ levels) hang indefinitely
+
+**Root Cause**: When nested simulator pushes frame, it affects parent simulator's stack view
+
+**Proposed Solution**:
+```typescript
+// Create separate call stack context for each nesting level
+const subCallStack = callStackManager.createChildContext({
+  parentFrame: currentFrame,
+  inheritLimits: true,
+});
+
+const subSimulator = new CFGSimulator(subCFG, {
+  callStackManager: subCallStack,  // Isolated context
+  ...config
+});
+```
+
+**Status**: Documented, not yet implemented
+
+**Impact**: Medium - affects nested protocols only, basic sub-protocols work correctly
+
+### 7.5 Test Results
+
+**Protocol Registry**: 34/34 tests passing (100%)
+**Call Stack Manager**: 49/49 tests passing (100%)
+**Sub-Protocol Execution**: 13/17 tests passing (76.5%)
+
+**Failing Tests**: Related to nested sub-protocol issue above
+
+**Implementation**: `src/core/protocol-registry/`, `src/core/simulation/call-stack-*`
 
 ---
 
