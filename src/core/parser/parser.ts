@@ -326,11 +326,13 @@ export class ScribbleParser extends CstParser {
 
   private message = this.RULE('message', () => {
     this.CONSUME(tokens.Identifier, { LABEL: 'label' });
-    this.CONSUME(tokens.LParen);
     this.OPTION(() => {
-      this.SUBRULE(this.typeExpression);
+      this.CONSUME(tokens.LParen);
+      this.OPTION2(() => {
+        this.SUBRULE(this.typeExpression);
+      });
+      this.CONSUME(tokens.RParen);
     });
-    this.CONSUME(tokens.RParen);
   });
 
   private choice = this.RULE('choice', () => {
