@@ -101,7 +101,8 @@ export interface InvitationCompleteEvent {
  * [[p creates r]]_p = !create(r) (creator sends)
  * [[p creates r]]_r = ?create from p (created receives)
  *
- * @param registry - Dynamic participant registry
+ * @param participants - Map of dynamic participants
+ * @param nextInstanceId - Map tracking next instance ID for each role type
  * @param creator - Role creating the participant
  * @param roleName - Role type to create
  * @param cfsm - Projected CFSM for this dynamic role
@@ -109,16 +110,17 @@ export interface InvitationCompleteEvent {
  * @returns New participant instance
  */
 export function createDynamicParticipant(
-  registry: DynamicParticipantRegistry,
+  participants: Map<string, DynamicParticipant>,
+  nextInstanceId: Map<string, number>,
   creator: string,
   roleName: string,
   cfsm: CFSM,
   transport: MessageTransport
 ): DynamicParticipant {
   // Generate unique instance ID
-  const nextId = registry.nextInstanceId.get(roleName) || 1;
+  const nextId = nextInstanceId.get(roleName) || 1;
   const instanceId = `${roleName}_${nextId}`;
-  registry.nextInstanceId.set(roleName, nextId + 1);
+  nextInstanceId.set(roleName, nextId + 1);
 
   // Create participant
   const participant: DynamicParticipant = {
@@ -140,7 +142,7 @@ export function createDynamicParticipant(
   };
 
   // Register participant
-  registry.participants.set(instanceId, participant);
+  participants.set(instanceId, participant);
 
   // Send creation message (creator → created)
   const creationMessage: Message = {
@@ -168,26 +170,28 @@ export function createDynamicParticipant(
  * Invitation synchronization ensures participant is ready before
  * normal protocol actions begin.
  *
- * @param registry - Dynamic participant registry
+ * @param participants - Map of dynamic participants
+ * @param pendingInvitations - Map of pending invitations
  * @param inviter - Role sending invitation
  * @param inviteeId - Instance ID of invitee
  * @param transport - Message transport
  */
 export function sendInvitation(
-  registry: DynamicParticipantRegistry,
+  participants: Map<string, DynamicParticipant>,
+  pendingInvitations: Map<string, string[]>,
   inviter: string,
   inviteeId: string,
   transport: MessageTransport
 ): void {
-  const participant = registry.participants.get(inviteeId);
+  const participant = participants.get(inviteeId);
   if (!participant) {
     throw new Error(`Dynamic participant ${inviteeId} not found`);
   }
 
   // Mark invitation as pending
-  const pending = registry.pendingInvitations.get(inviter) || [];
+  const pending = pendingInvitations.get(inviter) || [];
   pending.push(inviteeId);
-  registry.pendingInvitations.set(inviter, pending);
+  pendingInvitations.set(inviter, pending);
 
   // Send invitation message
   const inviteMessage: Message = {
@@ -208,14 +212,16 @@ export function sendInvitation(
  * Called when participant has processed creation and invitation messages.
  * After invitation completes, participant can engage in normal protocol actions.
  *
- * @param registry - Dynamic participant registry
+ * @param participants - Map of dynamic participants
+ * @param pendingInvitations - Map of pending invitations
  * @param instanceId - Participant instance ID
  */
 export function completeInvitation(
-  registry: DynamicParticipantRegistry,
+  participants: Map<string, DynamicParticipant>,
+  pendingInvitations: Map<string, string[]>,
   instanceId: string
 ): void {
-  const participant = registry.participants.get(instanceId);
+  const participant = participants.get(instanceId);
   if (!participant) {
     throw new Error(`Dynamic participant ${instanceId} not found`);
   }
@@ -225,12 +231,12 @@ export function completeInvitation(
   participant.state.blocked = false;
 
   // Remove from pending invitations
-  for (const [inviter, invitees] of registry.pendingInvitations.entries()) {
+  for (const [inviter, invitees] of pendingInvitations.entries()) {
     const index = invitees.indexOf(instanceId);
     if (index !== -1) {
       invitees.splice(index, 1);
       if (invitees.length === 0) {
-        registry.pendingInvitations.delete(inviter);
+        pendingInvitations.delete(inviter);
       }
       break;
     }
@@ -351,8 +357,14 @@ export function getCurrentProtocolCall(
  * - Creation/invitation events
  */
 export interface DMstSimulationState extends SimulationState {
-  /** Dynamic participants created during execution */
-  dynamicParticipants: DynamicParticipantRegistry;
+  /** Dynamic participants created during execution (instance ID → participant) */
+  dynamicParticipants: Map<string, DynamicParticipant>;
+
+  /** Next instance number for each dynamic role type */
+  nextInstanceId: Map<string, number>;
+
+  /** Pending invitations (creator → invitee instance IDs) */
+  pendingInvitations: Map<string, string[]>;
 
   /** Protocol call stack for nested protocols */
   protocolCallStack: ProtocolCallStack;
@@ -394,11 +406,9 @@ export function createDMstSimulationState(
     step: 0,
     completed: false,
     deadlocked: false,
-    dynamicParticipants: {
-      participants: new Map(),
-      nextInstanceId: new Map(),
-      pendingInvitations: new Map(),
-    },
+    dynamicParticipants: new Map(),
+    nextInstanceId: new Map(),
+    pendingInvitations: new Map(),
     protocolCallStack: {
       frames: [],
       currentProtocol: '', // Set by simulator
@@ -420,7 +430,7 @@ export function getAllActiveParticipants(
   const all = new Map(state.roles);
 
   // Add dynamic participants that have completed invitation
-  for (const [id, participant] of state.dynamicParticipants.participants) {
+  for (const [id, participant] of state.dynamicParticipants) {
     if (participant.invitationCompleted) {
       all.set(id, participant.state);
     }
@@ -444,7 +454,7 @@ export function allParticipantsTerminated(state: DMstSimulationState): boolean {
   }
 
   // Check dynamic participants (only those that completed invitation)
-  for (const participant of state.dynamicParticipants.participants.values()) {
+  for (const participant of state.dynamicParticipants.values()) {
     if (participant.invitationCompleted && !participant.state.completed) {
       return false;
     }
@@ -479,7 +489,7 @@ export function detectDMstDeadlock(
   }
 
   // Check for pending invitations (participants waiting to join)
-  if (state.dynamicParticipants.pendingInvitations.size > 0) {
+  if (state.pendingInvitations.size > 0) {
     return false; // Invitations in progress
   }
 

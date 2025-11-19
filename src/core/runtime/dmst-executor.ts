@@ -45,7 +45,7 @@ import type {
   SubProtocolCallAction,
 } from '../projection/types';
 import type {
-  DynamicParticipantRegistry,
+  DynamicParticipant,
 } from './dmst-runtime';
 
 /**
@@ -53,8 +53,11 @@ import type {
  * Extends classic ExecutorConfig with DMst-specific registry
  */
 export interface DMstExecutorConfig extends ExecutorConfig {
-  // Dynamic participant registry for creation/invitation
-  dynamicRegistry?: DynamicParticipantRegistry;
+  // Dynamic participants map (instance ID → participant)
+  dynamicParticipants?: Map<string, DynamicParticipant>;
+
+  // Next instance ID for each dynamic role type
+  nextInstanceId?: Map<string, number>;
 
   // Dynamic role templates (role name → CFSM template)
   dynamicCFSMs?: Map<string, CFSM>;
@@ -77,7 +80,8 @@ export interface DMstExecutorConfig extends ExecutorConfig {
  * - ✅ Observer pattern: Fires events for state changes, messages, errors
  */
 export class DMstExecutor extends Executor {
-  private dynamicRegistry?: DynamicParticipantRegistry;
+  private dynamicParticipants?: Map<string, DynamicParticipant>;
+  private nextInstanceId?: Map<string, number>;
   private dynamicCFSMs?: Map<string, CFSM>;
 
   // Sprint 3: Version tracking for updatable recursion
@@ -86,7 +90,8 @@ export class DMstExecutor extends Executor {
 
   constructor(config: DMstExecutorConfig) {
     super(config);
-    this.dynamicRegistry = config.dynamicRegistry;
+    this.dynamicParticipants = config.dynamicParticipants;
+    this.nextInstanceId = config.nextInstanceId;
     this.dynamicCFSMs = config.dynamicCFSMs;
     this.cfsmVersion = config.cfsmVersion || 1;
     this.protocolName = config.protocolName;
@@ -603,7 +608,7 @@ export class DMstExecutor extends Executor {
     transition: CFSMTransition,
     action: CreateAction
   ): Promise<ExecutionResult> {
-    if (!this.dynamicRegistry) {
+    if (!this.dynamicParticipants || !this.nextInstanceId) {
       const error: ExecutionError = {
         type: 'protocol-violation',
         message: 'Dynamic participant registry not configured',
@@ -625,7 +630,7 @@ export class DMstExecutor extends Executor {
     }
 
     // Generate instance ID
-    const nextId = this.dynamicRegistry.nextInstanceId.get(action.role) || 1;
+    const nextId = this.nextInstanceId.get(action.role) || 1;
     const instanceId = action.instance || `${action.role}_${nextId}`;
 
     const transport = (this as any).transport as MessageTransport;

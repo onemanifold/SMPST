@@ -144,7 +144,8 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
         cfsm,
         transport: this.transport,
         cfsmRegistry: this.cfsmRegistry,
-        dynamicRegistry: this.state.dynamicParticipants,
+        dynamicParticipants: this.state.dynamicParticipants,
+        nextInstanceId: this.state.nextInstanceId,
         dynamicCFSMs: this.dynamicCFSMs,
         // Sprint 3: Version tracking
         cfsmVersion: 1,
@@ -385,6 +386,7 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
     // Create dynamic participant
     const participant = createDynamicParticipant(
       this.state.dynamicParticipants,
+      this.state.nextInstanceId,
       creator,
       roleName,
       cfsmTemplate,
@@ -397,7 +399,8 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
       cfsm: cfsmTemplate,
       transport: this.transport,
       cfsmRegistry: this.cfsmRegistry,
-      dynamicRegistry: this.state.dynamicParticipants,
+      dynamicParticipants: this.state.dynamicParticipants,
+      nextInstanceId: this.state.nextInstanceId,
       dynamicCFSMs: this.dynamicCFSMs,
     };
     const executor = new DMstExecutor(config);
@@ -439,10 +442,10 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
     const invitee = typeof msg.to === 'string' ? msg.to : msg.to[0];
 
     // Register pending invitation
-    const pending = this.state.dynamicParticipants.pendingInvitations.get(inviter) || [];
+    const pending = this.state.pendingInvitations.get(inviter) || [];
     if (!pending.includes(invitee)) {
       pending.push(invitee);
-      this.state.dynamicParticipants.pendingInvitations.set(inviter, pending);
+      this.state.pendingInvitations.set(inviter, pending);
     }
   }
 
@@ -521,11 +524,9 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
    * and completes invitation if so.
    */
   private async processPendingInvitations(): Promise<void> {
-    const registry = this.state.dynamicParticipants;
-
-    for (const [inviter, invitees] of registry.pendingInvitations.entries()) {
+    for (const [inviter, invitees] of this.state.pendingInvitations.entries()) {
       for (const inviteeId of invitees) {
-        const participant = registry.participants.get(inviteeId);
+        const participant = this.state.dynamicParticipants.get(inviteeId);
         if (!participant) continue;
 
         // Check if participant has received both create and invite messages
@@ -538,7 +539,11 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
 
         if (hasCreate && hasInvite) {
           // Complete invitation
-          completeInvitation(registry, inviteeId);
+          completeInvitation(
+            this.state.dynamicParticipants,
+            this.state.pendingInvitations,
+            inviteeId
+          );
 
           // Record event
           const event: InvitationCompleteEvent = {
