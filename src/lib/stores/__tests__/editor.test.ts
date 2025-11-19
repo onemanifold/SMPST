@@ -123,7 +123,7 @@ describe('Editor Store - Backend Contract Enforcement', () => {
       expect(result.cfg?.roles).toEqual(['A', 'B', 'C']);
     });
 
-    it('should validate CFG.entryNodeId exists', async () => {
+    it('should validate CFG.initialNode exists', async () => {
       const protocol = `
         global protocol Simple(role A, role B) {
           msg(int) from A to B;
@@ -133,13 +133,13 @@ describe('Editor Store - Backend Contract Enforcement', () => {
       const result = await parseProtocol(protocol);
 
       expect(result.success).toBe(true);
-      expect(result.cfg?.entryNodeId).toBeDefined();
+      expect(result.cfg?.initialNode).toBeDefined();
       expect(result.cfg?.nodes).toBeDefined();
-      // Entry node should exist in nodes array
-      const hasEntryNode = result.cfg?.nodes.some(
-        n => n.id === result.cfg?.entryNodeId
+      // Initial node should exist in nodes array
+      const hasInitialNode = result.cfg?.nodes.some(
+        n => n.id === result.cfg?.initialNode
       );
-      expect(hasEntryNode).toBe(true);
+      expect(hasInitialNode).toBe(true);
     });
 
     it.todo('should preserve CFG.metadata', async () => {
