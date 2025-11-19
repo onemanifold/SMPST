@@ -15,6 +15,7 @@ import { get } from 'svelte/store';
 import SimulationControls from '../SimulationControls.svelte';
 import {
   initializeCFGSimulation,
+  initializeBisimulation,
   stopSimulation,
   executionState,
   isSimulationActive,
@@ -24,8 +25,12 @@ import {
   currentStepNumber,
   playbackSpeed,
   simulationMode,
+  executionMode,
+  choiceStrategy,
+  currentCFG,
+  currentCFSMs,
 } from '../../../stores/simulation';
-import { createSimpleCFG, createChoiceCFG, createCompletableCFG } from './test-helpers';
+import { createSimpleCFG, createChoiceCFG, createCompletableCFG, createCFGAndCFSMs } from './test-helpers';
 
 describe('SimulationControls', () => {
   beforeEach(() => {
@@ -400,6 +405,179 @@ describe('SimulationControls', () => {
 
       // Component should show updated step count
       expect(getByText('1')).toBeInTheDocument();
+    });
+  });
+
+  describe('Execution Mode Switching (Phase 3)', () => {
+    it('should render mode selector when simulation is active', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      const { container } = render(SimulationControls);
+      const modeSelect = container.querySelector('#execution-mode') as HTMLSelectElement;
+
+      expect(modeSelect).toBeInTheDocument();
+      expect(modeSelect).toHaveValue('cfg');
+    });
+
+    it('should show all three execution modes as options', async () => {
+      const { cfg, cfsms } = createCFGAndCFSMs();
+      await initializeCFGSimulation(cfg);
+      currentCFSMs.set(cfsms);
+
+      const { container } = render(SimulationControls);
+      const modeSelect = container.querySelector('#execution-mode') as HTMLSelectElement;
+      const options = Array.from(modeSelect.options).map(o => o.value);
+
+      expect(options).toContain('cfg');
+      expect(options).toContain('distributed');
+      expect(options).toContain('bisimulation');
+    });
+
+    it('should disable distributed mode when no CFSMs available', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+      currentCFSMs.set(new Map()); // Empty CFSMs
+
+      const { container } = render(SimulationControls);
+      const modeSelect = container.querySelector('#execution-mode') as HTMLSelectElement;
+      const distributedOption = Array.from(modeSelect.options).find(o => o.value === 'distributed');
+
+      expect(distributedOption?.disabled).toBe(true);
+    });
+
+    it('should disable bisimulation mode when no CFG or CFSMs', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+      currentCFSMs.set(new Map()); // No CFSMs
+
+      const { container } = render(SimulationControls);
+      const modeSelect = container.querySelector('#execution-mode') as HTMLSelectElement;
+      const bisimOption = Array.from(modeSelect.options).find(o => o.value === 'bisimulation');
+
+      expect(bisimOption?.disabled).toBe(true);
+    });
+
+    it('should update executionMode when mode selector changes', async () => {
+      const { cfg, cfsms } = createCFGAndCFSMs();
+      await initializeCFGSimulation(cfg);
+      currentCFSMs.set(cfsms);
+
+      const { container } = render(SimulationControls);
+      const modeSelect = container.querySelector('#execution-mode') as HTMLSelectElement;
+
+      // Switch to bisimulation mode
+      await fireEvent.change(modeSelect, { target: { value: 'bisimulation' } });
+
+      await waitFor(() => {
+        expect(get(executionMode)).toBe('bisimulation');
+      });
+    });
+
+    it('should update step label based on execution mode', async () => {
+      const { cfg, cfsms } = createCFGAndCFSMs();
+      await initializeCFGSimulation(cfg);
+      currentCFSMs.set(cfsms);
+
+      const { container, getByText, rerender } = render(SimulationControls);
+
+      // CFG mode should show "Step:"
+      expect(getByText('Step:')).toBeInTheDocument();
+
+      // Switch to bisimulation mode
+      const modeSelect = container.querySelector('#execution-mode') as HTMLSelectElement;
+      await fireEvent.change(modeSelect, { target: { value: 'bisimulation' } });
+
+      await waitFor(() => {
+        expect(get(executionMode)).toBe('bisimulation');
+      });
+
+      await rerender({});
+
+      // Bisimulation mode should show "Both:"
+      expect(getByText('Both:')).toBeInTheDocument();
+    });
+
+    it('should disable mode selector during playback', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      const { container, getByTitle, rerender } = render(SimulationControls);
+      const modeSelect = container.querySelector('#execution-mode') as HTMLSelectElement;
+
+      // Start playing
+      const playBtn = getByTitle('Play (auto-random mode)');
+      await fireEvent.click(playBtn);
+      await rerender({});
+
+      expect(modeSelect).toBeDisabled();
+    });
+  });
+
+  describe('Choice Strategy Selection (Phase 3)', () => {
+    it('should render strategy selector in CFG mode', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      const { container } = render(SimulationControls);
+      const strategySelect = container.querySelector('#choice-strategy') as HTMLSelectElement;
+
+      expect(strategySelect).toBeInTheDocument();
+      expect(strategySelect).toHaveValue('manual');
+    });
+
+    it('should show all four choice strategies', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      const { container } = render(SimulationControls);
+      const strategySelect = container.querySelector('#choice-strategy') as HTMLSelectElement;
+      const options = Array.from(strategySelect.options).map(o => o.value);
+
+      expect(options).toContain('manual');
+      expect(options).toContain('random');
+      expect(options).toContain('first');
+      expect(options).toContain('explore-all');
+    });
+
+    it('should update choiceStrategy when selector changes', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      const { container } = render(SimulationControls);
+      const strategySelect = container.querySelector('#choice-strategy') as HTMLSelectElement;
+
+      // Change strategy to random
+      await fireEvent.change(strategySelect, { target: { value: 'random' } });
+
+      await waitFor(() => {
+        expect(get(choiceStrategy)).toBe('random');
+      });
+    });
+
+    it('should show strategy selector in bisimulation mode', async () => {
+      const { cfg, cfsms } = createCFGAndCFSMs();
+      await initializeBisimulation(cfg, cfsms);
+
+      const { container } = render(SimulationControls);
+      const strategySelect = container.querySelector('#choice-strategy') as HTMLSelectElement;
+
+      expect(strategySelect).toBeInTheDocument();
+    });
+
+    it('should disable strategy selector during playback', async () => {
+      const cfg = createSimpleCFG();
+      await initializeCFGSimulation(cfg);
+
+      const { container, getByTitle, rerender } = render(SimulationControls);
+      const strategySelect = container.querySelector('#choice-strategy') as HTMLSelectElement;
+
+      // Start playing
+      const playBtn = getByTitle('Play (auto-random mode)');
+      await fireEvent.click(playBtn);
+      await rerender({});
+
+      expect(strategySelect).toBeDisabled();
     });
   });
 });

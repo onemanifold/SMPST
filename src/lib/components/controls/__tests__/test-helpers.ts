@@ -80,3 +80,27 @@ export function createCompletableCFG(): CFG {
   ) as GlobalProtocolDeclaration;
   return buildCFG(protocol);
 }
+
+/**
+ * Create both CFG and CFSMs for mode switching tests
+ */
+export function createCFGAndCFSMs() {
+  const source = `
+    protocol ModeSwitchProtocol(role A, role B) {
+      A -> B: Request(string);
+      B -> A: Response(string);
+    }
+  `;
+  const module = parse(source);
+  const protocol = module.declarations.find(
+    d => d.type === 'GlobalProtocolDeclaration'
+  ) as GlobalProtocolDeclaration;
+
+  const cfg = buildCFG(protocol);
+
+  // Generate CFSMs
+  const { projectAll } = require('../../../../core/projection/projector');
+  const result = projectAll(cfg);
+
+  return { cfg, cfsms: result.cfsms };
+}
