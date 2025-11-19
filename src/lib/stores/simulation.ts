@@ -1,36 +1,38 @@
 /**
  * Simulation state management
+ *
+ * Architecture:
+ * - SimulationDebugger: Time-travel, history, event annotation (owns CFGSimulator)
+ * - This store: UI state, reactivity, derived convenience stores
+ * - No state duplication - debugger is source of truth
  */
 import { writable, derived, get } from 'svelte/store';
 import type { CFG } from '../../core/cfg/types';
-import type { CFGExecutionState, CFGStepResult, CFGExecutionEvent } from '../../core/simulation/types';
+import type { CFGExecutionState } from '../../core/simulation/types';
+import type { SimulationDebugger } from '../../core/simulation/simulation-debugger';
+import type { DebugEvent } from '../../core/simulation/simulation-debugger';
 
-// Simulation mode
+// Re-export DebugEvent as SteppedExecutionEvent for backward compatibility
+export type SteppedExecutionEvent = DebugEvent;
+
+// Simulation mode (UI concern)
 export type SimulationMode = 'idle' | 'stepping' | 'playing';
 export const simulationMode = writable<SimulationMode>('idle');
 
-// Simulator instance
-let simulator: any = null;
+// Debugger instance (owns the VM runtime)
+let simDebugger: SimulationDebugger | null = null;
 
-// Current execution state
+// Current execution state (mirrored for reactivity)
 export const executionState = writable<CFGExecutionState | null>(null);
 
 // Current CFG being simulated
 export const currentCFG = writable<CFG | null>(null);
 
-// Playback speed (ms between steps in play mode)
+// Playback speed (UI preference)
 export const playbackSpeed = writable<number>(300);
 
-// Phase 1: Execution Events with Step Numbers
-// Extended event type that includes stepNumber for time-travel filtering
-export type SteppedExecutionEvent = CFGExecutionEvent & { stepNumber: number };
-
-// Phase 1: Execution Events - ALL events from simulator (with step numbers)
-export const executionEvents = writable<SteppedExecutionEvent[]>([]);
-
-// Phase 2: Execution History - backward stepping state
-export const currentStepNumber = writable<number>(0);
-export const totalStepCount = writable<number>(0);
+// Reactivity trigger - increment when debugger state changes
+const stateVersion = writable(0);
 
 // Play mode interval
 let playInterval: ReturnType<typeof setInterval> | null = null;
@@ -53,74 +55,41 @@ playbackSpeed.subscribe(speed => {
 });
 
 /**
- * Initialize simulator with a CFG
+ * Initialize debugger with a CFG
  */
 export async function initializeSimulation(cfg: CFG) {
-  // Clean up existing simulator
+  // Clean up existing debugger
   stopSimulation();
 
   // Dynamic import to avoid bundling issues
+  const { SimulationDebugger } = await import('../../core/simulation/simulation-debugger');
   const { CFGSimulator } = await import('../../core/simulation/cfg-simulator');
 
-  // Create new simulator with manual choice strategy (UI handles auto-selection in play mode)
-  simulator = new CFGSimulator(cfg, {
-    choiceStrategy: 'manual',
-    maxSteps: 1000,
-    recordTrace: true
-  });
-
-  // Phase 2: Enable execution history for backward stepping
-  simulator.enableHistory();
+  // Create new debugger (owns CFGSimulator internally)
+  simDebugger = new SimulationDebugger(
+    cfg,
+    CFGSimulator,
+    {
+      choiceStrategy: 'manual',
+      maxSteps: 1000,
+    }
+  );
 
   currentCFG.set(cfg);
-  executionState.set(simulator.getState());
+  executionState.set(simDebugger.getState());
   simulationMode.set('idle');
-
-  // Phase 1: Capture any events from initialization (e.g., recursion enter)
-  const trace = simulator.getTrace();
-  const history = simulator.getExecutionHistory();
-  const currentStep = history.getCurrentPosition();
-
-  if (trace.events.length > 0) {
-    // Add step numbers to events
-    const steppedEvents: SteppedExecutionEvent[] = trace.events.map((event: CFGExecutionEvent) => ({
-      ...event,
-      stepNumber: currentStep,
-    }));
-    executionEvents.set(steppedEvents);
-  }
-
-  // Phase 2: Initialize history state
-  currentStepNumber.set(currentStep);
-  totalStepCount.set(history.getAllSnapshots().length);
+  stateVersion.update(v => v + 1);
 }
 
 /**
  * Step forward one execution step
  */
 export function stepSimulation() {
-  if (!simulator) return;
+  if (!simDebugger) return;
 
-  // Use stepForward() to record history snapshots
-  const result = simulator.stepForward();
+  const result = simDebugger.stepForward();
   executionState.set(result.state);
-
-  // Phase 2: Update history state FIRST to get current step number
-  if (result.success) {
-    const history = simulator.getExecutionHistory();
-    const currentStep = history.getCurrentPosition();
-    currentStepNumber.set(currentStep);
-    totalStepCount.set(history.getAllSnapshots().length);
-
-    // Phase 1: Capture execution event if present (with step number)
-    if (result.event) {
-      const steppedEvent: SteppedExecutionEvent = {
-        ...result.event,
-        stepNumber: currentStep,
-      };
-      executionEvents.update(events => [...events, steppedEvent]);
-    }
-  }
+  stateVersion.update(v => v + 1);
 
   if (result.state.completed) {
     simulationMode.set('idle');
@@ -131,31 +100,15 @@ export function stepSimulation() {
  * Make a choice at a choice point
  */
 export function makeChoice(choiceIndex: number) {
-  if (!simulator) return;
+  if (!simDebugger) return;
 
   // Set the choice
-  simulator.choose(choiceIndex);
+  simDebugger.choose(choiceIndex);
 
-  // Step forward with the choice (records history snapshot)
-  const result = simulator.stepForward();
+  // Step forward with the choice
+  const result = simDebugger.stepForward();
   executionState.set(result.state);
-
-  // Phase 2: Update history state FIRST to get current step number
-  if (result.success) {
-    const history = simulator.getExecutionHistory();
-    const currentStep = history.getCurrentPosition();
-    currentStepNumber.set(currentStep);
-    totalStepCount.set(history.getAllSnapshots().length);
-
-    // Phase 1: Capture execution event if present (with step number)
-    if (result.event) {
-      const steppedEvent: SteppedExecutionEvent = {
-        ...result.event,
-        stepNumber: currentStep,
-      };
-      executionEvents.update(events => [...events, steppedEvent]);
-    }
-  }
+  stateVersion.update(v => v + 1);
 
   if (result.state.completed) {
     simulationMode.set('idle');
@@ -166,7 +119,7 @@ export function makeChoice(choiceIndex: number) {
  * Start playing (auto-stepping with random choices)
  */
 export function startPlaying() {
-  if (!simulator || get(simulationMode) === 'playing') return;
+  if (!simDebugger || get(simulationMode) === 'playing') return;
 
   simulationMode.set('playing');
 
@@ -216,18 +169,12 @@ export function pauseSimulation() {
  * Step backward in execution history
  */
 export function stepBack() {
-  if (!simulator) return;
+  if (!simDebugger) return;
 
-  const result = simulator.stepBackward();
+  const result = simDebugger.stepBackward();
   if (result.success) {
     executionState.set(result.state);
-
-    // Update history position
-    const history = simulator.getExecutionHistory();
-    currentStepNumber.set(history.getCurrentPosition());
-
-    // Events are filtered by visibleExecutionEvents derived store
-    // No need to manually truncate executionEvents
+    stateVersion.update(v => v + 1);
   }
 }
 
@@ -235,26 +182,12 @@ export function stepBack() {
  * Step forward in execution history (redo)
  */
 export function stepForward() {
-  if (!simulator) return;
+  if (!simDebugger) return;
 
-  const result = simulator.stepForward();
+  const result = simDebugger.stepForward();
   if (result.success) {
     executionState.set(result.state);
-
-    // Phase 2: Update history state FIRST to get current step number
-    const history = simulator.getExecutionHistory();
-    const currentStep = history.getCurrentPosition();
-    currentStepNumber.set(currentStep);
-    totalStepCount.set(history.getAllSnapshots().length);
-
-    // Phase 1: Capture execution event if present (with step number)
-    if (result.event) {
-      const steppedEvent: SteppedExecutionEvent = {
-        ...result.event,
-        stepNumber: currentStep,
-      };
-      executionEvents.update(events => [...events, steppedEvent]);
-    }
+    stateVersion.update(v => v + 1);
   }
 }
 
@@ -262,51 +195,26 @@ export function stepForward() {
  * Jump to a specific step in execution history
  */
 export function jumpToStep(stepNumber: number) {
-  if (!simulator) return;
+  if (!simDebugger) return;
 
-  const history = simulator.getExecutionHistory();
-  const snapshot = history.getSnapshot(stepNumber);
-
-  if (!snapshot) return;
-
-  // Get current position BEFORE changing it
-  const currentPos = history.getCurrentPosition();
-  const targetPos = stepNumber;
-
-  if (targetPos < currentPos) {
-    // Step backward
-    const stepsBack = currentPos - targetPos;
-    for (let i = 0; i < stepsBack; i++) {
-      stepBack();
-    }
-  } else if (targetPos > currentPos) {
-    // Step forward
-    const stepsForward = targetPos - currentPos;
-    for (let i = 0; i < stepsForward; i++) {
-      stepForward();
-    }
+  const result = simDebugger.jumpToStep(stepNumber);
+  if (result.success) {
+    executionState.set(result.state);
+    stateVersion.update(v => v + 1);
   }
-  // If targetPos === currentPos, we're already there - do nothing
 }
 
 /**
  * Reset simulation to initial state
  */
 export function resetSimulation() {
-  if (!simulator) return;
+  if (!simDebugger) return;
 
   stopPlaying();
-  simulator.reset();
-  executionState.set(simulator.getState());
+  simDebugger.reset();
+  executionState.set(simDebugger.getState());
   simulationMode.set('idle');
-
-  // Phase 1: Clear execution events
-  executionEvents.set([]);
-
-  // Phase 2: Reset history state
-  const history = simulator.getExecutionHistory();
-  currentStepNumber.set(history.getCurrentPosition());
-  totalStepCount.set(history.getAllSnapshots().length);
+  stateVersion.update(v => v + 1);
 }
 
 /**
@@ -314,20 +222,17 @@ export function resetSimulation() {
  */
 export function stopSimulation() {
   stopPlaying();
-  simulator = null;
+  simDebugger = null;
   executionState.set(null);
   currentCFG.set(null);
   simulationMode.set('idle');
-
-  // Phase 1: Clear execution events
-  executionEvents.set([]);
-
-  // Phase 2: Reset history state
-  currentStepNumber.set(0);
-  totalStepCount.set(0);
+  stateVersion.set(0);
 }
 
-// Derived stores
+// ============================================================================
+// Derived Stores - NO State Duplication
+// ============================================================================
+
 export const isSimulationActive = derived(
   currentCFG,
   $cfg => $cfg !== null
@@ -354,15 +259,52 @@ export const availableChoices = derived(
   $state => $state?.availableChoices ?? []
 );
 
-// Phase 2: Visible events filtered by current history position
-// This ensures event log matches the current step when navigating history
-export const visibleExecutionEvents = derived(
-  [executionEvents, currentStepNumber],
-  ([$events, $currentStep]) => $events.filter(e => e.stepNumber <= $currentStep)
+// ============================================================================
+// History State - From Debugger (No Duplication)
+// ============================================================================
+
+export const currentStepNumber = derived(
+  stateVersion,
+  () => simDebugger?.getCurrentPosition() ?? 0
 );
 
-// Phase 1: Event filtering - Derived stores for each event type
-// These now filter from visibleExecutionEvents (time-travel aware)
+export const totalStepCount = derived(
+  stateVersion,
+  () => simDebugger?.getTotalSteps() ?? 0
+);
+
+export const canStepBack = derived(
+  stateVersion,
+  () => simDebugger?.canStepBack() ?? false
+);
+
+export const canStepForward = derived(
+  stateVersion,
+  () => simDebugger?.canStepForward() ?? false
+);
+
+// ============================================================================
+// Event Stores - From Debugger (No Duplication, No Augmentation)
+// ============================================================================
+
+/**
+ * All events captured during execution
+ * Events include stepNumber (added by debugger)
+ */
+export const executionEvents = derived(
+  stateVersion,
+  () => simDebugger?.getAllEvents() ?? []
+);
+
+/**
+ * Events visible at current time position (time-travel filtered)
+ */
+export const visibleExecutionEvents = derived(
+  stateVersion,
+  () => simDebugger?.getVisibleEvents() ?? []
+);
+
+// Event type filters - Applied to visible events (time-travel aware)
 export const messageEvents = derived(
   visibleExecutionEvents,
   $events => $events.filter(e => e.type === 'message')
@@ -391,15 +333,4 @@ export const subProtocolEvents = derived(
 export const stateChangeEvents = derived(
   visibleExecutionEvents,
   $events => $events.filter(e => e.type === 'state-change')
-);
-
-// Phase 2: History-based derived stores
-export const canStepBack = derived(
-  currentStepNumber,
-  $currentStep => $currentStep > 0
-);
-
-export const canStepForward = derived(
-  [currentStepNumber, totalStepCount],
-  ([$currentStep, $totalSteps]) => $currentStep < $totalSteps
 );

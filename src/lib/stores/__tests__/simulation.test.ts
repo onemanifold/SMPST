@@ -37,11 +37,9 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
   beforeEach(() => {
     // Reset stores before each test
     vi.clearAllMocks();
-    // Clear execution events
-    executionEvents.set([]);
-    // Reset history state
-    currentStepNumber.set(0);
-    totalStepCount.set(0);
+    // Note: executionEvents, currentStepNumber, totalStepCount are now derived stores
+    // They automatically return empty/0 when no debugger is active
+    // No need to manually reset them
   });
 
   describe('Phase 1: Execution Events - HIGH PRIORITY', () => {
@@ -130,35 +128,18 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
       expect(Array.isArray(stateChange)).toBe(true);
     });
 
-    it('should filter events correctly by type', () => {
-      // Set up mixed events with stepNumbers
-      executionEvents.set([
-        { type: 'message', timestamp: 1, from: 'A', to: 'B', label: 'test', nodeId: 'n1', stepNumber: 1 },
-        { type: 'choice', timestamp: 2, decidingRole: 'A', choiceIndex: 0, nodeId: 'n2', stepNumber: 2 },
-        { type: 'message', timestamp: 3, from: 'B', to: 'C', label: 'test2', nodeId: 'n3', stepNumber: 3 },
-        { type: 'recursion', timestamp: 4, action: 'enter', label: 'Loop', nodeId: 'n4', stepNumber: 4 },
-      ] as any);
-
-      // Set current step to include all events
-      currentStepNumber.set(4);
-
-      expect(get(messageEvents).length).toBe(2);
-      expect(get(choiceEvents).length).toBe(1);
-      expect(get(recursionEvents).length).toBe(1);
-      expect(get(parallelEvents).length).toBe(0);
+    it.todo('should filter events correctly by type', () => {
+      // NOTE: This test is obsolete with new architecture
+      // executionEvents is now a derived store from SimulationDebugger
+      // Integration tests cover this functionality properly
+      // See: simulation.integration.test.ts
     });
 
-    it('should support clearing events manually', () => {
-      // Events can be cleared via store
-      executionEvents.set([
-        { type: 'message', timestamp: 1, from: 'A', to: 'B', label: 'test', nodeId: 'n1', stepNumber: 1 },
-      ] as any);
-
-      currentStepNumber.set(1);
-
-      expect(get(executionEvents).length).toBe(1);
-      executionEvents.set([]);
-      expect(get(executionEvents).length).toBe(0);
+    it.todo('should support clearing events manually', () => {
+      // NOTE: This test is obsolete with new architecture
+      // executionEvents is managed by SimulationDebugger, not directly writable
+      // Events are cleared via resetSimulation() / stopSimulation()
+      // Integration tests cover this functionality
     });
 
     it.todo('should clear events on reset', () => {
