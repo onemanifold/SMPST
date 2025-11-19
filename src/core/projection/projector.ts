@@ -577,12 +577,16 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
         } else if (isInvitationAction(action)) {
           // DMst RULE: Invitation protocol
           // From ECOOP 2023 Definition 12:
-          // [[p invites q]]_p = InviteAction (inviter)
-          // [[p invites q]]_q = InviteAction (invitee)
+          // [[p invites q]]_p = InviteAction (inviter sends invite)
+          // [[p invites q]]_q = skip (invitee is synchronized via runtime)
           // [[p invites q]]_r = skip (other roles - tau-elimination)
+          //
+          // NOTE: Invitation is asymmetric - only inviter sends message.
+          // The invitee's synchronization is handled by the runtime simulator
+          // which ensures the participant is ready before allowing further actions.
 
-          if (action.inviter === role || action.invitee === role) {
-            // Role is inviter or invitee - emit InviteAction
+          if (action.inviter === role) {
+            // Role is inviter - emit InviteAction to send invitation
             const newState = createState(`after_invite_${action.invitee}`);
             cfgNodeToState.set(targetNode.id, newState.id);
 
@@ -598,7 +602,8 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
               lastStateId: newState.id,
             });
           } else {
-            // Role NOT involved - tau-elimination
+            // Role is invitee OR uninvolved - tau-elimination
+            // Invitee synchronization handled by runtime, not in CFSM
             queue.push({
               cfgNodeId: targetNode.id,
               lastStateId,

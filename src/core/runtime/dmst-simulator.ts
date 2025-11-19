@@ -434,7 +434,8 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
   /**
    * Handle invitation.
    *
-   * Registers pending invitation in registry.
+   * Registers pending invitation in registry and completes it immediately
+   * if the participant already exists.
    *
    * @param inviter - Role sending invitation
    * @param msg - Invitation message
@@ -442,11 +443,43 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
   private async handleInvitation(inviter: string, msg: Message): Promise<void> {
     const invitee = typeof msg.to === 'string' ? msg.to : msg.to[0];
 
-    // Register pending invitation
-    const pending = this.state.pendingInvitations.get(inviter) || [];
-    if (!pending.includes(invitee)) {
-      pending.push(invitee);
-      this.state.pendingInvitations.set(inviter, pending);
+    // Check if participant already exists (created but not yet invited)
+    const participant = this.state.dynamicParticipants.get(invitee);
+
+    if (participant && !participant.invitationCompleted) {
+      // Complete invitation immediately
+      participant.invitationCompleted = true;
+
+      // Remove from pending invitations
+      const pending = this.state.pendingInvitations.get(inviter) || [];
+      const index = pending.indexOf(invitee);
+      if (index !== -1) {
+        pending.splice(index, 1);
+        if (pending.length === 0) {
+          this.state.pendingInvitations.delete(inviter);
+        } else {
+          this.state.pendingInvitations.set(inviter, pending);
+        }
+      }
+
+      // Record event
+      const event: InvitationCompleteEvent = {
+        type: 'participant_invited',
+        timestamp: Date.now(),
+        inviter,
+        invitee,
+      };
+      this.state.invitationEvents.push(event);
+
+      // Notify observers
+      this.notifyInvitationComplete(event);
+    } else {
+      // Participant not yet created, register pending invitation
+      const pending = this.state.pendingInvitations.get(inviter) || [];
+      if (!pending.includes(invitee)) {
+        pending.push(invitee);
+        this.state.pendingInvitations.set(inviter, pending);
+      }
     }
   }
 
@@ -521,30 +554,19 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
   /**
    * Process pending invitations.
    *
-   * Checks if dynamic participants have received both create and invite,
-   * and completes invitation if so.
+   * Completes invitations that were pending when the participant was created.
+   * This handles the case where invite message arrived before create message.
    */
   private async processPendingInvitations(): Promise<void> {
+    const completedInvitations: Array<[string, string]> = [];
+
     for (const [inviter, invitees] of this.state.pendingInvitations.entries()) {
       for (const inviteeId of invitees) {
         const participant = this.state.dynamicParticipants.get(inviteeId);
-        if (!participant) continue;
 
-        // Check if participant has received both create and invite messages
-        const hasCreate = participant.state.pendingMessages.some(
-          m => m.label === 'create'
-        );
-        const hasInvite = participant.state.pendingMessages.some(
-          m => m.label === 'invite'
-        );
-
-        if (hasCreate && hasInvite) {
-          // Complete invitation
-          completeInvitation(
-            this.state.dynamicParticipants,
-            this.state.pendingInvitations,
-            inviteeId
-          );
+        // If participant now exists and hasn't been invited yet, complete invitation
+        if (participant && !participant.invitationCompleted) {
+          participant.invitationCompleted = true;
 
           // Record event
           const event: InvitationCompleteEvent = {
@@ -557,6 +579,23 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
 
           // Notify observers (Sprint 2, Issue #5)
           this.notifyInvitationComplete(event);
+
+          // Mark for removal from pending
+          completedInvitations.push([inviter, inviteeId]);
+        }
+      }
+    }
+
+    // Remove completed invitations from pending
+    for (const [inviter, inviteeId] of completedInvitations) {
+      const pending = this.state.pendingInvitations.get(inviter);
+      if (pending) {
+        const index = pending.indexOf(inviteeId);
+        if (index !== -1) {
+          pending.splice(index, 1);
+          if (pending.length === 0) {
+            this.state.pendingInvitations.delete(inviter);
+          }
         }
       }
     }
