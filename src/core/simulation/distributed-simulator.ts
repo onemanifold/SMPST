@@ -61,6 +61,9 @@ export class DistributedSimulator {
   private lastScheduledRole: string | null = null;
   private roleScheduleCount: Map<string, number> = new Map();
 
+  // Completion tracking
+  private completedRoles: Set<string> = new Set();
+
   constructor(cfsms: Map<string, CFSM>, config: DistributedSimulatorConfig = {}) {
     this.cfsms = cfsms;
     this.config = {
@@ -78,16 +81,20 @@ export class DistributedSimulator {
     // Create simulators with shared transport
     this.simulators = new Map();
     for (const [role, cfsm] of cfsms) {
-      this.simulators.set(
-        role,
-        new CFSMSimulator(cfsm, {
-          maxSteps: config.maxSteps,
-          maxBufferSize: config.maxBufferSize,
-          recordTrace: config.recordTrace,
-          transitionStrategy: 'first', // Distributed coordinator controls scheduling
-          transport: this.transport, // Share transport across all roles
-        })
-      );
+      const simulator = new CFSMSimulator(cfsm, {
+        maxSteps: config.maxSteps,
+        maxBufferSize: config.maxBufferSize,
+        recordTrace: config.recordTrace,
+        transitionStrategy: 'first', // Distributed coordinator controls scheduling
+        transport: this.transport, // Share transport across all roles
+      });
+
+      // Subscribe to the complete event for each role
+      simulator.on('complete', () => {
+        this.completedRoles.add(role);
+      });
+
+      this.simulators.set(role, simulator);
       this.roleScheduleCount.set(role, 0);
     }
   }
@@ -108,8 +115,8 @@ export class DistributedSimulator {
     }
 
     const enabledRoles = this.getEnabledRoles();
-    const allCompleted = Array.from(this.simulators.values()).every(sim => sim.isComplete());
-    const anyCompleted = Array.from(this.simulators.values()).some(sim => sim.isComplete());
+    const allCompleted = this.completedRoles.size === this.cfsms.size;
+    const anyCompleted = this.completedRoles.size > 0;
 
     // Get in-flight messages from transport
     const inFlightMessages: Message[] = [];
@@ -377,6 +384,7 @@ export class DistributedSimulator {
     this.reachedMaxSteps = false;
     this.deadlocked = false;
     this.lastScheduledRole = null;
+    this.completedRoles.clear();
     for (const role of this.roleScheduleCount.keys()) {
       this.roleScheduleCount.set(role, 0);
     }
@@ -400,6 +408,24 @@ export class DistributedSimulator {
    * Check if all roles completed
    */
   isComplete(): boolean {
-    return Array.from(this.simulators.values()).every(sim => sim.isComplete());
+    return this.completedRoles.size === this.cfsms.size;
+  }
+
+  /**
+   * Restore the simulator's state from a state object.
+   * @param state The state to restore.
+   */
+  restoreState(state: DistributedExecutionState): void {
+    this.globalSteps = state.globalSteps;
+    this.deadlocked = state.deadlocked;
+
+    for (const [role, sim] of this.simulators) {
+      const roleState = state.roleStates.get(role);
+      if (roleState) {
+        // This is a simplified restore. A full restore would need to restore the
+        // individual CFSM simulators to their precise states.
+        (sim as any).currentState = roleState;
+      }
+    }
   }
 }

@@ -310,21 +310,7 @@ export class DistributedDebugger {
    * Restore VM to a previous state
    */
   private restoreVMState(state: DistributedExecutionState): void {
-    // DistributedSimulator doesn't have a restoreState method yet
-    // For now, we'll use internal state directly
-    // This is a workaround until we add proper state restoration to DistributedSimulator
-    const vm = this.vm as any;
-
-    // Restore distributed state
-    vm.roleStates = new Map(state.roleStates);
-    vm.roleSteps = new Map(state.roleSteps);
-    vm.globalSteps = state.globalSteps;
-    vm.inFlightMessages = [...state.inFlightMessages];
-    vm.roleBuffers = new Map(state.roleBuffers);
-    vm.anyCompleted = state.anyCompleted;
-    vm.allCompleted = state.allCompleted;
-    vm.deadlocked = state.deadlocked;
-    vm.enabledRoles = [...state.enabledRoles];
+    this.vm.restoreState(state);
   }
 
   /**

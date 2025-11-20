@@ -321,23 +321,7 @@ export class CFGDebugger {
    * Restore VM to a previous state
    */
   private restoreVMState(state: CFGExecutionState): void {
-    // CFGSimulator doesn't have a restoreState method yet
-    // For now, we'll use the internal state directly
-    // This is a bit of a hack, but it works
-    const vm = this.vm as any;
-
-    // Restore core state
-    vm.currentNode = state.currentNode;
-    vm.visitedNodes = [...state.visitedNodes];
-    vm.stepCount = state.stepCount;
-    vm.completed = state.completed;
-    vm.atChoice = state.atChoice;
-    vm.pendingChoice = state.availableChoices ? [...state.availableChoices] : null;
-    vm.selectedChoice = null;
-    vm.inParallel = state.inParallel;
-    vm.activeBranches = state.activeBranches ? [...state.activeBranches] : undefined;
-    vm.reachedMaxSteps = state.reachedMaxSteps;
-    vm.recursionStack = state.recursionStack ? [...state.recursionStack] : [];
+    this.vm.restoreState(state);
   }
 
   /**
