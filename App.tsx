@@ -55,6 +55,7 @@ function App() {
     const runningRef = useRef(false);
 
     const processCode = useCallback((code: string) => {
+        setSelectedRole(null);
         try {
             const { ast, error: parseError } = ScribbleCore.parse(code);
             if (parseError) {
