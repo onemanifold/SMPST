@@ -323,14 +323,20 @@ export class DMstSimulator extends Simulator<DMstExecutionTrace, DMstSimulationS
   /**
    * Sync simulation state from executors.
    *
-   * Updates this.state.roles with current executor states.
+   * Updates this.state.roles with current executor states for static roles,
+   * and updates participant.state for dynamic participants.
    */
   private syncStateFromExecutors(): void {
     for (const [role, executor] of this.executors.entries()) {
       const execState = executor.getState();
-      // Only update static roles (dynamic participants have separate state)
+
       if (this.state.roles.has(role)) {
+        // Static role - update in roles map
         this.state.roles.set(role, execState);
+      } else if (this.state.dynamicParticipants.has(role)) {
+        // Dynamic participant - sync state from executor to participant
+        const participant = this.state.dynamicParticipants.get(role)!;
+        participant.state = execState;
       }
     }
   }
