@@ -1708,6 +1708,22 @@ export class CFGSimulator {
   }
 
   /**
+   * Restore the simulator's state from a state object.
+   * @param state The state to restore.
+   */
+  restoreState(state: CFGExecutionState): void {
+    this.currentNode = Array.isArray(state.currentNode) ? state.currentNode[0] : state.currentNode;
+    this.visitedNodes = [...state.visitedNodes];
+    this.stepCount = state.stepCount;
+    this.completed = state.completed;
+    this.pendingChoice = state.availableChoices ? [...state.availableChoices] : null;
+    this.inParallel = state.inParallel || false;
+    this.parallelBranches = state.activeBranches ? state.activeBranches.map(b => [...b]) : [];
+    this.reachedMaxSteps = state.reachedMaxSteps || false;
+    this.recursionStack = state.recursionStack ? [...state.recursionStack] : [];
+  }
+
+  /**
    * Update CFSM states for a message action
    * Finds the corresponding transitions in sender and receiver CFSMs and updates their states
    */

@@ -75,17 +75,35 @@ export class BisimulationValidator {
    */
   async stepBoth(): Promise<{
     cfg: { success: boolean; event?: DebugEvent };
-    distributed: { success: boolean; event?: DistributedDebugEvent };
+    distributed: { success: boolean; events?: DistributedDebugEvent[] };
     equivalent: boolean;
   }> {
-    // Step CFG debugger
     const cfgResult = this.cfgDebugger.stepForward();
+    const distributedEvents: DistributedDebugEvent[] = [];
+    let equivalent = true;
 
-    // Step distributed debugger
-    const distResult = await this.distributedDebugger.stepForward();
-
-    // Compare events for equivalence
-    const equivalent = this.compareEvents(cfgResult.event, distResult.event);
+    if (cfgResult.success && cfgResult.event?.type === 'message') {
+      // A single CFG message event corresponds to a send and a receive in the distributed simulation.
+      // We need to step the distributed debugger until both have occurred.
+      let sent = false;
+      let received = false;
+      for (let i = 0; i < 10; i++) { // Max 10 steps to find the pair
+        const distResult = await this.distributedDebugger.stepForward();
+        if (distResult.success && distResult.event) {
+          distributedEvents.push(distResult.event);
+          if (distResult.event.action?.type === 'send') sent = true;
+          if (distResult.event.action?.type === 'receive') received = true;
+        }
+        if (sent && received) break;
+      }
+      equivalent = this.compareEvents(cfgResult.event, distributedEvents.find(e => e.action?.type === 'send'));
+    } else if (cfgResult.success) {
+      const distResult = await this.distributedDebugger.stepForward();
+      if (distResult.success && distResult.event) {
+        distributedEvents.push(distResult.event);
+      }
+      equivalent = this.compareEvents(cfgResult.event, distResult.event);
+    }
 
     return {
       cfg: {
@@ -93,8 +111,8 @@ export class BisimulationValidator {
         event: cfgResult.event,
       },
       distributed: {
-        success: distResult.success,
-        event: distResult.event,
+        success: true,
+        events: distributedEvents,
       },
       equivalent,
     };
@@ -128,14 +146,13 @@ export class BisimulationValidator {
    * Check if traces are equivalent
    */
   checkEquivalence(): BisimulationResult {
-    const cfgEvents = this.cfgDebugger.getVisibleEvents();
-    const distEvents = this.distributedDebugger.getVisibleEvents();
+    const cfgEvents = this.cfgDebugger.getVisibleEvents().filter(e => e.type === 'message');
+    const distSendEvents = this.distributedDebugger.getVisibleEvents().filter(e => e.action?.type === 'send');
 
-    // Simple check: same number of steps
-    const minSteps = Math.min(cfgEvents.length, distEvents.length);
+    const minSteps = Math.min(cfgEvents.length, distSendEvents.length);
 
     for (let i = 0; i < minSteps; i++) {
-      if (!this.compareEvents(cfgEvents[i], distEvents[i])) {
+      if (!this.compareEvents(cfgEvents[i], distSendEvents[i])) {
         return {
           equivalent: false,
           divergencePoint: i,
@@ -145,12 +162,11 @@ export class BisimulationValidator {
       }
     }
 
-    // If one has more events than the other, that's a divergence
-    if (cfgEvents.length !== distEvents.length) {
+    if (cfgEvents.length !== distSendEvents.length) {
       return {
         equivalent: false,
         divergencePoint: minSteps,
-        divergenceReason: `Different number of events: CFG has ${cfgEvents.length}, Distributed has ${distEvents.length}`,
+        divergenceReason: `Different number of message events: CFG has ${cfgEvents.length}, Distributed has ${distSendEvents.length}`,
         stepsCompared: minSteps,
       };
     }
@@ -211,22 +227,25 @@ export class BisimulationValidator {
     cfgEvent?: DebugEvent,
     distEvent?: DistributedDebugEvent
   ): boolean {
-    // Both null/undefined -> equivalent
-    if (!cfgEvent && !distEvent) {
-      return true;
+    if (!cfgEvent && !distEvent) return true;
+    if (!cfgEvent || !distEvent) return false;
+
+    // A CFG 'message' event should correspond to a distributed 'send' event.
+    // The distributed 'receive' is an internal tau-transition from the global view.
+    if (cfgEvent.type === 'message' && cfgEvent.action && distEvent.action?.type === 'send') {
+      const cfgAction = cfgEvent.action;
+      const distAction = distEvent.action;
+
+      // Compare sender, receiver, and message label
+      const senderMatch = cfgAction.from === distEvent.role;
+      const receiverMatch = cfgAction.to === distAction.to;
+      const labelMatch = cfgAction.message.label === distAction.message.label;
+
+      return senderMatch && receiverMatch && labelMatch;
     }
 
-    // One null, one not -> not equivalent
-    if (!cfgEvent || !distEvent) {
-      return false;
-    }
-
-    // For now, basic comparison:
-    // - CFG message events should correspond to distributed send/recv pairs
-    // - This is simplified - real bisimulation is more complex
-
-    // TODO: Implement proper bisimulation equivalence checking
-    // For now, we just verify both produced events
+    // Other event types can be considered equivalent for now.
+    // A more robust implementation would handle choices, parallels, etc.
     return true;
   }
 }
