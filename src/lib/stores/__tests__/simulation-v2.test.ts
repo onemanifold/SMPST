@@ -399,7 +399,11 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const { projectAll } = await import('../../../core/projection/projector');
       const { cfsms } = projectAll(cfg);
 
-      const { initializeBisimulation } = await import('../simulation');
+      const { initializeBisimulation, schedulingStrategy } = await import('../simulation');
+
+      // Use round-robin scheduling (manual is not yet implemented)
+      schedulingStrategy.set('round-robin');
+
       await initializeBisimulation(cfg, cfsms);
 
       const { executionMode } = await import('../simulation');
@@ -418,7 +422,11 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const { projectAll } = await import('../../../core/projection/projector');
       const { cfsms } = projectAll(cfg);
 
-      const { initializeBisimulation } = await import('../simulation');
+      const { initializeBisimulation, schedulingStrategy } = await import('../simulation');
+
+      // Use round-robin scheduling (manual is not yet implemented)
+      schedulingStrategy.set('round-robin');
+
       await initializeBisimulation(cfg, cfsms);
 
       const cfgStepBefore = get(cfgExecutionState)?.stepCount;
@@ -440,7 +448,11 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const { projectAll } = await import('../../../core/projection/projector');
       const { cfsms } = projectAll(cfg);
 
-      const { initializeBisimulation, bisimulationTrace } = await import('../simulation');
+      const { initializeBisimulation, bisimulationTrace, schedulingStrategy } = await import('../simulation');
+
+      // Use round-robin scheduling (manual is not yet implemented)
+      schedulingStrategy.set('round-robin');
+
       await initializeBisimulation(cfg, cfsms);
 
       await stepSimulation();
@@ -458,7 +470,11 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const { projectAll } = await import('../../../core/projection/projector');
       const { cfsms } = projectAll(cfg);
 
-      const { initializeBisimulation, bisimulationResult } = await import('../simulation');
+      const { initializeBisimulation, bisimulationResult, schedulingStrategy } = await import('../simulation');
+
+      // Use round-robin scheduling (manual is not yet implemented)
+      schedulingStrategy.set('round-robin');
+
       await initializeBisimulation(cfg, cfsms);
 
       await stepSimulation();
@@ -497,7 +513,11 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       const { projectAll } = await import('../../../core/projection/projector');
       const { cfsms } = projectAll(cfg);
 
-      const { initializeBisimulation } = await import('../simulation');
+      const { initializeBisimulation, schedulingStrategy } = await import('../simulation');
+
+      // Use round-robin scheduling (manual is not yet implemented)
+      schedulingStrategy.set('round-robin');
+
       await initializeBisimulation(cfg, cfsms);
 
       expect(get(executionMode)).toBe('bisimulation');
