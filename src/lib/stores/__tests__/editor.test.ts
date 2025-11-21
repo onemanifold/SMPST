@@ -792,4 +792,250 @@ describe('Editor Store - Backend Contract Enforcement', () => {
       // TypeScript will force us to handle them here.
     });
   });
+
+  describe('Projection Data Consistency - Race Condition Prevention', () => {
+    /**
+     * These tests verify that projection data updates are atomic and consistent,
+     * preventing race conditions where UI components see partial or stale state.
+     *
+     * Context: LocalProjectionPanel had timing issues where projections would
+     * sometimes display and sometimes not, caused by non-deterministic reactive
+     * statement execution order in Svelte.
+     *
+     * Fix: Store updates are synchronous and atomic - all projection data is
+     * computed and set together in a single operation.
+     */
+
+    it('should always provide complete projection data for all roles', async () => {
+      const protocol = `
+        global protocol ThreeParty(role Alice, role Bob, role Carol) {
+          msg1(int) from Alice to Bob;
+          msg2(string) from Bob to Carol;
+          msg3(bool) from Carol to Alice;
+        }
+      `;
+
+      await parseProtocol(protocol);
+      const projections = get(projectionData);
+
+      // All three roles should have complete data
+      expect(projections).toHaveLength(3);
+
+      projections.forEach(projection => {
+        // Every projection must have all required fields
+        expect(projection.role).toBeTruthy();
+        expect(projection.protocolName).toBe('ThreeParty');
+        expect(projection.states).toBeDefined();
+        expect(Array.isArray(projection.states)).toBe(true);
+        expect(projection.transitions).toBeDefined();
+        expect(Array.isArray(projection.transitions)).toBe(true);
+
+        // CRITICAL: localProtocol must always be present and non-empty
+        expect(projection.localProtocol).toBeDefined();
+        expect(typeof projection.localProtocol).toBe('string');
+        expect(projection.localProtocol.length).toBeGreaterThan(0);
+        expect(projection.localProtocol).toMatch(/local\s+protocol/);
+        expect(projection.localProtocol).toContain(projection.role);
+      });
+    });
+
+    it('should maintain projection data consistency when switching protocols', async () => {
+      // Test protocol switching to verify no stale data
+      const protocol1 = `
+        global protocol First(role Alice, role Bob) {
+          msg(int) from Alice to Bob;
+        }
+      `;
+
+      const protocol2 = `
+        global protocol Second(role Server, role Client) {
+          request(string) from Client to Server;
+          response(int) from Server to Client;
+        }
+      `;
+
+      // Load first protocol
+      await parseProtocol(protocol1);
+      let projections = get(projectionData);
+
+      expect(projections).toHaveLength(2);
+      expect(projections.map(p => p.role).sort()).toEqual(['Alice', 'Bob']);
+      expect(projections[0].protocolName).toBe('First');
+      expect(projections[0].localProtocol).toContain('Alice');
+
+      // Switch to second protocol
+      await parseProtocol(protocol2);
+      projections = get(projectionData);
+
+      // Verify OLD data is completely replaced, not mixed
+      expect(projections).toHaveLength(2);
+      expect(projections.map(p => p.role).sort()).toEqual(['Client', 'Server']);
+      expect(projections[0].protocolName).toBe('Second');
+
+      // No traces of old protocol
+      projections.forEach(p => {
+        expect(p.protocolName).not.toBe('First');
+        expect(p.role).not.toBe('Alice');
+        expect(p.role).not.toBe('Bob');
+        expect(p.localProtocol).not.toContain('First');
+      });
+    });
+
+    it('should handle rapid sequential protocol switches', async () => {
+      // Simulate rapid protocol switching (like user quickly clicking examples)
+      const protocols = [
+        { code: `global protocol P1(role A, role B) { m1(int) from A to B; }`, name: 'P1', roles: ['A', 'B'] },
+        { code: `global protocol P2(role X, role Y) { m2(string) from X to Y; }`, name: 'P2', roles: ['X', 'Y'] },
+        { code: `global protocol P3(role C, role D) { m3(bool) from C to D; }`, name: 'P3', roles: ['C', 'D'] },
+      ];
+
+      for (const proto of protocols) {
+        await parseProtocol(proto.code);
+        const projections = get(projectionData);
+
+        // Each parse should completely replace previous data
+        expect(projections).toHaveLength(proto.roles.length);
+        expect(projections.map(p => p.role).sort()).toEqual(proto.roles.sort());
+        expect(projections[0].protocolName).toBe(proto.name);
+
+        // All projections should have valid localProtocol
+        projections.forEach(p => {
+          expect(p.localProtocol).toBeDefined();
+          expect(p.localProtocol.length).toBeGreaterThan(0);
+          expect(p.localProtocol).toContain(proto.name);
+          expect(p.localProtocol).toContain(p.role);
+        });
+      }
+    });
+
+    it('should ensure localProtocol is never empty string for valid projections', async () => {
+      const protocol = `
+        global protocol TwoBuyer(role Buyer1, role Buyer2, role Seller) {
+          title(string) from Buyer1 to Seller;
+          price(int) from Seller to Buyer1;
+          price(int) from Seller to Buyer2;
+          choice at Buyer1 {
+            agree() from Buyer1 to Seller;
+            agree() from Buyer1 to Buyer2;
+            address(string) from Buyer2 to Seller;
+          } or {
+            quit() from Buyer1 to Seller;
+            quit() from Buyer1 to Buyer2;
+          }
+        }
+      `;
+
+      await parseProtocol(protocol);
+      const projections = get(projectionData);
+
+      expect(projections).toHaveLength(3);
+
+      projections.forEach(projection => {
+        // localProtocol should NEVER be empty for successful projection
+        expect(projection.localProtocol).not.toBe('');
+        expect(projection.localProtocol.trim()).not.toBe('');
+
+        // Should be valid Scribble syntax
+        expect(projection.localProtocol).toMatch(/local\s+protocol/);
+        expect(projection.localProtocol).toContain('at ' + projection.role);
+
+        // Should contain actual protocol content, not just header
+        expect(projection.localProtocol.length).toBeGreaterThan(50);
+      });
+    });
+
+    it('should maintain atomic updates - all fields update together', async () => {
+      const protocol = `
+        global protocol Chat(role Alice, role Bob) {
+          msg(string) from Alice to Bob;
+          reply(string) from Bob to Alice;
+        }
+      `;
+
+      await parseProtocol(protocol);
+      const projections = get(projectionData);
+
+      // For each role, verify ALL fields are consistent with each other
+      projections.forEach(projection => {
+        const role = projection.role;
+
+        // Protocol name should match across all fields
+        expect(projection.protocolName).toBe('Chat');
+
+        // Local protocol should reference the same role
+        expect(projection.localProtocol).toContain(`at ${role}`);
+
+        // Transitions should be for this role's perspective
+        // (this is a smoke test - detailed correctness is tested elsewhere)
+        expect(projection.transitions).toBeDefined();
+        expect(projection.transitions.length).toBeGreaterThan(0);
+
+        // States should exist
+        expect(projection.states.length).toBeGreaterThan(0);
+
+        // All fields should be internally consistent (not a mix of old/new data)
+        if (role === 'Alice') {
+          expect(projection.localProtocol).toContain('Alice');
+          // Alice sends msg and receives reply (serializer uses "to" and "from")
+          expect(projection.localProtocol).toContain('to Bob');
+          expect(projection.localProtocol).toContain('from Bob');
+        } else if (role === 'Bob') {
+          expect(projection.localProtocol).toContain('Bob');
+          // Bob receives msg and sends reply
+          expect(projection.localProtocol).toContain('from Alice');
+          expect(projection.localProtocol).toContain('to Alice');
+        }
+      });
+    });
+
+    it('should preserve last good projection data when parse fails', async () => {
+      // First load a valid protocol
+      const validProtocol = `
+        global protocol Valid(role A, role B) {
+          msg(int) from A to B;
+        }
+      `;
+
+      await parseProtocol(validProtocol);
+      let projections = get(projectionData);
+      expect(projections.length).toBeGreaterThan(0);
+      const validProjections = projections;
+
+      // Now try to parse invalid protocol
+      const invalidProtocol = `
+        global protocol Invalid(role A, role B) {
+          msg(int from A to;  // Syntax error
+        }
+      `;
+
+      const result = await parseProtocol(invalidProtocol);
+      expect(result.success).toBe(false);
+      expect(get(parseStatus)).toBe('error');
+
+      // Projection data should preserve last good state (not be cleared)
+      // This allows UI to show last successful projection with error banner
+      projections = get(projectionData);
+      expect(projections).toEqual(validProjections);
+      expect(projections[0].protocolName).toBe('Valid');
+    });
+
+    it('should verify projectionData store updates are synchronous', async () => {
+      const protocol = `
+        global protocol Sync(role A, role B) {
+          msg(int) from A to B;
+        }
+      `;
+
+      // projectionData should be empty before parsing
+      expect(get(projectionData)).toEqual([]);
+
+      await parseProtocol(protocol);
+
+      // After await, projectionData should be immediately available (synchronous update)
+      const projections = get(projectionData);
+      expect(projections).toHaveLength(2);
+      expect(projections[0].localProtocol).toBeDefined();
+      expect(projections[0].localProtocol).not.toBe('');
+    });
+  });
 });
