@@ -11,6 +11,7 @@
  * - Updates reactively when store changes
  */
 import { describe, it, expect, beforeEach } from 'vitest';
+import '../../../../test/component-helpers'; // Enable DOM matchers for component tests
 import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import TimelineControls from '../TimelineControls.svelte';

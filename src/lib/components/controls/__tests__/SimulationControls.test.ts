@@ -10,6 +10,7 @@
  * - Handles choice selection in step mode vs auto-play mode
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import '../../../../test/component-helpers'; // Enable DOM matchers for component tests
 import { render, fireEvent, waitFor } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import SimulationControls from '../SimulationControls.svelte';

@@ -11,6 +11,7 @@
  * - Does not render when no choices available
  */
 import { describe, it, expect, vi } from 'vitest';
+import '../../../../test/component-helpers'; // Enable DOM matchers for component tests
 import { render, fireEvent } from '@testing-library/svelte';
 import ChoicePreview from '../ChoicePreview.svelte';
 import type { EnhancedChoiceOption } from '../../../../core/simulation/types';
