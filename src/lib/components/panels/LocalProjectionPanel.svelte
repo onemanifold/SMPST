@@ -161,11 +161,8 @@
 </script>
 
 <div class="local-projection-panel">
-  {#if $parseStatus !== 'success' || $projectionData.length === 0}
-    <div class="placeholder">
-      <p>Parse a protocol to see local projections</p>
-    </div>
-  {:else}
+  <!-- Role tabs - only shown when we have projection data -->
+  {#if $projectionData.length > 0}
     <div class="role-tabs">
       {#each $projectionData as projection}
         <button
@@ -177,11 +174,20 @@
         </button>
       {/each}
     </div>
-
-    <div class="projection-content">
-      <div class="editor-container" bind:this={editorContainer}></div>
-    </div>
   {/if}
+
+  <!-- Editor container - ALWAYS rendered to prevent recreation -->
+  <div class="projection-content">
+    <!-- Placeholder overlay - shown when no data -->
+    {#if $parseStatus !== 'success' || $projectionData.length === 0}
+      <div class="placeholder-overlay">
+        <p>Parse a protocol to see local projections</p>
+      </div>
+    {/if}
+
+    <!-- Monaco editor container - NEVER destroyed -->
+    <div class="editor-container" bind:this={editorContainer}></div>
+  </div>
 </div>
 
 <style>
@@ -191,15 +197,6 @@
     flex-direction: column;
     background: #1e1e1e;
     color: #ccc;
-  }
-
-  .placeholder {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #666;
-    font-style: italic;
   }
 
   .role-tabs {
@@ -236,6 +233,22 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    position: relative;
+  }
+
+  .placeholder-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1e1e1e;
+    color: #666;
+    font-style: italic;
+    z-index: 10;
   }
 
   .editor-container {
