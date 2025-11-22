@@ -1,22 +1,154 @@
 /**
- * Store barrel file - exports combined stores for use in components
+ * Store barrel file - exports all stores for use in components
+ *
+ * This is a re-export file that provides a unified API for all stores.
+ * Individual stores can also be imported directly from their modules.
  */
+
+// ============================================================================
+// App Store (Global application state)
+// ============================================================================
+export {
+  appStore,
+  theme,
+  resolvedTheme,
+  isDarkMode,
+  sidebarCollapsed,
+  currentRoute,
+  isLoading,
+  notifications,
+  hasNotifications,
+  type Theme,
+  type ResolvedTheme,
+  type AppState,
+  type Notification,
+} from './app.store';
+
+// ============================================================================
+// Editor Store (Protocol editing state)
+// ============================================================================
+export {
+  editorContent,
+  selectedExample,
+  activeTab,
+  libraryOpen,
+  visualizerOpen,
+  outputPanelCollapsed,
+  viewMode,
+  editorView,
+  generatedCode,
+  parseStatus,
+  parseError,
+  verificationResult,
+  projectionData,
+  projectionErrors,
+  simulationState,
+  hasErrors,
+  canSimulate,
+  hasProjectionErrors,
+  setEditorContent,
+  loadExample,
+  clearEditor,
+  parseProtocol,
+  mockParse,
+  type ViewMode,
+  type EditorView,
+  type ParseStatus,
+  type ParseErrorInfo,
+  type VerificationCheckResult,
+  type VerificationResult,
+  type ProjectionData,
+  type ProjectionErrorInfo,
+  type SimulationState,
+} from './editor';
+
+// ============================================================================
+// Simulation Store (Execution state)
+// ============================================================================
+export {
+  executionMode,
+  simulationMode,
+  playbackSpeed,
+  choiceStrategy,
+  maxStepsConfig,
+  schedulingStrategy,
+  deliveryModel,
+  cfgExecutionState,
+  distributedExecutionState,
+  executionState,
+  currentCFG,
+  currentCFSMs,
+  isSimulationActive,
+  isPlaying,
+  canStep,
+  isAtChoice,
+  availableChoices,
+  currentStepNumber,
+  totalStepCount,
+  canStepBack,
+  canStepForward,
+  executionEvents,
+  visibleExecutionEvents,
+  messageEvents,
+  choiceEvents,
+  recursionEvents,
+  parallelEvents,
+  subProtocolEvents,
+  stateChangeEvents,
+  bisimulationTrace,
+  bisimulationResult,
+  initializeCFGSimulation,
+  initializeDistributedSimulation,
+  initializeBisimulation,
+  initializeSimulation,
+  switchExecutionMode,
+  stepSimulation,
+  makeChoice,
+  startPlaying,
+  stopPlaying,
+  pauseSimulation,
+  stepBack,
+  stepForward,
+  jumpToStep,
+  resetSimulation,
+  stopSimulation,
+  type ExecutionMode,
+  type SimulationMode as SimMode,
+  type ChoiceStrategy,
+  type SchedulingStrategy,
+  type DeliveryModel,
+  type SteppedExecutionEvent,
+} from './simulation';
+
+// ============================================================================
+// Persistence Store (Cross-session state)
+// ============================================================================
+export {
+  persistenceStore,
+  protocolDB,
+  type PersistedState,
+  type PersistedUIState,
+  type PersistedSimulationSettings,
+  type PersistedEditorState,
+  type SavedProtocol,
+} from './persistence.store';
+
+// ============================================================================
+// Legacy exports for backward compatibility
+// ============================================================================
 
 import { writable, derived, get } from 'svelte/store';
 import type { CFG } from '../../core/cfg/types';
 
-// ============================================================================
-// Editor Store
-// ============================================================================
-
-interface EditorState {
+// Legacy EditorStore interface (deprecated, use editor.ts stores instead)
+interface LegacyEditorState {
   code: string;
   errors: Array<{ message: string }>;
   cfg: CFG | null;
 }
 
-function createEditorStore() {
-  const { subscribe, set, update } = writable<EditorState>({
+function createLegacyEditorStore() {
+  const { subscribe, set, update } = writable<LegacyEditorState>({
     code: '',
     errors: [],
     cfg: null,
@@ -81,18 +213,16 @@ function createEditorStore() {
   };
 }
 
-export const editorStore = createEditorStore();
+/** @deprecated Use stores from editor.ts instead */
+export const editorStore = createLegacyEditorStore();
 
-// ============================================================================
-// Simulation Store
-// ============================================================================
-
+// Legacy SimulationStore interface (deprecated, use simulation.ts stores instead)
 interface CallStackFrame {
   name: string;
   nodeId: string;
 }
 
-interface SimulationState {
+interface LegacySimulationState {
   isRunning: boolean;
   cfgExecutionState: {
     currentNode: string | null;
@@ -103,17 +233,16 @@ interface SimulationState {
   callStack: CallStackFrame[];
 }
 
-function createSimulationStore() {
-  const { subscribe, set, update } = writable<SimulationState>({
+function createLegacySimulationStore() {
+  const { subscribe, set, update } = writable<LegacySimulationState>({
     isRunning: false,
     cfgExecutionState: null,
     canStepBackward: false,
     callStack: [],
   });
 
-  // Import simulation functions dynamically
   let cfgSimulator: import('../../core/simulation/cfg-simulator').CFGSimulator | null = null;
-  let executionHistory: Array<SimulationState['cfgExecutionState']> = [];
+  let executionHistory: Array<LegacySimulationState['cfgExecutionState']> = [];
   let historyIndex = -1;
 
   const actions = {
@@ -121,7 +250,6 @@ function createSimulationStore() {
       const currentState = get({ subscribe });
       if (!cfgSimulator || currentState.cfgExecutionState?.completed) return;
 
-      // Save current state to history
       if (currentState.cfgExecutionState) {
         executionHistory = executionHistory.slice(0, historyIndex + 1);
         executionHistory.push({ ...currentState.cfgExecutionState });
@@ -156,17 +284,14 @@ function createSimulationStore() {
     },
 
     stepInto: async () => {
-      // For now, same as stepForward
       await actions.stepForward();
     },
 
     stepOut: async () => {
-      // Step until we leave the current scope
       await actions.stepForward();
     },
 
     stepOver: async () => {
-      // Step over the current node
       await actions.stepForward();
     },
 
@@ -227,18 +352,16 @@ function createSimulationStore() {
   };
 }
 
-export const simulationStore = createSimulationStore();
+/** @deprecated Use stores from simulation.ts instead */
+export const simulationStore = createLegacySimulationStore();
 
-// ============================================================================
-// UI Store
-// ============================================================================
-
+// Legacy UIStore (deprecated, use appStore instead)
 interface UIState {
   sidebarOpen: boolean;
   theme: 'light' | 'dark';
 }
 
-function createUIStore() {
+function createLegacyUIStore() {
   const { subscribe, update } = writable<UIState>({
     sidebarOpen: true,
     theme: 'dark',
@@ -255,4 +378,5 @@ function createUIStore() {
   };
 }
 
-export const uiStore = createUIStore();
+/** @deprecated Use appStore instead */
+export const uiStore = createLegacyUIStore();
