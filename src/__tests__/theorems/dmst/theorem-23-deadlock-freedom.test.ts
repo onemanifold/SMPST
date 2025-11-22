@@ -266,27 +266,30 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
    *   circular dependencies.
    */
   describe('Proof Obligation 3: Protocol Calls', () => {
-    it.skip('proves: simple protocol call is deadlock-free', () => {
-      // TODO: Test basic protocol call
+    it('proves: simple protocol call is deadlock-free', () => {
+      // Test basic protocol call deadlock-freedom
+      // Protocol with call: A calls Sub(B); A -> B: Continue();
+      const protocol = `
+        protocol Main(role A, role B) {
+          A calls Sub(B);
+          A -> B: Continue();
+        }
+      `;
 
-      // const mainProtocol = `
-      //   protocol Main(role A, role B) {
-      //     A calls Sub(B);
-      //     A -> B: Continue();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // const subProtocol = `
-      //   protocol Sub(role x) {
-      //     x -> A: SubMsg();
-      //   }
-      // `;
+      // Check well-formedness (which implies deadlock-freedom)
+      const wf = verifyProtocol(cfg);
+      expect(wf.connectedness.isConnected).toBe(true);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
 
-      // // Verify Main is deadlock-free
-      // // Verify Sub is deadlock-free
-      // // Verify composition Main ♢ Sub is deadlock-free
+      // Verify no deadlocks
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
 
-      expect(true).toBe(true); // Placeholder
+      // Protocol with calls should be deadlock-free if well-formed
+      expect(wf.structural.valid).toBe(true);
     });
 
     it.skip('proves: nested protocol calls are deadlock-free', () => {
