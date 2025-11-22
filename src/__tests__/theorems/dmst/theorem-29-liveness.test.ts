@@ -615,13 +615,35 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
    * - Liveness (progress): "good state eventually reached"
    */
   describe('Integration with Deadlock-Freedom', () => {
-    it.skip('proves: deadlock-free implies no stuck participants', () => {
-      // TODO: Show relationship between Theorem 23 and Theorem 29
-
+    it('proves: deadlock-free implies no stuck participants', () => {
       // Deadlock-free → all states can progress or terminate
       // No stuck participants ⊆ Deadlock-freedom
 
-      expect(true).toBe(true); // Placeholder
+      const protocol = `
+        protocol Integration(role A, role B) {
+          A -> B: Request();
+          B -> A: Response();
+        }
+      `;
+
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
+
+      // Theorem 23: Verify deadlock-freedom
+      const wf = verifyProtocol(cfg);
+      expect(wf.deadlock.hasDeadlock).toBe(false);
+
+      // Build participant state graphs
+      const stateGraphs = buildParticipantStateGraphs(projectionResult.cfsms);
+
+      // Theorem 29, Part 2: No stuck participants
+      const progressResult = checkParticipantProgress(stateGraphs);
+      expect(progressResult.allCanProgress).toBe(true);
+      expect(progressResult.stuckParticipants.length).toBe(0);
+
+      // Implication: Deadlock-free → No stuck participants
+      // Both should be true for a well-formed protocol
     });
 
     it('proves: well-formed DMst satisfies both safety and liveness', () => {
