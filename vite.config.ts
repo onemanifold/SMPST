@@ -23,8 +23,44 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'dexie': ['dexie']
+        manualChunks: (id) => {
+          // Vendor chunks
+          if (id.includes('node_modules')) {
+            // Monaco editor - large, lazy loaded
+            if (id.includes('monaco-editor')) {
+              return 'monaco';
+            }
+            // D3 - visualization library
+            if (id.includes('d3')) {
+              return 'd3';
+            }
+            // Dexie - IndexedDB
+            if (id.includes('dexie')) {
+              return 'dexie';
+            }
+            // Chevrotain - parser
+            if (id.includes('chevrotain')) {
+              return 'chevrotain';
+            }
+            // svelte-spa-router
+            if (id.includes('svelte-spa-router')) {
+              return 'router';
+            }
+          }
+
+          // Core modules - separate chunk for simulation/verification
+          if (id.includes('/src/core/simulation/')) {
+            return 'core-simulation';
+          }
+          if (id.includes('/src/core/verification/')) {
+            return 'core-verification';
+          }
+          if (id.includes('/src/core/parser/')) {
+            return 'core-parser';
+          }
+          if (id.includes('/src/core/projection/')) {
+            return 'core-projection';
+          }
         }
       }
     }
