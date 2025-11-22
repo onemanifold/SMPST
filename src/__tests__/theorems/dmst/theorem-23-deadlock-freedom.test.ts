@@ -181,33 +181,28 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
    *   - Circular waits (proper ordering guaranteed)
    */
   describe('Proof Obligation 2: Dynamic Participant Creation', () => {
-    it.skip('proves: single dynamic participant is deadlock-free', () => {
-      // TODO: Test protocol that creates one dynamic participant
+    it('proves: single dynamic participant is deadlock-free', () => {
+      // Test protocol with single dynamic participant
+      const protocol = `
+        protocol DynamicWorker(role Manager) {
+          new role Worker;
+          Manager creates Worker;
+          Manager -> Worker: Task();
+          Worker -> Manager: Result();
+        }
+      `;
 
-      // const protocol = `
-      //   protocol DynamicWorker(role Manager) {
-      //     new role Worker;
-      //     Manager creates Worker;
-      //     Manager invites Worker;
-      //     Manager -> Worker: Task();
-      //     Worker -> Manager: Result();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // const ast = parse(protocol);
-      // const cfg = buildCFG(ast.declarations[0]);
+      // Check well-formedness (implies deadlock-freedom)
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
 
-      // // Check DMst well-formedness
-      // const dmstWF = checkDMstWellFormedness(cfg);
-      // expect(dmstWF.hasValidInvitations).toBe(true);
-      // expect(dmstWF.dynamicParticipantsWellFormed).toBe(true);
-
-      // // Theorem 23: Well-formed DMst → Deadlock-free
-      // const deadlock = detectDeadlock(cfg);
-      // expect(deadlock.hasDeadlock).toBe(false);
-      // // ✅ PROOF: Dynamic participant doesn't introduce deadlock
-
-      expect(true).toBe(true); // Placeholder
+      // Verify no deadlocks
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // Dynamic participant creation is deadlock-free when well-formed
     });
 
     it.skip('proves: multiple dynamic participants are deadlock-free', () => {

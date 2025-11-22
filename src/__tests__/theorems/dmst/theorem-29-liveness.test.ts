@@ -146,27 +146,32 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       // ✅ PROOF: No orphan messages
     });
 
-    it.skip('proves: dynamic participant messages are not orphaned', () => {
-      // TODO: Test dynamic participant creation preserves message matching
+    it('proves: dynamic participant messages are not orphaned', () => {
+      // Test dynamic participant creation preserves message matching
+      const protocol = `
+        protocol DynamicMsg(role Manager) {
+          new role Worker;
+          Manager creates Worker;
+          Manager -> Worker: Task();
+          Worker -> Manager: Result();
+        }
+      `;
 
-      // const protocol = `
-      //   protocol DynamicMsg(role Manager) {
-      //     new role Worker;
-      //     Manager creates Worker;
-      //     Manager invites Worker;
-      //     Manager -> Worker: Task();
-      //     Worker -> Manager: Result();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
 
-      // Dynamic participant messages should all have receivers
-      // Invitation ensures Worker exists when messages arrive
+      // Verify Worker is projected (dynamic participant)
+      expect(projectionResult.cfsms.has('Worker')).toBe(true);
 
-      // const orphans = checkOrphanFreedom(...);
-      // expect(orphans.hasOrphans).toBe(false);
-      // // ✅ PROOF: Dynamic participants don't create orphans
+      // Extract send/receive pairs
+      const pairs = extractSendReceivePairs(projectionResult.cfsms);
 
-      expect(true).toBe(true); // Placeholder
+      // Verify every send has matching receive
+      const orphans = checkOrphanFreedom(pairs);
+      expect(orphans.hasOrphans).toBe(false);
+      expect(orphans.orphanedMessages).toHaveLength(0);
+      // Dynamic participant messages are properly matched
     });
 
     it('proves: protocol call messages are not orphaned', () => {
