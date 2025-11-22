@@ -488,34 +488,97 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
    * COUNTEREXAMPLES: Liveness violations
    */
   describe('Counterexamples: Liveness Violations', () => {
-    it.skip('counterexample: orphaned message (missing receiver)', () => {
-      // TODO: Manually construct protocol with orphaned send
+    it('counterexample: orphaned message (missing receiver)', () => {
+      // To test orphan detection, we manually construct CFSM with unmatched send
+      // In a real ill-formed protocol, projection would fail or produce inconsistent CFSMs
 
-      // This should be prevented by well-formedness, but test detection:
-      // A -> B: Msg();
-      // (B has no receive action)
+      // Construct a manually-created CFSM with orphaned send
+      const orphanedCfsm: Map<string, import('../../../core/projection/types').CFSM> = new Map();
 
-      // const orphans = checkOrphanFreedom(...);
-      // expect(orphans.hasOrphans).toBe(true);
-      // expect(orphans.orphanedMessages).toContain('Msg');
+      // A sends to C, but C doesn't exist in projections
+      orphanedCfsm.set('A', {
+        role: 'A',
+        initialState: 'q0',
+        states: ['q0', 'q1'],
+        terminalStates: ['q1'],
+        transitions: [{
+          from: 'q0',
+          to: 'q1',
+          action: {
+            type: 'send',
+            to: 'C', // C doesn't have a CFSM!
+            message: { label: 'Orphan', payload: [] },
+          } as any,
+        }],
+      });
 
-      expect(true).toBe(true); // Placeholder
+      orphanedCfsm.set('B', {
+        role: 'B',
+        initialState: 'q0',
+        states: ['q0'],
+        terminalStates: ['q0'],
+        transitions: [],
+      });
+
+      // Extract send/receive pairs - should find orphan
+      const pairs = extractSendReceivePairs(orphanedCfsm);
+      const orphanResult = checkOrphanFreedom(pairs);
+
+      // Should detect the orphaned message
+      expect(orphanResult.hasOrphans).toBe(true);
+      expect(orphanResult.orphanedMessages.length).toBeGreaterThan(0);
+      expect(orphanResult.orphanedMessages[0].label).toBe('Orphan');
     });
 
-    it.skip('counterexample: stuck participant (no progress)', () => {
-      // TODO: Participant that can't reach terminal or enabled action
+    it('counterexample: stuck participant (no progress)', () => {
+      // Construct CFSM where a participant has a non-terminal state with no outgoing transitions
 
-      // choice at A {
-      //   A -> B: M1();
-      //   // Missing continuation for A - stuck!
-      // } or {
-      //   A -> B: M2();
-      //   B -> A: Reply();
-      // }
+      const stuckCfsms: Map<string, import('../../../core/projection/types').CFSM> = new Map();
 
-      // First branch leaves A stuck after sending M1
+      // A gets stuck in q1 (non-terminal, no outgoing transitions)
+      stuckCfsms.set('A', {
+        role: 'A',
+        initialState: 'q0',
+        states: ['q0', 'q1', 'q2'],
+        terminalStates: ['q2'],
+        transitions: [{
+          from: 'q0',
+          to: 'q1', // Goes to q1
+          action: {
+            type: 'send',
+            to: 'B',
+            message: { label: 'Msg', payload: [] },
+          } as any,
+        }],
+        // Note: q1 has no outgoing transitions and is not terminal = stuck!
+      });
 
-      expect(true).toBe(true); // Placeholder
+      stuckCfsms.set('B', {
+        role: 'B',
+        initialState: 'q0',
+        states: ['q0', 'q1'],
+        terminalStates: ['q1'],
+        transitions: [{
+          from: 'q0',
+          to: 'q1',
+          action: {
+            type: 'receive',
+            from: 'A',
+            message: { label: 'Msg', payload: [] },
+          } as any,
+        }],
+      });
+
+      // Build state graphs
+      const stateGraphs = buildParticipantStateGraphs(stuckCfsms);
+
+      // Check for stuck participants
+      const progressResult = checkParticipantProgress(stateGraphs);
+
+      // Should detect stuck participant A
+      expect(progressResult.allCanProgress).toBe(false);
+      expect(progressResult.stuckParticipants.length).toBeGreaterThan(0);
+      expect(progressResult.stuckParticipants[0].participant).toBe('A');
     });
 
     it.skip('counterexample: unbounded buffer growth', () => {
