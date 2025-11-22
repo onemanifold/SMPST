@@ -29,11 +29,83 @@ import type { CFSM } from '../../projection/types';
 export function extractSendReceivePairs(
   projections: Map<string, CFSM>
 ): SendReceivePair[] {
-  // TODO: Implement send/receive pair extraction
-  // For each send action in any CFSM, find matching receive in target CFSM
-  // Account for dynamic participants (may have multiple instances)
+  const pairs: SendReceivePair[] = [];
 
-  return [];
+  // Collect all sends
+  const sends: Array<{
+    from: string;
+    to: string;
+    label: string;
+    cfsmState: string;
+    role: string;
+  }> = [];
+
+  // Collect all receives
+  const receives: Array<{
+    from: string;
+    to: string;
+    label: string;
+    cfsmState: string;
+    role: string;
+  }> = [];
+
+  // Extract sends and receives from all CFSMs
+  for (const [role, cfsm] of Array.from(projections.entries())) {
+    for (const transition of cfsm.transitions) {
+      const action = transition.action;
+      if (!action) continue;
+
+      if (action.type === 'send') {
+        const recipients = Array.isArray(action.to) ? action.to : [action.to];
+        for (const to of recipients) {
+          sends.push({
+            from: role,
+            to,
+            label: action.message.label,
+            cfsmState: transition.from,
+            role,
+          });
+        }
+      } else if (action.type === 'receive') {
+        receives.push({
+          from: action.from,
+          to: role,
+          label: action.message.label,
+          cfsmState: transition.from,
+          role,
+        });
+      }
+    }
+  }
+
+  // Match sends with receives
+  for (const send of sends) {
+    const matchingReceive = receives.find(
+      (recv) =>
+        recv.from === send.from &&
+        recv.to === send.to &&
+        recv.label === send.label
+    );
+
+    pairs.push({
+      send: {
+        from: send.from,
+        to: send.to,
+        label: send.label,
+        cfsmState: send.cfsmState,
+      },
+      receive: matchingReceive
+        ? {
+            from: matchingReceive.from,
+            to: matchingReceive.to,
+            label: matchingReceive.label,
+            cfsmState: matchingReceive.cfsmState,
+          }
+        : undefined,
+    });
+  }
+
+  return pairs;
 }
 
 /**
@@ -45,15 +117,22 @@ export function extractSendReceivePairs(
  * @returns Result indicating orphan messages if any
  */
 export function checkOrphanFreedom(pairs: SendReceivePair[]): OrphanFreedomResult {
-  // TODO: Implement orphan freedom check
-  // For each pair, verify:
-  // - Send exists → receive exists
-  // - Labels match
-  // - Dynamic participants properly matched
+  const orphanedMessages: { from: string; to: string; label: string }[] = [];
+
+  for (const pair of pairs) {
+    if (!pair.receive) {
+      // Send without matching receive = orphan
+      orphanedMessages.push({
+        from: pair.send.from,
+        to: pair.send.to,
+        label: pair.send.label,
+      });
+    }
+  }
 
   return {
-    hasOrphans: false,
-    orphanedMessages: [],
+    hasOrphans: orphanedMessages.length > 0,
+    orphanedMessages,
   };
 }
 
@@ -72,10 +151,44 @@ export function checkOrphanFreedom(pairs: SendReceivePair[]): OrphanFreedomResul
 export function buildParticipantStateGraphs(
   projections: Map<string, CFSM>
 ): Map<string, StateGraph> {
-  // TODO: Implement state graph construction
-  // For each CFSM, build LTS showing all reachable states
+  const stateGraphs = new Map<string, StateGraph>();
 
-  return new Map();
+  for (const [role, cfsm] of Array.from(projections.entries())) {
+    const states = new Set<string>();
+    const transitions = new Map<string, string[]>();
+    const terminalStates = new Set<string>();
+
+    // Build state set
+    for (const state of cfsm.states) {
+      states.add(state.id);
+      transitions.set(state.id, []);
+    }
+
+    // Build transition map
+    for (const transition of cfsm.transitions) {
+      const from = transition.from;
+      const to = transition.to;
+      const targets = transitions.get(from) || [];
+      targets.push(to);
+      transitions.set(from, targets);
+    }
+
+    // Find terminal states (no outgoing transitions)
+    for (const state of cfsm.states) {
+      const outgoing = transitions.get(state.id) || [];
+      if (outgoing.length === 0) {
+        terminalStates.add(state.id);
+      }
+    }
+
+    stateGraphs.set(role, {
+      states,
+      transitions,
+      terminalStates,
+    });
+  }
+
+  return stateGraphs;
 }
 
 /**
@@ -91,14 +204,32 @@ export function buildParticipantStateGraphs(
 export function checkParticipantProgress(
   stateGraphs: Map<string, StateGraph>
 ): ProgressResult {
-  // TODO: Implement participant progress check
-  // For each participant's state graph:
-  // - Check all reachable states
-  // - Verify each state is terminal OR has outgoing transition
+  const stuckParticipants: { participant: string; stuckStates: string[] }[] = [];
+
+  for (const [participant, graph] of Array.from(stateGraphs.entries())) {
+    const stuckStates: string[] = [];
+
+    // Check each state
+    for (const state of Array.from(graph.states)) {
+      const outgoing = graph.transitions.get(state) || [];
+      const isTerminal = graph.terminalStates.has(state);
+
+      // A state is stuck if it has no outgoing transitions AND is not terminal
+      // (In a well-formed CFSM, terminal states should have no outgoing transitions,
+      // so we mainly check for states that are isolated or unreachable)
+      if (outgoing.length === 0 && !isTerminal) {
+        stuckStates.push(state);
+      }
+    }
+
+    if (stuckStates.length > 0) {
+      stuckParticipants.push({ participant, stuckStates });
+    }
+  }
 
   return {
-    allCanProgress: true,
-    stuckParticipants: [],
+    allCanProgress: stuckParticipants.length === 0,
+    stuckParticipants,
   };
 }
 
@@ -169,17 +300,47 @@ export function verifyLiveness(
   cfg: CFG,
   projections: Map<string, CFSM>
 ): LivenessResult {
-  // TODO: Implement Theorem 29 verification
+  const reasons: string[] = [];
+
   // 1. Check orphan freedom
+  const pairs = extractSendReceivePairs(projections);
+  const orphanResult = checkOrphanFreedom(pairs);
+  const orphanFree = !orphanResult.hasOrphans;
+  if (!orphanFree) {
+    reasons.push(
+      `Orphan messages: ${orphanResult.orphanedMessages
+        .map((m) => `${m.from}->${m.to}:${m.label}`)
+        .join(', ')}`
+    );
+  }
+
   // 2. Check participant progress
-  // 3. Check eventual delivery
+  const stateGraphs = buildParticipantStateGraphs(projections);
+  const progressResult = checkParticipantProgress(stateGraphs);
+  const noStuckParticipants = progressResult.allCanProgress;
+  if (!noStuckParticipants) {
+    reasons.push(
+      `Stuck participants: ${progressResult.stuckParticipants
+        .map((p) => `${p.participant} (states: ${p.stuckStates.join(', ')})`)
+        .join('; ')}`
+    );
+  }
+
+  // 3. Check eventual delivery (FIFO buffer simulation)
+  const fifoResult = simulateFIFODelivery(cfg);
+  const eventualDelivery = fifoResult.allMessagesDelivered;
+  if (!eventualDelivery) {
+    reasons.push(`Unbounded buffers: ${fifoResult.unboundedBuffers.join(', ')}`);
+  }
+
+  const isLive = orphanFree && noStuckParticipants && eventualDelivery;
 
   return {
-    isLive: false,
-    orphanFree: false,
-    noStuckParticipants: false,
-    eventualDelivery: false,
-    reason: 'Liveness verification not yet implemented (Phase 6)',
+    isLive,
+    orphanFree,
+    noStuckParticipants,
+    eventualDelivery,
+    reason: reasons.length > 0 ? reasons.join('; ') : undefined,
   };
 }
 

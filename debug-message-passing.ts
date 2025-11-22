@@ -1,17 +1,18 @@
-import { parse } from './src/core/parser/parser';
-import { buildCFG } from './src/core/cfg/builder';
-import { project } from './src/core/projection/projector';
-import { DMstSimulator } from './src/core/runtime/dmst-simulator';
-import { InMemoryTransport } from './src/core/runtime/transport';
-import type { GlobalProtocolDeclaration } from './src/core/ast/types';
-import type { CFSM } from './src/core/projection/types';
+import { parse } from './src/core/parser/parser.ts';
+import { buildCFG } from './src/core/cfg/builder.ts';
+import { project } from './src/core/projection/projector.ts';
+import { DMstSimulator } from './src/core/runtime/dmst-simulator.ts';
+import { InMemoryTransport } from './src/core/runtime/transport.ts';
+import type { GlobalProtocolDeclaration } from './src/core/ast/types.ts';
+import type { CFSM } from './src/core/projection/types.ts';
 
 const source = `
-  protocol TaskAssignment(role Manager) {
+  protocol TaskCompletion(role Manager) {
     new role Worker;
     Manager creates Worker;
     Manager invites Worker;
     Manager -> Worker: Task;
+    Worker -> Manager: Done;
   }
 `;
 
@@ -75,6 +76,12 @@ const simulator = new DMstSimulator(
           console.log(`  Received: ${update.messagesConsumed.map(m => `${m.label} from ${m.from}`).join(', ')}`);
         }
       }
+    }
+
+    // Show static roles
+    console.log('Static roles:');
+    for (const [role, roleState] of state.roles.entries()) {
+      console.log(`  ${role}: completed=${roleState.completed}, state=${roleState.currentState}`);
     }
 
     // Show dynamic participants

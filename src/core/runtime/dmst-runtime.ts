@@ -481,7 +481,19 @@ export function detectDMstDeadlock(
 ): boolean {
   const allParticipants = getAllActiveParticipants(state);
 
-  // Check if any participant can progress
+  // If all participants are completed, there's no deadlock
+  let allCompleted = true;
+  for (const execState of allParticipants.values()) {
+    if (!execState.completed) {
+      allCompleted = false;
+      break;
+    }
+  }
+  if (allCompleted) {
+    return false; // All completed - not deadlocked
+  }
+
+  // Check if any non-completed participant can progress
   for (const execState of allParticipants.values()) {
     if (!execState.blocked && !execState.completed) {
       return false; // At least one can progress
