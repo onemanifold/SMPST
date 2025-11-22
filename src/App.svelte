@@ -9,8 +9,8 @@
   import MainLayout from '$lib/components/layouts/MainLayout.svelte';
   import { EditorPage, SimulationPage, SettingsPage } from '$lib/pages';
   import { appStore } from '$lib/stores/app.store';
-  import { persistenceStore } from '$lib/stores/persistence.store';
-  import { onMount } from 'svelte';
+  import { initializePersistence, forceSaveAll } from '$lib/stores/persistence.integration';
+  import { onMount, onDestroy } from 'svelte';
 
   // Route definitions
   const routes = {
@@ -28,17 +28,25 @@
     appStore.setRoute(route || '/');
   }
 
+  // Save state before page unload
+  function handleBeforeUnload() {
+    forceSaveAll();
+  }
+
   // Initialize app on mount
   onMount(async () => {
-    // Hydrate persisted state
-    persistenceStore.hydrate();
-
-    // Apply persisted theme
-    const state = persistenceStore.getState();
-    appStore.setTheme(state.ui.theme);
+    // Initialize persistence (loads and applies persisted state)
+    await initializePersistence();
 
     // Mark as initialized
     appStore.setInitialized();
+
+    // Save state before page unload
+    window.addEventListener('beforeunload', handleBeforeUnload);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
   });
 </script>
 

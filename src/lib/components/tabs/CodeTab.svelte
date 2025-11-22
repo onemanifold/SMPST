@@ -1,5 +1,5 @@
 <script lang="ts">
-  import GlobalEditor from '../editors/GlobalEditor.svelte';
+  import LazyEditor from '../editors/LazyEditor.svelte';
   import LocalProjectionPanel from '../panels/LocalProjectionPanel.svelte';
   import VerificationPanel from '../panels/VerificationPanel.svelte';
   import { outputPanelCollapsed } from '$lib/stores/editor';
@@ -11,7 +11,7 @@
   <div class="split-container" style="--split-pos: {splitPos}%">
     <div class="left-pane">
       <div class="pane-header">Global Scribble</div>
-      <GlobalEditor />
+      <LazyEditor />
     </div>
 
     <div class="resize-handle" />
