@@ -315,25 +315,78 @@ describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', ()
       }
     });
 
-    it.skip('proves: shared coordinator combines safely', () => {
-      // TODO: Test combining operator where one role appears in both
-
+    it('proves: shared coordinator combines safely', () => {
       // G₁: Coordinator -> Worker1: Task()
-      // G₂: Coordinator -> Worker2: Task()
-      // Coordinator appears in both, but no race (different channels)
-      // Should be safe
+      const protocol1 = `
+        protocol G1(role Coordinator, role Worker1) {
+          Coordinator -> Worker1: Task();
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      // G₂: Coordinator -> Worker2: Task()
+      const protocol2 = `
+        protocol G2(role Coordinator, role Worker2) {
+          Coordinator -> Worker2: Task();
+        }
+      `;
+
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Coordinator appears in both, but channels are different (Worker1 vs Worker2)
+      const disjointness = checkChannelDisjointness(cfg1, cfg2);
+      // Note: channels (Coordinator, Worker1) and (Coordinator, Worker2) are disjoint
+      expect(disjointness.isDisjoint).toBe(true);
+
+      // Combine protocols
+      const combined = combineProtocols(cfg1, cfg2);
+      expect(combined.success).toBe(true);
+
+      // Verify combined protocol is well-formed
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        expect(wf.structural.valid).toBe(true);
+      }
     });
 
-    it.skip('proves: sequential dependencies combine safely', () => {
-      // TODO: Test combining where G₂ depends on G₁ completion
-
+    it('proves: sequential dependencies combine safely', () => {
       // G₁: A -> B: Setup()
-      // G₂: B -> C: Process() (depends on Setup)
-      // Should be safe if dependency is explicit
+      const protocol1 = `
+        protocol G1(role A, role B) {
+          A -> B: Setup();
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      // G₂: B -> C: Process() (depends on Setup)
+      const protocol2 = `
+        protocol G2(role B, role C) {
+          B -> C: Process();
+        }
+      `;
+
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Channels are disjoint: (A, B) and (B, C)
+      const disjointness = checkChannelDisjointness(cfg1, cfg2);
+      expect(disjointness.isDisjoint).toBe(true);
+
+      // Combine protocols with sequential composition
+      // This models B receiving from A before sending to C
+      const combined = combineProtocols(cfg1, cfg2);
+      expect(combined.success).toBe(true);
+
+      // Verify combined protocol is well-formed
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        expect(wf.structural.valid).toBe(true);
+      }
     });
   });
 
@@ -357,37 +410,147 @@ describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', ()
    *   - Progress (Theorem 5.10, Honda 2016)
    */
   describe('Proof Obligation 4: Well-Formedness Preservation', () => {
-    it.skip('proves: safe update preserves connectedness', () => {
-      // TODO: Verify 1-unfolding maintains connectedness
+    it('proves: safe update preserves connectedness', () => {
+      // G₁: A -> B: Request(); B -> C: Forward()
+      const protocol1 = `
+        protocol G1(role A, role B, role C) {
+          A -> B: Request();
+          B -> C: Forward();
+        }
+      `;
 
-      // All roles in original protocol remain connected
-      // New roles added by update are properly connected
+      // G₂: C -> D: Process()
+      const protocol2 = `
+        protocol G2(role C, role D) {
+          C -> D: Process();
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Combine protocols - verifies connectedness is preserved
+      const combined = combineProtocols(cfg1, cfg2);
+      expect(combined.success).toBe(true);
+
+      // Verify combined protocol maintains connectedness
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        expect(wf.connectedness.isConnected).toBe(true);
+      }
     });
 
-    it.skip('proves: safe update preserves determinism', () => {
-      // TODO: Verify 1-unfolding maintains deterministic choices
+    it('proves: safe update preserves determinism', () => {
+      // G₁: Protocol with deterministic choice
+      const protocol1 = `
+        protocol G1(role A, role B) {
+          choice at A {
+            A -> B: Option1();
+          } or {
+            A -> B: Option2();
+          }
+        }
+      `;
 
-      // Adding new behavior doesn't create ambiguous choices
+      // G₂: Simple deterministic protocol
+      const protocol2 = `
+        protocol G2(role C, role D) {
+          C -> D: Action();
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Combine protocols
+      const combined = combineProtocols(cfg1, cfg2);
+      expect(combined.success).toBe(true);
+
+      // Verify combined protocol maintains determinism
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        expect(wf.choiceDeterminism.isDeterministic).toBe(true);
+      }
     });
 
-    it.skip('proves: safe update preserves race-freedom', () => {
-      // TODO: Verify 1-unfolding has no race conditions
+    it('proves: safe update preserves race-freedom', () => {
+      // G₁: Sequential protocol (no races)
+      const protocol1 = `
+        protocol G1(role A, role B) {
+          A -> B: M1();
+          B -> A: M2();
+        }
+      `;
 
-      // New actions don't race with existing parallel branches
+      // G₂: Different roles (disjoint channels, no races)
+      const protocol2 = `
+        protocol G2(role C, role D) {
+          C -> D: M3();
+          D -> C: M4();
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Channels are disjoint
+      const disjointness = checkChannelDisjointness(cfg1, cfg2);
+      expect(disjointness.isDisjoint).toBe(true);
+
+      // Combine protocols
+      const combined = combineProtocols(cfg1, cfg2);
+      expect(combined.success).toBe(true);
+
+      // Verify combined protocol has no race conditions
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        expect(wf.raceConditions.hasRaces).toBe(false);
+      }
     });
 
-    it.skip('proves: safe update preserves progress', () => {
-      // TODO: Verify 1-unfolding can always progress or terminate
+    it('proves: safe update preserves progress', () => {
+      // G₁: Protocol that can progress and terminate
+      const protocol1 = `
+        protocol G1(role A, role B) {
+          A -> B: Start();
+          B -> A: Done();
+        }
+      `;
 
-      // Update doesn't introduce deadlocks
+      // G₂: Another protocol that progresses
+      const protocol2 = `
+        protocol G2(role C, role D) {
+          C -> D: Begin();
+          D -> C: End();
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Combine protocols
+      const combined = combineProtocols(cfg1, cfg2);
+      expect(combined.success).toBe(true);
+
+      // Verify combined protocol maintains progress
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        // Progress is verified through structural validity and no deadlocks
+        expect(wf.structural.valid).toBe(true);
+        expect(wf.deadlock.hasDeadlock).toBe(false);
+      }
     });
   });
 
