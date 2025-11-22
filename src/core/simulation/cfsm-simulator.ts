@@ -101,6 +101,10 @@ export class CFSMSimulator {
   // Message ID counter
   private messageIdCounter: number = 0;
 
+  // Stepping mode state (for stepInto/stepOver/stepOut)
+  private steppingMode: 'into' | 'over' | 'out' | null = null;
+  private stepOverDepth: number = 0;
+
   constructor(cfsm: CFSM, config: CFSMSimulatorConfig = {}) {
     // Store root CFSM
     this.rootCFSM = cfsm;
@@ -164,6 +168,13 @@ export class CFSMSimulator {
       pendingTransitionChoice: this.pendingTransitionChoice,
       callStack: [...this.callStack],  // Include call stack in state
     };
+  }
+
+  /**
+   * Get current call stack depth (for stepping support)
+   */
+  getCallStackDepth(): number {
+    return this.callStack.length;
   }
 
   /**
@@ -877,6 +888,8 @@ export class CFSMSimulator {
     this.outgoingMessages = [];
     this.pendingTransitionChoice = null;
     this.messageIdCounter = 0;
+    this.steppingMode = null;
+    this.stepOverDepth = 0;
 
     this.trace = {
       role: this.rootCFSM.role,
@@ -985,21 +998,105 @@ export class CFSMSimulator {
   }
 
   /**
-   * Step into (for consistency with CFG simulator)
-   * In CFSM context, this is the same as stepForward since there are no sub-protocols at this level
+   * Step into sub-protocol
+   * When at a sub-protocol call, steps into it instead of executing atomically
    */
   async stepInto(): Promise<CFSMStepResult> {
-    this.emit('step-into', { stepCount: this.stepCount });
-    return await this.stepForward();
+    this.steppingMode = 'into';
+    const result = await this.step();
+    this.steppingMode = null;
+
+    // Record snapshot after successful step
+    if (result.success) {
+      this.recordSnapshot();
+    }
+
+    this.emit('step-into', {
+      stepCount: this.stepCount,
+      depth: this.callStack.length,
+    });
+
+    return result;
   }
 
   /**
-   * Step out (for consistency with CFG simulator)
-   * In CFSM context, this is the same as stepForward since there are no sub-protocols at this level
+   * Step over sub-protocol
+   * When at a sub-protocol call, executes it atomically without stepping into it
+   */
+  async stepOver(): Promise<CFSMStepResult> {
+    const currentDepth = this.callStack.length;
+    this.steppingMode = 'over';
+    this.stepOverDepth = currentDepth;
+
+    // Execute until we return to the same depth
+    let result = await this.step();
+
+    // If we entered a sub-protocol, continue stepping until we exit
+    while (result.success && this.callStack.length > currentDepth && !this.completed) {
+      result = await this.step();
+    }
+
+    this.steppingMode = null;
+    this.stepOverDepth = 0;
+
+    // Record snapshot after successful step over
+    if (result.success) {
+      this.recordSnapshot();
+    }
+
+    this.emit('step-over', {
+      stepCount: this.stepCount,
+      state: this.getState(),
+    });
+
+    return result;
+  }
+
+  /**
+   * Step out of current sub-protocol
+   * Continues execution until the current call frame exits
    */
   async stepOut(): Promise<CFSMStepResult> {
-    this.emit('step-out', { stepCount: this.stepCount });
-    return await this.stepForward();
+    if (this.callStack.length === 0) {
+      const error = {
+        type: 'invalid-state' as const,
+        message: 'Not in a sub-protocol - cannot step out',
+        stateId: this.currentState,
+      };
+      this.emit('error', error);
+      return {
+        success: false,
+        error,
+        state: this.getState(),
+      };
+    }
+
+    const currentDepth = this.callStack.length;
+    this.steppingMode = 'out';
+
+    // Execute until we exit the current frame (depth decreases)
+    let result: CFSMStepResult;
+    do {
+      result = await this.step();
+      if (!result.success) {
+        this.steppingMode = null;
+        return result;
+      }
+    } while (this.callStack.length >= currentDepth && !this.completed);
+
+    this.steppingMode = null;
+
+    // Record snapshot after successful step out
+    if (result.success) {
+      this.recordSnapshot();
+    }
+
+    this.emit('step-out', {
+      stepCount: this.stepCount,
+      depth: this.callStack.length,
+    });
+
+    return result;
   }
 
   /**
