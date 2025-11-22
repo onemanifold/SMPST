@@ -68,7 +68,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom', // Use jsdom for Svelte component tests
-    setupFiles: ['./src/test/setup.ts']
+    setupFiles: ['./src/test/setup.ts'],
+    exclude: ['**/node_modules/**', '**/e2e/**', '**/dist/**']
   },
   optimizeDeps: {
     include: ['monaco-editor', 'chevrotain', 'dexie', 'd3']
