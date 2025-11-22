@@ -459,9 +459,14 @@ export class CFGSimulator {
         return result;
       }
 
-      // Capture any event
+      // Capture any event, but don't let structural events (choice, parallel) overwrite action events
       if (result.event) {
-        lastEvent = result.event;
+        const isNewEventStructural = result.event.type === 'choice' || result.event.type === 'parallel';
+        const hasActionEvent = lastEvent && lastEvent.type !== 'choice' && lastEvent.type !== 'parallel';
+        // Only overwrite if we don't have an action event, or new event is also an action event
+        if (!hasActionEvent || !isNewEventStructural) {
+          lastEvent = result.event;
+        }
       }
 
       // After executing current node, check if we should stop
@@ -478,10 +483,12 @@ export class CFGSimulator {
         };
       }
 
-      // Stop if we have an event AND we're now at an action node
+      // Stop if we have an action event AND we're now at an action node
       // This prevents executing the same action multiple times in one step
-      // (Branch nodes need to be executed to set up choice state, so don't stop at them)
-      if (lastEvent && currentNode.type === 'action') {
+      // Structural events (choice, parallel) shouldn't stop execution - only protocol-level
+      // action events like messages should stop
+      const isStructuralEvent = lastEvent && (lastEvent.type === 'choice' || lastEvent.type === 'parallel');
+      if (lastEvent && !isStructuralEvent && currentNode.type === 'action') {
         return {
           success: true,
           event: lastEvent,

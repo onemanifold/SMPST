@@ -100,6 +100,9 @@ export class CFGDebugger {
       return this.redo();
     }
 
+    // Record trace length before step to find new events
+    const traceEventsBefore = this.vm.getTrace().events.length;
+
     // Execute VM step
     const vmResult = this.vm.step();
 
@@ -114,18 +117,24 @@ export class CFGDebugger {
     // Move position forward
     this.currentPosition++;
 
-    // Annotate event with stepNumber (debugger adds this!)
+    // Capture ALL new events from the trace (not just the step result event)
+    // This ensures structural events (choice, parallel) are captured alongside action events
+    const traceEventsAfter = this.vm.getTrace().events;
+    for (let i = traceEventsBefore; i < traceEventsAfter.length; i++) {
+      const debugEvent: DebugEvent = {
+        ...traceEventsAfter[i],
+        stepNumber: this.currentPosition,
+      };
+      this.allEvents.push(debugEvent);
+    }
+
+    // Get the primary event for the result (from step result, not trace)
     const debugEvent = vmResult.event
       ? {
           ...vmResult.event,
           stepNumber: this.currentPosition,
         }
       : undefined;
-
-    // Record event in all events (for redo)
-    if (debugEvent) {
-      this.allEvents.push(debugEvent);
-    }
 
     // Record snapshot for backward stepping
     this.recordSnapshot();
