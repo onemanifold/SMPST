@@ -97,6 +97,7 @@ import { describe, it, expect } from 'vitest';
 import { parse } from '../../../core/parser/parser';
 import { buildCFG } from '../../../core/cfg/builder';
 import { verifyProtocol, detectDeadlock } from '../../../core/verification/verifier';
+import { checkChannelDisjointness } from '../../../core/cfg/combining-operator';
 import type { GlobalProtocolDeclaration } from '../../../core/ast/types';
 
 describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', () => {
@@ -497,13 +498,38 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
       expect(true).toBe(true); // Placeholder
     });
 
-    it.skip('counterexample: conflicting combining operators', () => {
-      // TODO: Protocol calls with overlapping channels
-
+    it('counterexample: conflicting combining operators', () => {
       // G₁ ♢ G₂ where Channels(G₁) ∩ Channels(G₂) ≠ ∅
-      // Race condition → deadlock
+      // Same channel (sender:receiver:label) in both → conflict
 
-      expect(true).toBe(true); // Placeholder
+      // G₁: A -> B: Msg()
+      const protocol1 = `
+        protocol G1(role A, role B) {
+          A -> B: Msg();
+        }
+      `;
+
+      // G₂: A -> B: Msg() (same channel! same message label!)
+      const protocol2 = `
+        protocol G2(role A, role B) {
+          A -> B: Msg();
+        }
+      `;
+
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Check channel disjointness - should NOT be disjoint (both use A->B:Msg)
+      const disjointness = checkChannelDisjointness(cfg1, cfg2);
+      expect(disjointness.isDisjoint).toBe(false);
+      expect(disjointness.conflicts.length).toBeGreaterThan(0);
+      expect(disjointness.conflicts[0].channel.label).toBe('Msg');
+
+      // Combining these would create a race/conflict
+      // This is a counterexample to safe combining
     });
   });
 
