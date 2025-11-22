@@ -1,7 +1,22 @@
 <script lang="ts">
   import { onMount, afterUpdate } from 'svelte';
   import * as d3 from 'd3';
-  import type { FsmGraph } from '../../../types';
+
+  interface FsmNode {
+    id: string;
+    label: string;
+  }
+
+  interface FsmEdge {
+    source: string;
+    target: string;
+    label?: string;
+  }
+
+  interface FsmGraph {
+    nodes: FsmNode[];
+    edges: FsmEdge[];
+  }
 
   export let graph: FsmGraph | null = null;
   export let currentState: string | undefined = undefined;
