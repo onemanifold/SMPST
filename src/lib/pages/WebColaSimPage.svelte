@@ -18,11 +18,6 @@
   let isLoading = true;
   let loadError: string | null = null;
 
-  // Get available protocols (filter to ones that work well for visualization)
-  const visualizableProtocols = protocolExamples.filter(p =>
-    ['Basic', 'Classic', 'Advanced', 'Less is More'].includes(p.category)
-  );
-
   /**
    * Load and parse a protocol, initialize the simulation
    */
@@ -111,7 +106,7 @@
       <label class="protocol-select">
         <span>Protocol:</span>
         <select value={selectedProtocolId} on:change={handleProtocolChange}>
-          {#each visualizableProtocols as protocol}
+          {#each protocolExamples as protocol}
             <option value={protocol.id}>{protocol.name}</option>
           {/each}
         </select>
