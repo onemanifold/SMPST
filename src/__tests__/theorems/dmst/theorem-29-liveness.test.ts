@@ -264,12 +264,26 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       expect(true).toBe(true); // Placeholder
     });
 
-    it.skip('proves: participants in protocol calls never get stuck', () => {
-      // TODO: Test participants in called sub-protocols
+    it('proves: participants in protocol calls never get stuck', () => {
+      // Test participants in protocol with calls can progress
+      const protocol = `
+        protocol WithCall(role A, role B) {
+          A calls Sub(B);
+          A -> B: Task();
+          B -> A: Result();
+        }
+      `;
 
-      // Sub-protocol participants should complete or progress
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
+      const stateGraphs = buildParticipantStateGraphs(projectionResult.cfsms);
 
-      expect(true).toBe(true); // Placeholder
+      // Verify no participant has stuck states
+      const progressResult = checkParticipantProgress(stateGraphs);
+      expect(progressResult.allCanProgress).toBe(true);
+      expect(progressResult.stuckParticipants).toHaveLength(0);
+      // Sub-protocol participants can progress to completion
     });
 
     it('proves: choice branches never leave participants stuck', () => {
