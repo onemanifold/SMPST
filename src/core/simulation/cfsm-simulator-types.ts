@@ -290,6 +290,7 @@ export type CFSMEventType =
   | 'error'
   | 'deadlock'
   | 'step-into'        // Stepping into sub-protocol
+  | 'step-over'        // Stepping over sub-protocol (atomic execution)
   | 'step-out'         // Stepping out of sub-protocol
   | 'step-back'        // Stepping backward (undo)
   | 'step-forward';    // Stepping forward (explicit)

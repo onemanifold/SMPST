@@ -513,3 +513,456 @@ describe('CFSM Simulator - Run to Completion', () => {
     expect(result.steps).toBe(10);
   });
 });
+
+describe('CFSM Simulator - Stepping Debugger', () => {
+  describe('stepForward and stepBackward', () => {
+    it('should step forward and record snapshots', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }, { id: 's2' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          },
+          {
+            id: 't1',
+            from: 's1',
+            to: 's2',
+            action: { type: 'send', to: 'B', label: 'M2' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s2'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      sim.enableHistory();
+
+      expect(sim.getState().stepCount).toBe(0);
+
+      const result1 = await sim.stepForward();
+      expect(result1.success).toBe(true);
+      expect(sim.getState().stepCount).toBe(1);
+      expect(sim.getState().currentState).toBe('s1');
+
+      const result2 = await sim.stepForward();
+      expect(result2.success).toBe(true);
+      expect(sim.getState().stepCount).toBe(2);
+      expect(sim.getState().currentState).toBe('s2');
+
+      // Verify history has snapshots
+      const history = sim.getExecutionHistory();
+      const snapshots = history.getAllSnapshots();
+      expect(snapshots.length).toBeGreaterThan(0);
+    });
+
+    it('should step backward and restore previous state', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }, { id: 's2' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          },
+          {
+            id: 't1',
+            from: 's1',
+            to: 's2',
+            action: { type: 'send', to: 'B', label: 'M2' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s2'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      sim.enableHistory();
+
+      await sim.stepForward();
+      const stateAtStep1 = sim.getState();
+
+      await sim.stepForward();
+      expect(sim.getState().currentState).toBe('s2');
+
+      // Step backward
+      const backResult = sim.stepBackward();
+      expect(backResult.success).toBe(true);
+      expect(sim.getState().currentState).toBe(stateAtStep1.currentState);
+      expect(sim.getState().stepCount).toBe(stateAtStep1.stepCount);
+    });
+
+    it('should fail to step backward when no history available', () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      // History disabled by default
+
+      const result = sim.stepBackward();
+      expect(result.success).toBe(false);
+      expect(result.error?.message).toContain('No previous state');
+    });
+  });
+
+  describe('stepInto', () => {
+    it('should step into and record snapshot', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      sim.enableHistory();
+
+      const result = await sim.stepInto();
+
+      expect(result.success).toBe(true);
+      expect(sim.getState().currentState).toBe('s1');
+      expect(sim.getState().stepCount).toBe(1);
+    });
+
+    it('should fail stepInto when already completed', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      await sim.run();
+      expect(sim.isComplete()).toBe(true);
+
+      const result = await sim.stepInto();
+      expect(result.success).toBe(false);
+      expect(result.error?.type).toBe('invalid-state');
+      expect(result.error?.message).toContain('already completed');
+    });
+
+    it('should emit step-into event on success', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      let eventEmitted = false;
+      let eventData: any = null;
+
+      sim.on('step-into', (data) => {
+        eventEmitted = true;
+        eventData = data;
+      });
+
+      await sim.stepInto();
+
+      expect(eventEmitted).toBe(true);
+      expect(eventData.stepCount).toBe(1);
+      expect(eventData.depth).toBeDefined();
+    });
+
+    it('should NOT emit step-into event on failure', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      await sim.run();
+
+      let eventEmitted = false;
+      sim.on('step-into', () => {
+        eventEmitted = true;
+      });
+
+      await sim.stepInto();
+      expect(eventEmitted).toBe(false);
+    });
+  });
+
+  describe('stepOver', () => {
+    it('should step over and record snapshot', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      sim.enableHistory();
+
+      const result = await sim.stepOver();
+
+      expect(result.success).toBe(true);
+      expect(sim.getState().currentState).toBe('s1');
+    });
+
+    it('should fail stepOver when already completed', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      await sim.run();
+
+      const result = await sim.stepOver();
+      expect(result.success).toBe(false);
+      expect(result.error?.type).toBe('invalid-state');
+      expect(result.error?.message).toContain('already completed');
+    });
+
+    it('should emit step-over event on success', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      let eventEmitted = false;
+      let eventData: any = null;
+
+      sim.on('step-over', (data) => {
+        eventEmitted = true;
+        eventData = data;
+      });
+
+      await sim.stepOver();
+
+      expect(eventEmitted).toBe(true);
+      expect(eventData.stepCount).toBeDefined();
+      expect(eventData.state).toBeDefined();
+    });
+
+    it('should NOT emit step-over event on failure', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      await sim.run();
+
+      let eventEmitted = false;
+      sim.on('step-over', () => {
+        eventEmitted = true;
+      });
+
+      await sim.stepOver();
+      expect(eventEmitted).toBe(false);
+    });
+  });
+
+  describe('stepOut', () => {
+    it('should fail stepOut when not in sub-protocol', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+
+      const result = await sim.stepOut();
+
+      expect(result.success).toBe(false);
+      expect(result.error?.type).toBe('invalid-state');
+      expect(result.error?.message).toContain('Not in a sub-protocol');
+    });
+
+    it('should fail stepOut when already completed', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      await sim.run();
+
+      const result = await sim.stepOut();
+      expect(result.success).toBe(false);
+      expect(result.error?.type).toBe('invalid-state');
+      expect(result.error?.message).toContain('already completed');
+    });
+  });
+
+  describe('getCallStackDepth', () => {
+    it('should return 0 when at root level', () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s1'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      expect(sim.getCallStackDepth()).toBe(0);
+    });
+  });
+
+  describe('stepping state reset', () => {
+    it('should reset stepping state on reset()', async () => {
+      const cfsm: CFSM = {
+        role: 'A',
+        states: [{ id: 's0' }, { id: 's1' }, { id: 's2' }],
+        transitions: [
+          {
+            id: 't0',
+            from: 's0',
+            to: 's1',
+            action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          },
+          {
+            id: 't1',
+            from: 's1',
+            to: 's2',
+            action: { type: 'send', to: 'B', label: 'M2' } as SendAction,
+          },
+        ],
+        initialState: 's0',
+        terminalStates: ['s2'],
+      };
+
+      const sim = new CFSMSimulator(cfsm);
+      sim.enableHistory();
+
+      // Take some steps
+      await sim.stepForward();
+      await sim.stepForward();
+      expect(sim.getState().stepCount).toBe(2);
+
+      // Reset
+      sim.reset();
+
+      expect(sim.getState().stepCount).toBe(0);
+      expect(sim.getState().currentState).toBe('s0');
+      expect(sim.getCallStackDepth()).toBe(0);
+
+      // Should be able to step again
+      const result = await sim.stepForward();
+      expect(result.success).toBe(true);
+    });
+  });
+});
