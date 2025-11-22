@@ -1002,19 +1002,28 @@ export class CFSMSimulator {
    * When at a sub-protocol call, steps into it instead of executing atomically
    */
   async stepInto(): Promise<CFSMStepResult> {
+    // Check if already completed
+    if (this.completed) {
+      const error = {
+        type: 'invalid-state' as const,
+        message: 'Cannot step - execution already completed',
+        stateId: this.currentState,
+      };
+      return { success: false, error, state: this.getState() };
+    }
+
     this.steppingMode = 'into';
     const result = await this.step();
     this.steppingMode = null;
 
-    // Record snapshot after successful step
+    // Record snapshot and emit event only on success
     if (result.success) {
       this.recordSnapshot();
+      this.emit('step-into', {
+        stepCount: this.stepCount,
+        depth: this.callStack.length,
+      });
     }
-
-    this.emit('step-into', {
-      stepCount: this.stepCount,
-      depth: this.callStack.length,
-    });
 
     return result;
   }
@@ -1024,6 +1033,16 @@ export class CFSMSimulator {
    * When at a sub-protocol call, executes it atomically without stepping into it
    */
   async stepOver(): Promise<CFSMStepResult> {
+    // Check if already completed
+    if (this.completed) {
+      const error = {
+        type: 'invalid-state' as const,
+        message: 'Cannot step - execution already completed',
+        stateId: this.currentState,
+      };
+      return { success: false, error, state: this.getState() };
+    }
+
     const currentDepth = this.callStack.length;
     this.steppingMode = 'over';
     this.stepOverDepth = currentDepth;
@@ -1039,15 +1058,14 @@ export class CFSMSimulator {
     this.steppingMode = null;
     this.stepOverDepth = 0;
 
-    // Record snapshot after successful step over
+    // Record snapshot and emit event only on success
     if (result.success) {
       this.recordSnapshot();
+      this.emit('step-over', {
+        stepCount: this.stepCount,
+        state: this.getState(),
+      });
     }
-
-    this.emit('step-over', {
-      stepCount: this.stepCount,
-      state: this.getState(),
-    });
 
     return result;
   }
@@ -1057,18 +1075,24 @@ export class CFSMSimulator {
    * Continues execution until the current call frame exits
    */
   async stepOut(): Promise<CFSMStepResult> {
+    // Check if already completed
+    if (this.completed) {
+      const error = {
+        type: 'invalid-state' as const,
+        message: 'Cannot step - execution already completed',
+        stateId: this.currentState,
+      };
+      return { success: false, error, state: this.getState() };
+    }
+
+    // Check if we're in a sub-protocol
     if (this.callStack.length === 0) {
       const error = {
         type: 'invalid-state' as const,
         message: 'Not in a sub-protocol - cannot step out',
         stateId: this.currentState,
       };
-      this.emit('error', error);
-      return {
-        success: false,
-        error,
-        state: this.getState(),
-      };
+      return { success: false, error, state: this.getState() };
     }
 
     const currentDepth = this.callStack.length;
@@ -1086,15 +1110,14 @@ export class CFSMSimulator {
 
     this.steppingMode = null;
 
-    // Record snapshot after successful step out
+    // Record snapshot and emit event only on success
     if (result.success) {
       this.recordSnapshot();
+      this.emit('step-out', {
+        stepCount: this.stepCount,
+        depth: this.callStack.length,
+      });
     }
-
-    this.emit('step-out', {
-      stepCount: this.stepCount,
-      depth: this.callStack.length,
-    });
 
     return result;
   }
