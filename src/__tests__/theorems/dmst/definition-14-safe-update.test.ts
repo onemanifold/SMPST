@@ -653,13 +653,30 @@ describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', ()
    * EDGE CASES
    */
   describe('Edge Cases', () => {
-    it.skip('handles: empty update (no-op)', () => {
-      // TODO: Update with empty body
+    it('handles: empty update (no-op)', () => {
+      // Empty update body should be safe (equivalent to regular recursion)
+      const protocol = `
+        protocol EmptyUpdate(role A, role B) {
+          rec Loop {
+            A -> B: Work();
+            choice at A {
+              continue Loop with { };
+            } or {
+              A -> B: Done();
+            }
+          }
+        }
+      `;
 
-      // continue Loop with { }
-      // Should be safe (equivalent to regular recursion)
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Verify well-formedness implies safe protocol
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.connectedness.isConnected).toBe(true);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
+      // Empty update is safe: well-formed protocols satisfy Def 14
     });
 
     it.skip('handles: nested updatable recursions', () => {
