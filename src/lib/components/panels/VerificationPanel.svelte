@@ -1,5 +1,6 @@
 <script lang="ts">
   import { verificationResult, parseError, outputPanelCollapsed } from '$lib/stores/editor';
+  import { Button } from '$lib/components/atoms';
 
   function togglePanel() {
     outputPanelCollapsed.update(v => !v);
@@ -9,9 +10,9 @@
 <div class="verification-panel">
   <div class="panel-header">
     <h3>Verification Results</h3>
-    <button class="btn-collapse" on:click={togglePanel}>
+    <Button variant="ghost" size="sm" on:click={togglePanel}>
       {$outputPanelCollapsed ? '▲' : '▼'}
-    </button>
+    </Button>
   </div>
 
   {#if !$outputPanelCollapsed}
@@ -83,14 +84,6 @@
     margin: 0;
     font-size: var(--font-size-md);
     font-weight: var(--font-weight-medium);
-  }
-
-  .btn-collapse {
-    background: transparent;
-    border: none;
-    color: var(--color-text-primary);
-    cursor: pointer;
-    padding: var(--spacing-1);
   }
 
   .panel-content {
