@@ -137,7 +137,8 @@ test.describe('Routing', () => {
 
   test('should handle back button navigation', async ({ page }) => {
     await page.goto('/#/');
-    await page.waitForSelector('.code-tab, .editor-page', { timeout: 10000 });
+    // Use .editor-page only to avoid ambiguity (both .editor-page and .code-tab exist as nested elements)
+    await page.waitForSelector('.editor-page', { timeout: 10000 });
 
     // Navigate to settings
     await page.goto('/#/settings');
@@ -147,7 +148,7 @@ test.describe('Routing', () => {
     await page.goBack();
 
     // Should be back at editor
-    await page.waitForSelector('.code-tab, .editor-page', { timeout: 10000 });
+    await page.waitForSelector('.editor-page', { timeout: 10000 });
   });
 });
 
@@ -158,11 +159,12 @@ test.describe('Tab Navigation', () => {
 
     // Click CODE tab
     await page.click('.tab:has-text("CODE")');
-    await expect(page.locator('.code-tab, .editor-page')).toBeVisible();
+    // Use .editor-page only to avoid ambiguity (both .editor-page and .code-tab exist as nested elements)
+    await expect(page.locator('.editor-page')).toBeVisible();
 
     // Click SIMULATION tab
     await page.click('.tab:has-text("SIMULATION")');
     // Should show simulation or no-protocol message
-    await expect(page.locator('.simulation-page, .no-protocol')).toBeVisible();
+    await expect(page.locator('.simulation-page, .no-protocol').first()).toBeVisible();
   });
 });
