@@ -251,22 +251,30 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       // ✅ PROOF: No participant gets stuck
     });
 
-    it.skip('proves: dynamic participants never get stuck', () => {
-      // TODO: Test dynamically created participants can progress
+    it('proves: dynamic participants never get stuck', () => {
+      // Test dynamically created participants can progress
+      const protocol = `
+        protocol DynamicProgress(role Manager) {
+          new role Worker;
+          Manager creates Worker;
+          Manager -> Worker: Task();
+          Worker -> Manager: Result();
+        }
+      `;
 
-      // const protocol = `
-      //   protocol DynamicProgress(role Manager) {
-      //     new role Worker;
-      //     Manager creates Worker;
-      //     Manager invites Worker;
-      //     Manager -> Worker: Task();
-      //     Worker -> Manager: Result();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
+      const stateGraphs = buildParticipantStateGraphs(projectionResult.cfsms);
 
-      // Worker should be able to complete its protocol
+      // Verify dynamic participant (Worker) is included
+      expect(projectionResult.cfsms.has('Worker')).toBe(true);
 
-      expect(true).toBe(true); // Placeholder
+      // Verify no participant has stuck states
+      const progressResult = checkParticipantProgress(stateGraphs);
+      expect(progressResult.allCanProgress).toBe(true);
+      expect(progressResult.stuckParticipants).toHaveLength(0);
+      // Worker can progress to completion
     });
 
     it('proves: participants in protocol calls never get stuck', () => {
