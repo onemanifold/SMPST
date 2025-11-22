@@ -87,13 +87,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-
-// NOTE: These imports will fail until we implement DMst extensions
-// This is intentional - tests guide implementation (TDD)
-// import { parse } from '../../../core/parser/parser';
-// import { buildCFG } from '../../../core/cfg/builder';
-// import { compute1Unfolding, checkSafeUpdate } from '../../../core/verification/dmst/safe-update';
-// import { verifyProtocol } from '../../../core/verification/verifier';
+import { parse } from '../../../core/parser/parser';
+import { buildCFG } from '../../../core/cfg/builder';
+import { checkSafeProtocolUpdate, compute1Unfolding } from '../../../core/verification/dmst/safe-update';
+import { verifyProtocol } from '../../../core/verification/verifier';
+import { checkChannelDisjointness, combineProtocols } from '../../../core/cfg/combining-operator';
+import type { GlobalProtocolDeclaration } from '../../../core/ast/types';
 
 describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', () => {
   /**
@@ -280,14 +279,40 @@ describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', ()
    *   - No deadlock cycles in G ♦ G_update
    */
   describe('Proof Obligation 3: Combining Operator Safety', () => {
-    it.skip('proves: disjoint protocols combine safely', () => {
-      // TODO: Test combining operator with independent protocols
-
+    it('proves: disjoint protocols combine safely', () => {
       // G₁: A -> B: M1()
-      // G₂: C -> D: M2()
-      // G₁ ♦ G₂ should be safe (disjoint channels)
+      const protocol1 = `
+        protocol G1(role A, role B) {
+          A -> B: M1();
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      // G₂: C -> D: M2()
+      const protocol2 = `
+        protocol G2(role C, role D) {
+          C -> D: M2();
+        }
+      `;
+
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Check channel disjointness (different roles = disjoint channels)
+      const disjointness = checkChannelDisjointness(cfg1, cfg2);
+      expect(disjointness.isDisjoint).toBe(true);
+
+      // Combine protocols
+      const combined = combineProtocols(cfg1, cfg2);
+      expect(combined.success).toBe(true);
+
+      // Verify combined protocol is well-formed
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        expect(wf.structural.valid).toBe(true);
+      }
     });
 
     it.skip('proves: shared coordinator combines safely', () => {

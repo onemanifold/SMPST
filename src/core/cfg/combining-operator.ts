@@ -295,9 +295,13 @@ function sequentialCompose(cfg1: CFG, cfg2: CFG): CFG {
     to: `g2_${e.to}`,
   }));
 
+  // Find terminal nodes in cfg1 (nodes of type 'terminal' or with no outgoing edges)
+  const cfg1TerminalIds = findTerminalNodeIds(cfg1);
+  const cfg2TerminalIds = findTerminalNodeIds(cfg2);
+
   // Connect G's terminal to G's initial
   const connectionEdges: CFGEdge[] = [];
-  for (const terminalId of cfg1.terminalNodes) {
+  for (const terminalId of cfg1TerminalIds) {
     connectionEdges.push({
       id: `connect_${terminalId}_to_g2`,
       from: `g1_${terminalId}`,
@@ -308,19 +312,25 @@ function sequentialCompose(cfg1: CFG, cfg2: CFG): CFG {
 
   // Combine
   return {
-    id: `${cfg1.id}_combine_${cfg2.id}`,
+    id: `${(cfg1 as any).id || cfg1.protocolName}_combine_${(cfg2 as any).id || cfg2.protocolName}`,
     nodes: [...nodes1, ...nodes2],
     edges: [...edges1, ...edges2, ...connectionEdges],
     initialNode: `g1_${cfg1.initialNode}`,
-    terminalNodes: cfg2.terminalNodes.map(id => `g2_${id}`),
     roles: [...new Set([...cfg1.roles, ...cfg2.roles])],
-    metadata: {
-      combined: true,
-      source1: cfg1.id,
-      source2: cfg2.id,
-      combiningOperator: 'sequential', // Note: not full interleaving yet
-    },
+    protocolName: `${cfg1.protocolName}_combined_${cfg2.protocolName}`,
+    parameters: [...cfg1.parameters, ...cfg2.parameters],
   };
+}
+
+/**
+ * Find terminal node IDs in a CFG.
+ * Terminal nodes are either of type 'terminal' or have no outgoing edges.
+ */
+function findTerminalNodeIds(cfg: CFG): string[] {
+  const nodesWithOutgoing = new Set(cfg.edges.map(e => e.from));
+  return cfg.nodes
+    .filter(n => n.type === 'terminal' || !nodesWithOutgoing.has(n.id))
+    .map(n => n.id);
 }
 
 /**
