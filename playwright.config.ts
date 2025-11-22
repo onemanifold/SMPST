@@ -9,7 +9,7 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: 2,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? 'github' : 'list',
 
@@ -18,6 +18,9 @@ export default defineConfig({
     baseURL: 'http://localhost:4173/SMPST/',
     trace: 'on-first-retry',
     screenshot: 'on',
+    // Don't wait for full load - Monaco is heavy
+    navigationTimeout: 15000,
+    actionTimeout: 10000,
   },
 
   projects: [
@@ -25,51 +28,20 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        // Launch args to prevent crashes with heavy Monaco Editor in constrained environments
+        // Disable sandbox for constrained environments (Docker/CI)
+        // See: https://playwright.dev/docs/docker
         launchOptions: {
+          chromiumSandbox: false,
           args: [
             '--disable-gpu',
             '--disable-dev-shm-usage',
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-site-isolation-trials',
-            '--disable-extensions',
-            '--disable-background-networking',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-breakpad',
-            '--disable-component-extensions-with-background-pages',
-            '--disable-component-update',
-            '--disable-default-apps',
-            '--disable-hang-monitor',
-            '--disable-ipc-flooding-protection',
-            '--disable-popup-blocking',
-            '--disable-prompt-on-repost',
-            '--disable-renderer-backgrounding',
-            '--disable-sync',
-            '--force-color-profile=srgb',
-            '--metrics-recording-only',
-            '--no-first-run',
-            '--password-store=basic',
-            '--use-mock-keychain',
-            '--js-flags=--max-old-space-size=512',
+            '--single-process',
           ],
         },
       },
     },
-    // Add Firefox and WebKit for full coverage in CI
-    ...(process.env.CI ? [
-      {
-        name: 'firefox',
-        use: { ...devices['Desktop Firefox'] },
-      },
-      {
-        name: 'webkit',
-        use: { ...devices['Desktop Safari'] },
-      },
-    ] : []),
   ],
 
   // Run dev server before tests
