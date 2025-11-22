@@ -98,6 +98,7 @@ import { describe, it, expect } from 'vitest';
 import { parse } from '../../../core/parser/parser';
 import { buildCFG } from '../../../core/cfg/builder';
 import { projectAll } from '../../../core/projection/projector';
+import { verifyProtocol } from '../../../core/verification/verifier';
 import {
   extractSendReceivePairs,
   checkOrphanFreedom,
@@ -560,23 +561,32 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       expect(true).toBe(true); // Placeholder
     });
 
-    it.skip('proves: well-formed DMst satisfies both safety and liveness', () => {
-      // TODO: Complete verification
+    it('proves: well-formed DMst satisfies both safety and liveness', () => {
+      const protocol = `
+        protocol Pipeline(role A, role B, role C) {
+          A -> B: Task();
+          B -> C: Forward();
+          C -> B: Result();
+          B -> A: Response();
+        }
+      `;
 
-      // const protocol = `...`;
-      // const wf = checkDMstWellFormedness(protocol);
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
 
-      // // Theorem 23: Deadlock-freedom (safety)
-      // expect(wf.deadlockFree).toBe(true);
+      // Theorem 23: Deadlock-freedom (safety)
+      const wf = verifyProtocol(cfg);
+      expect(wf.deadlock.hasDeadlock).toBe(false);
+      expect(wf.connectedness.isConnected).toBe(true);
 
-      // // Theorem 29: Liveness (progress)
-      // expect(wf.orphanFree).toBe(true);
-      // expect(wf.noStuckParticipants).toBe(true);
-      // expect(wf.eventualDelivery).toBe(true);
-
-      // // ✅ PROOF: Well-formed DMst is both safe and live
-
-      expect(true).toBe(true); // Placeholder
+      // Theorem 29: Liveness (progress)
+      const liveness = verifyLiveness(cfg, projectionResult.cfsms);
+      expect(liveness.orphanFree).toBe(true);
+      expect(liveness.noStuckParticipants).toBe(true);
+      expect(liveness.eventualDelivery).toBe(true);
+      expect(liveness.isLive).toBe(true);
+      // ✅ PROOF: Well-formed DMst is both safe and live
     });
   });
 
