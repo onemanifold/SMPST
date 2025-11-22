@@ -186,7 +186,7 @@
         <button
           class="role-tab"
           class:active={selectedRole === projection.role}
-          on:click={() => selectedRole = projection.role}
+          on:click={() => { if (selectedRole !== projection.role) selectedRole = projection.role; }}
         >
           {projection.role}
         </button>
