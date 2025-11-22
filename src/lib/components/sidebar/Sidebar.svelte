@@ -3,6 +3,7 @@
   import { loadExample, editorContent } from '$lib/stores/editor';
   import { protocolDB, type SavedProtocol } from '$lib/stores/protocol-db';
   import { onMount } from 'svelte';
+  import { Button, Input } from '$lib/components/atoms';
 
   export let collapsed = false;
 
@@ -178,24 +179,23 @@
         </div>
 
         <div class="saved-actions">
-          <button class="btn-save" on:click={() => showSaveDialog = true}>
+          <Button variant="primary" size="sm" fullWidth on:click={() => showSaveDialog = true}>
             + Save Current Protocol
-          </button>
+          </Button>
         </div>
 
         {#if showSaveDialog}
           <div class="save-dialog">
-            <input
+            <Input
               type="text"
               bind:value={newProtocolName}
               placeholder="Protocol name..."
-              class="save-input"
-              on:keydown={(e) => e.key === 'Enter' && handleSaveProtocol()}
-              autofocus
+              size="sm"
+              on:keydown={(e) => e.detail && handleSaveProtocol()}
             />
             <div class="dialog-actions">
-              <button class="btn-dialog-save" on:click={handleSaveProtocol}>Save</button>
-              <button class="btn-dialog-cancel" on:click={() => { showSaveDialog = false; newProtocolName = ''; }}>Cancel</button>
+              <Button variant="primary" size="sm" on:click={handleSaveProtocol}>Save</Button>
+              <Button variant="secondary" size="sm" on:click={() => { showSaveDialog = false; newProtocolName = ''; }}>Cancel</Button>
             </div>
           </div>
         {/if}
@@ -373,76 +373,20 @@
     border-bottom: 1px solid var(--color-bg-primary);
   }
 
-  .btn-save {
-    width: 100%;
-    padding: var(--spacing-1) var(--spacing-1);
-    background: var(--color-accent);
-    color: var(--color-text-inverse);
-    border: none;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-  }
-
-  .btn-save:hover {
-    background: var(--color-accent-active);
-  }
-
   .save-dialog {
     padding: var(--spacing-1) var(--spacing-2);
     background: var(--color-bg-tertiary);
     border-bottom: 1px solid var(--color-bg-primary);
   }
 
-  .save-input {
-    width: 100%;
-    padding: var(--spacing-1);
-    background: var(--color-bg-hover);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
-    margin-bottom: var(--spacing-1);
-  }
-
-  .save-input:focus {
-    outline: none;
-    border-color: var(--color-accent);
-  }
-
   .dialog-actions {
     display: flex;
     gap: var(--spacing-1);
+    margin-top: var(--spacing-1);
   }
 
-  .btn-dialog-save,
-  .btn-dialog-cancel {
+  .dialog-actions :global(.btn) {
     flex: 1;
-    padding: 3px var(--spacing-1);
-    border: none;
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-  }
-
-  .btn-dialog-save {
-    background: var(--color-accent);
-    color: var(--color-text-inverse);
-  }
-
-  .btn-dialog-save:hover {
-    background: var(--color-accent-active);
-  }
-
-  .btn-dialog-cancel {
-    background: var(--color-bg-hover);
-    color: var(--color-text-primary);
-  }
-
-  .btn-dialog-cancel:hover {
-    background: var(--color-bg-active);
   }
 
   .empty-message {
