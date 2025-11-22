@@ -20,7 +20,7 @@
  * - TODO(P1): Updatable CFSM runtime semantics not designed (Issue #8)
  */
 
-import type { CFSM, CFSMAction, SendAction, ReceiveAction } from '../projection/types';
+import type { CFSM, CFSMAction, SendAction, ReceiveAction, SubProtocolCallAction } from '../projection/types';
 import type {
   MessageTransport,
   Message,
@@ -29,6 +29,7 @@ import type {
   ExecutionError,
   SimulationStepResult,
   ExecutorConfig,
+  CallStackFrame,
 } from './types';
 import type {
   DMstSimulationState,
@@ -70,15 +71,34 @@ export class DMstSimulator {
   private cfsms: Map<string, CFSM>; // Static role CFSMs
   private dynamicCFSMs: Map<string, CFSM>; // Dynamic role type → CFSM template
 
+  /**
+   * CFSM registry for sub-protocol resolution.
+   * Maps: protocol name → role name → CFSM
+   * Used for protocol call stack semantics (ECOOP 2023, Definition 1)
+   */
+  private cfsmRegistry: Map<string, Map<string, CFSM>>;
+
   constructor(
     staticRoles: Map<string, CFSM>,
     dynamicRoles: Map<string, CFSM> = new Map(),
-    transport?: MessageTransport
+    transport?: MessageTransport,
+    cfsmRegistry?: Map<string, Map<string, CFSM>>
   ) {
     this.state = createDMstSimulationState(staticRoles);
     this.transport = transport || new InMemoryTransport();
     this.cfsms = staticRoles;
     this.dynamicCFSMs = dynamicRoles;
+    this.cfsmRegistry = cfsmRegistry || new Map();
+  }
+
+  /**
+   * Register a sub-protocol's CFSMs for call stack resolution.
+   *
+   * @param protocolName - Name of the sub-protocol
+   * @param roleCFSMs - Map of role name to CFSM for that protocol
+   */
+  registerSubProtocol(protocolName: string, roleCFSMs: Map<string, CFSM>): void {
+    this.cfsmRegistry.set(protocolName, roleCFSMs);
   }
 
   /**
@@ -195,62 +215,133 @@ export class DMstSimulator {
   /**
    * Step a single role.
    *
-   * TODO(P0): Epsilon auto-advance not implemented (Issue #3)
-   * Currently executes ONE transition and returns. Should loop through
-   * epsilon (tau) transitions until hitting an action or terminal state.
-   * See src/core/runtime/executor.ts:136-195 for reference implementation.
+   * Implements epsilon auto-advance and sub-protocol call stack semantics.
+   * Loops through tau transitions until hitting an action or terminal state.
+   * When reaching terminal state in a sub-protocol, pops the call stack
+   * and returns to parent protocol context.
    */
   private async stepRole(
     role: string,
     cfsm: CFSM,
     execState: ExecutionState
   ): Promise<ExecutionResult> {
-    // TODO(P0): Add while(true) loop here for epsilon auto-advance
-    // Current implementation only executes ONE transition
+    let messagesSent: Message[] = [];
+    let messagesReceived: Message[] = [];
+    let hadAction = false;
 
-    // Find available transitions from current state
-    const transitions = cfsm.transitions.filter(t => t.from === execState.currentState);
+    // Get the current effective CFSM (may be sub-protocol CFSM if in call stack)
+    const getCurrentCFSM = (): CFSM => {
+      if (execState.callStack.length > 0) {
+        // In a sub-protocol - look up the current sub-protocol CFSM
+        const frame = execState.callStack[execState.callStack.length - 1];
+        const subKey = `${role}_subprotocol_${frame.protocol}`;
+        return this.cfsms.get(subKey) || cfsm;
+      }
+      return cfsm;
+    };
 
-    if (transitions.length === 0) {
-      // No transitions - check if terminal
-      if (cfsm.terminalStates.includes(execState.currentState)) {
+    // Auto-advance through epsilon transitions until we hit an action or terminal
+    while (true) {
+      const currentCFSM = getCurrentCFSM();
+
+      // Check if terminal - handle sub-protocol completion
+      if (currentCFSM.terminalStates.includes(execState.currentState)) {
+        // If in sub-protocol, pop call stack and return to parent
+        if (execState.callStack.length > 0) {
+          const frame = execState.callStack.pop()!;
+
+          // Restore parent context
+          execState.currentState = frame.returnState;
+          execState.visitedStates.push(frame.returnState);
+
+          // Pop from simulator's protocol call stack
+          popProtocolCall(this.state.protocolCallStack);
+
+          // Clean up temporary sub-protocol CFSM
+          const subProtocolKey = `${role}_subprotocol_${frame.protocol}`;
+          this.cfsms.delete(subProtocolKey);
+
+          // Continue loop to execute in parent context
+          continue;
+        }
+
+        // Root protocol completed
         execState.completed = true;
-        return { success: true };
+        return {
+          success: true,
+          newState: execState.currentState,
+          messagesSent: messagesSent.length > 0 ? messagesSent : undefined,
+          messagesConsumed: messagesReceived.length > 0 ? messagesReceived : undefined,
+        };
       }
 
-      // Stuck state
-      execState.blocked = true;
-      return {
-        success: false,
-        error: {
-          type: 'no-transition',
-          message: `No transition from state ${execState.currentState}`,
-          state: execState.currentState,
-        },
-      };
-    }
+      // Find available transitions from current state
+      const transitions = currentCFSM.transitions.filter(
+        t => t.from === execState.currentState
+      );
 
-    // Try first transition (deterministic CFSM assumption)
-    const transition = transitions[0];
-    const action = transition.action;
-
-    // TODO(P0): If action is null (epsilon), should advance state and continue loop
-    // Currently falls through to executeAction
-
-    // Handle action
-    const result = await this.executeAction(role, action, execState);
-
-    if (result.success && result.newState) {
-      execState.currentState = result.newState;
-      execState.visitedStates.push(result.newState);
-
-      // Check if reached terminal
-      if (cfsm.terminalStates.includes(result.newState)) {
-        execState.completed = true;
+      if (transitions.length === 0) {
+        // No transitions and not terminal - stuck state
+        execState.blocked = true;
+        return {
+          success: false,
+          error: {
+            type: 'no-transition',
+            message: `No transition from state ${execState.currentState}`,
+            state: execState.currentState,
+          },
+        };
       }
-    }
 
-    return result;
+      // Try first transition
+      const transition = transitions[0];
+      const action = transition.action;
+
+      // Handle tau (epsilon) transition - auto-advance
+      if (!action || action.type === 'tau') {
+        execState.currentState = transition.to;
+        execState.visitedStates.push(transition.to);
+        continue;
+      }
+
+      // If we already executed an action and now hit another, return
+      if (hadAction) {
+        return {
+          success: true,
+          newState: execState.currentState,
+          messagesSent: messagesSent.length > 0 ? messagesSent : undefined,
+          messagesConsumed: messagesReceived.length > 0 ? messagesReceived : undefined,
+        };
+      }
+
+      // Execute the action
+      const result = await this.executeAction(role, action, execState);
+
+      if (!result.success) {
+        return result;
+      }
+
+      // Accumulate messages
+      if (result.messagesSent) {
+        messagesSent.push(...result.messagesSent);
+      }
+      if (result.messagesConsumed) {
+        messagesReceived.push(...result.messagesConsumed);
+      }
+
+      // Update state if action succeeded
+      if (result.newState) {
+        execState.currentState = result.newState;
+        execState.visitedStates.push(result.newState);
+      } else {
+        // Take transition to next state
+        execState.currentState = transition.to;
+        execState.visitedStates.push(transition.to);
+      }
+
+      hadAction = true;
+      // Continue loop to auto-advance through any subsequent tau transitions
+    }
   }
 
   /**
@@ -276,8 +367,8 @@ export class DMstSimulator {
         // Internal choice - just succeed (branch already determined)
         return { success: true };
 
-      case 'subprotocol-call':
-        return this.executeProtocolCall(role, action, execState);
+      case 'subprotocol':
+        return this.executeProtocolCall(role, action as SubProtocolCallAction, execState);
 
       default:
         return {
@@ -358,32 +449,142 @@ export class DMstSimulator {
   /**
    * Execute protocol call.
    *
-   * TODO(P0): Sub-protocol call stack NOT IMPLEMENTED (Issue #1) - CRITICAL GAP
+   * Implements sub-protocol call stack semantics from ECOOP 2023, Definition 1:
+   * p ↪→ x⟨q⟩ (caller p invokes protocol x with participants q)
    *
-   * This is currently a STUB that always succeeds. Protocols with sub-protocol
-   * invocations will fail silently at runtime.
-   *
-   * Required implementation:
+   * Algorithm:
    * 1. Look up sub-protocol CFSM from registry
    * 2. Map roles (formal params → actual args)
    * 3. Push CallStackFrame onto call stack
    * 4. Switch currentCFSM to sub-protocol CFSM
    * 5. Set currentState to sub-protocol initial state
    * 6. On sub-protocol completion, pop stack and restore parent context
-   *
-   * Reference implementation: src/core/runtime/executor.ts:403-460
-   *
-   * Impact: Code generation for protocols with composition (Pabble) will fail.
    */
   private async executeProtocolCall(
     role: string,
-    action: any, // SubProtocolCallAction
+    action: SubProtocolCallAction,
     execState: ExecutionState
   ): Promise<ExecutionResult> {
-    // TODO(P0): Implement protocol call stack semantics (Issue #1)
-    // For now, just succeed (placeholder)
-    console.warn(`[DMstSimulator] Sub-protocol call not implemented - stubbed: ${role}`);
-    return { success: true };
+    // Look up sub-protocol CFSMs from registry
+    const protocolCFSMs = this.cfsmRegistry.get(action.protocol);
+    if (!protocolCFSMs) {
+      return {
+        success: false,
+        error: {
+          type: 'protocol-violation',
+          message: `Sub-protocol '${action.protocol}' not found in registry`,
+          details: { protocol: action.protocol, role },
+        },
+      };
+    }
+
+    // Find the formal role corresponding to this actual role
+    // The roleMapping maps: formalRole → actualRole
+    const formalRole = Object.entries(action.roleMapping)
+      .find(([formal, actual]) => actual === role)?.[0];
+
+    if (!formalRole) {
+      return {
+        success: false,
+        error: {
+          type: 'protocol-violation',
+          message: `Role '${role}' not found in role mapping for sub-protocol '${action.protocol}'`,
+          details: { protocol: action.protocol, role, roleMapping: action.roleMapping },
+        },
+      };
+    }
+
+    // Get the CFSM for this role in the sub-protocol
+    const subProtocolCFSM = protocolCFSMs.get(formalRole);
+    if (!subProtocolCFSM) {
+      return {
+        success: false,
+        error: {
+          type: 'protocol-violation',
+          message: `CFSM for role '${formalRole}' not found in sub-protocol '${action.protocol}'`,
+          details: { protocol: action.protocol, formalRole, actualRole: role },
+        },
+      };
+    }
+
+    // Get the current CFSM for this role
+    const currentCFSM = this.getCFSMForRole(role);
+    if (!currentCFSM) {
+      return {
+        success: false,
+        error: {
+          type: 'protocol-violation',
+          message: `No CFSM found for role '${role}'`,
+        },
+      };
+    }
+
+    // Create call stack frame for parent context
+    const frame: ProtocolCallFrame = {
+      protocol: action.protocol,
+      caller: role,
+      participants: new Map(Object.entries(action.roleMapping)),
+      cfsms: new Map([[formalRole, currentCFSM]]),
+      states: new Map([[role, { ...execState }]]),
+      calledAt: Date.now(),
+    };
+
+    // Push frame onto protocol call stack
+    pushProtocolCall(this.state.protocolCallStack, frame);
+
+    // Switch execution context to sub-protocol
+    // Store the sub-protocol CFSM for this role temporarily
+    this.cfsms.set(`${role}_subprotocol_${action.protocol}`, subProtocolCFSM);
+
+    // Update execution state to start at sub-protocol initial state
+    execState.currentState = subProtocolCFSM.initialState;
+    execState.visitedStates.push(subProtocolCFSM.initialState);
+    execState.callStack.push({
+      parentCFSM: currentCFSM,
+      returnState: action.returnState,
+      roleMapping: action.roleMapping,
+      protocol: action.protocol,
+    });
+
+    return { success: true, newState: subProtocolCFSM.initialState };
+  }
+
+  /**
+   * Check and handle sub-protocol completion.
+   *
+   * When a role reaches a terminal state in a sub-protocol,
+   * pop the call stack and return to the parent protocol.
+   */
+  private handleSubProtocolCompletion(
+    role: string,
+    execState: ExecutionState,
+    cfsm: CFSM
+  ): boolean {
+    // Check if current state is terminal in the current context
+    if (!cfsm.terminalStates.includes(execState.currentState)) {
+      return false;
+    }
+
+    // If we have a call stack, pop and return to parent
+    if (execState.callStack.length > 0) {
+      const frame = execState.callStack.pop()!;
+
+      // Restore parent CFSM context
+      execState.currentState = frame.returnState;
+      execState.visitedStates.push(frame.returnState);
+
+      // Pop from simulator's protocol call stack
+      popProtocolCall(this.state.protocolCallStack);
+
+      // Clean up temporary sub-protocol CFSM
+      const subProtocolKey = `${role}_subprotocol_${frame.protocol}`;
+      this.cfsms.delete(subProtocolKey);
+
+      return true; // Handled - continue execution in parent context
+    }
+
+    // No call stack - truly at terminal state
+    return false;
   }
 
   /**
