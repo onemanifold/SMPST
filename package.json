@@ -48,9 +48,14 @@
     "build-cfg": "tsx src/cli/build-cfg.ts",
     "verify": "tsx src/cli/verify.ts",
     "simulate": "tsx src/cli/simulate.ts",
-    "smpst": "tsx src/cli/index.ts"
+    "smpst": "tsx src/cli/index.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
     "@sveltejs/vite-plugin-svelte": "^3.1.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.2.0",
