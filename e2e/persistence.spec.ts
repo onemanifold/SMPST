@@ -3,12 +3,13 @@ import { test, expect } from '@playwright/test';
 test.describe('Editor Content Persistence', () => {
   test.beforeEach(async ({ page }) => {
     // Clear localStorage before each test
-    await page.goto('/');
+    // Use empty string to respect baseURL path (/SMPST/)
+    await page.goto('');
     await page.evaluate(() => localStorage.clear());
   });
 
   test('should persist editor content on page refresh', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('');
 
     // Wait for editor to load
     await page.waitForSelector('.monaco-editor', { timeout: 10000 });
@@ -42,7 +43,7 @@ test.describe('Editor Content Persistence', () => {
       version: 1
     };
 
-    await page.goto('/');
+    await page.goto('');
     await page.evaluate((state) => {
       localStorage.setItem('smpst-persisted-state', JSON.stringify(state));
     }, oldState);
@@ -59,12 +60,13 @@ test.describe('Editor Content Persistence', () => {
 
 test.describe('Theme Persistence', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('');
     await page.evaluate(() => localStorage.clear());
   });
 
   test('should persist theme preference', async ({ page }) => {
-    await page.goto('/#/settings');
+    // Use hash route without leading / to respect baseURL path
+    await page.goto('#/settings');
 
     // Wait for settings page
     await page.waitForSelector('.settings-page', { timeout: 10000 });
@@ -89,7 +91,8 @@ test.describe('Theme Persistence', () => {
 
 test.describe('Routing', () => {
   test('should navigate to editor route', async ({ page }) => {
-    await page.goto('/#/');
+    // Use hash route without leading / to respect baseURL path (/SMPST/)
+    await page.goto('#/');
 
     // Should show editor page
     await page.waitForSelector('.editor-page, .code-tab', { timeout: 10000 });
@@ -97,18 +100,18 @@ test.describe('Routing', () => {
 
   test('should navigate to simulation route', async ({ page }) => {
     // First load a protocol so simulation is accessible
-    await page.goto('/');
+    await page.goto('');
     await page.waitForSelector('.monaco-editor', { timeout: 10000 });
 
     // Navigate to simulation
-    await page.goto('/#/simulation');
+    await page.goto('#/simulation');
 
     // Should show simulation page (or redirect message if no protocol)
     await page.waitForSelector('.simulation-page, .no-protocol', { timeout: 10000 });
   });
 
   test('should navigate to settings route', async ({ page }) => {
-    await page.goto('/#/settings');
+    await page.goto('#/settings');
 
     // Should show settings page
     await page.waitForSelector('.settings-page', { timeout: 10000 });
@@ -121,11 +124,11 @@ test.describe('Routing', () => {
 
   test('should redirect from simulation to editor when no protocol loaded', async ({ page }) => {
     // Clear any stored state
-    await page.goto('/');
+    await page.goto('');
     await page.evaluate(() => localStorage.clear());
 
     // Try to go to simulation directly
-    await page.goto('/#/simulation');
+    await page.goto('#/simulation');
 
     // Should show "no protocol" message or redirect to editor
     // Use .first() because both .editor-page and .code-tab may exist as nested elements
@@ -136,12 +139,12 @@ test.describe('Routing', () => {
   });
 
   test('should handle back button navigation', async ({ page }) => {
-    await page.goto('/#/');
+    await page.goto('#/');
     // Use .editor-page only to avoid ambiguity (both .editor-page and .code-tab exist as nested elements)
     await page.waitForSelector('.editor-page', { timeout: 10000 });
 
     // Navigate to settings
-    await page.goto('/#/settings');
+    await page.goto('#/settings');
     await page.waitForSelector('.settings-page', { timeout: 10000 });
 
     // Go back
@@ -154,7 +157,7 @@ test.describe('Routing', () => {
 
 test.describe('Tab Navigation', () => {
   test('should switch between CODE and SIMULATION tabs', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('');
     await page.waitForSelector('.tab-bar', { timeout: 10000 });
 
     // Click CODE tab

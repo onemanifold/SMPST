@@ -14,15 +14,28 @@ export default defineConfig({
   reporter: process.env.CI ? 'github' : 'list',
 
   use: {
-    baseURL: 'http://localhost:4173',
+    // Must match vite.config.ts base path for GitHub Pages deployment
+    baseURL: 'http://localhost:4173/SMPST/',
     trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    screenshot: 'on',
   },
 
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Launch args to prevent crashes with heavy Monaco Editor
+        launchOptions: {
+          args: [
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-web-security',
+          ],
+        },
+      },
     },
     // Add Firefox and WebKit for full coverage in CI
     ...(process.env.CI ? [
@@ -40,7 +53,8 @@ export default defineConfig({
   // Run dev server before tests
   webServer: {
     command: 'npm run preview',
-    url: 'http://localhost:4173',
+    // Must match vite.config.ts base path for GitHub Pages deployment
+    url: 'http://localhost:4173/SMPST/',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },
