@@ -77,6 +77,11 @@
     push('/');
   }
 
+  function setTheme(newTheme: 'dark' | 'light') {
+    appStore.setTheme(newTheme);
+    persistenceStore.updateUI({ theme: newTheme });
+  }
+
   const platformInfo = platform.getInfo();
 </script>
 
@@ -100,14 +105,14 @@
             <button
               class="theme-button"
               class:active={$isDarkMode}
-              on:click={() => appStore.setTheme('dark')}
+              on:click={() => setTheme('dark')}
             >
               Dark
             </button>
             <button
               class="theme-button"
               class:active={!$isDarkMode}
-              on:click={() => appStore.setTheme('light')}
+              on:click={() => setTheme('light')}
             >
               Light
             </button>

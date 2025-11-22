@@ -185,37 +185,37 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: #1e1e1e;
-    color: #ccc;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
   }
 
   .role-tabs {
     display: flex;
-    background: #2d2d2d;
-    border-bottom: 1px solid #1e1e1e;
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-bg-primary);
     overflow-x: auto;
   }
 
   .role-tab {
-    padding: 8px 16px;
+    padding: var(--spacing-2) var(--spacing-4);
     background: transparent;
-    color: #ccc;
+    color: var(--color-text-primary);
     border: none;
     border-bottom: 2px solid transparent;
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
     white-space: nowrap;
-    transition: all 0.2s;
+    transition: all var(--transition-normal);
   }
 
   .role-tab:hover {
-    background: #3d3d3d;
+    background: var(--color-bg-hover);
   }
 
   .role-tab.active {
-    color: #fff;
-    border-bottom-color: #4EC9B0;
+    color: var(--color-text-inverse);
+    border-bottom-color: var(--color-success);
   }
 
   .projection-content {
@@ -235,10 +235,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #1e1e1e;
-    color: #666;
+    background: var(--color-bg-primary);
+    color: var(--color-text-muted);
     font-style: italic;
-    z-index: 10;
+    z-index: var(--z-dropdown);
   }
 
   .editor-container {
