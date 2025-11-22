@@ -7,7 +7,7 @@
    */
   import Router from 'svelte-spa-router';
   import MainLayout from '$lib/components/layouts/MainLayout.svelte';
-  import { EditorPage, SimulationPage, SettingsPage } from '$lib/pages';
+  import { EditorPage, SimulationPage, SettingsPage, WebColaSimPage } from '$lib/pages';
   import { appStore } from '$lib/stores/app.store';
   import { initializePersistence, forceSaveAll } from '$lib/stores/persistence.integration';
   import { onMount, onDestroy } from 'svelte';
@@ -17,6 +17,7 @@
     '/': EditorPage,
     '/simulation': SimulationPage,
     '/simulation/*': SimulationPage,
+    '/webcola-sim': WebColaSimPage,
     '/settings': SettingsPage,
     // Catch-all redirect to home
     '*': EditorPage,
