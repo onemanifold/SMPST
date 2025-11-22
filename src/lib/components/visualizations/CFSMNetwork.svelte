@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { projectionData, parseStatus } from '$lib/stores/editor';
   import { currentCFG, executionState } from '$lib/stores/simulation';
   import * as d3 from 'd3';
@@ -81,21 +81,13 @@
     return false;
   }
 
-  // Check if a state has been visited
-  function isStateVisited(stateId: string): boolean {
-    if (!$executionState) return false;
-    return $executionState.visitedNodes.some(nodeId => nodeId.includes(stateId));
-  }
+  // Check if currently AT a state (using tracked CFSM states)
+  function isStateAtCurrent(projection: typeof $projectionData[0], stateId: string): boolean {
+    if (!$executionState || !$executionState.cfsmStates) return false;
 
-  // Check if currently AT a state (not executing FROM it)
-  function isStateAtCurrent(stateId: string): boolean {
-    if (!$executionState) return false;
-
-    const currentNodeId = typeof $executionState.currentNode === 'string'
-      ? $executionState.currentNode
-      : $executionState.currentNode[0];
-
-    return currentNodeId.includes(stateId);
+    // Get the current CFSM state for this role from the tracked states
+    const currentState = $executionState.cfsmStates.get(projection.role);
+    return currentState === stateId;
   }
 
   // Check if state is the SOURCE of an active transition
@@ -426,8 +418,7 @@
 
       const isInitial = i === 0;
       const isFinal = i === projection.states.length - 1;
-      const isVisited = isStateVisited(state);
-      const isAtState = isStateAtCurrent(state);
+      const isAtState = isStateAtCurrent(projection, state);
       const isSource = isStateSource(projection, state);
       const isTarget = isStateTarget(projection, state);
 
@@ -446,11 +437,6 @@
         fillColor = '#2d5f5f';
         strokeColor = '#4EC9B0';
         strokeWidth = 3;
-      } else if (isVisited) {
-        // Visited but not current
-        fillColor = '#2d4d3d';
-        strokeColor = '#4EC9B0';
-        strokeWidth = 2;
       } else if (isInitial) {
         fillColor = '#2d5f2d';
         strokeColor = '#90ee90';
@@ -619,12 +605,22 @@
     }
   }
 
-  // Re-render on data change, execution state change, or window resize
-  $: if ($projectionData || $executionState) {
-    renderCFSMNetwork();
+  // Re-render on data change or execution state change
+  // Use tick() to ensure DOM elements are bound before rendering
+  // Use block syntax to ensure both stores are tracked as dependencies
+  $: {
+    $projectionData;
+    $executionState;
+    tick().then(() => {
+      if (svgElement && containerElement) {
+        renderCFSMNetwork();
+      }
+    });
   }
 
-  onMount(() => {
+  onMount(async () => {
+    // Wait for next tick to ensure DOM is ready
+    await tick();
     renderCFSMNetwork();
     window.addEventListener('resize', renderCFSMNetwork);
   });

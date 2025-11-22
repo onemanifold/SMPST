@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { projectionData, parseStatus } from '$lib/stores/editor';
   import * as monaco from 'monaco-editor';
 
@@ -7,35 +7,52 @@
   let editorContainer: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 
-  // Auto-select first role when projection data updates
-  // Also reset if current role doesn't exist in new projection data
-  $: if ($projectionData.length > 0) {
-    const roleExists = $projectionData.some(p => p.role === selectedRole);
-    if (!selectedRole || !roleExists) {
-      selectedRole = $projectionData[0].role;
-    }
-  }
+  // Derived state - computed in single reactive block to ensure deterministic order
+  let currentProjection: typeof $projectionData[0] | undefined;
+  let localScribble = '';
 
-  // Get serialized local protocol from projection data
-  $: currentProjection = $projectionData.find(p => p.role === selectedRole);
-  $: localScribble = currentProjection?.localProtocol || '';
-
-  // Update editor content when selected role changes
-  $: if (editor && localScribble !== editor.getValue()) {
-    try {
-      const currentPosition = editor.getPosition();
-      editor.setValue(localScribble);
-      if (currentPosition) {
-        editor.setPosition(currentPosition);
+  // CORE FIX: Single atomic reactive block that handles ALL data derivation and updates
+  // This ensures operations happen in guaranteed sequential order, eliminating race conditions
+  $: {
+    if ($projectionData.length > 0) {
+      // Step 1: Ensure selectedRole is valid (auto-select first role if needed)
+      const roleExists = $projectionData.some(p => p.role === selectedRole);
+      if (!selectedRole || !roleExists) {
+        selectedRole = $projectionData[0].role;
       }
-    } catch (e) {
-      console.error('Failed to update editor:', e);
+
+      // Step 2: Compute current projection (selectedRole is now guaranteed to be valid)
+      currentProjection = $projectionData.find(p => p.role === selectedRole);
+      localScribble = currentProjection?.localProtocol || '';
+
+      // Step 3: Update editor content (only if editor exists and content is different)
+      if (editor && localScribble) {
+        const currentValue = editor.getValue();
+        if (localScribble !== currentValue) {
+          try {
+            const currentPosition = editor.getPosition();
+            editor.setValue(localScribble);
+            if (currentPosition) {
+              editor.setPosition(currentPosition);
+            }
+          } catch (e) {
+            console.error('Failed to update editor:', e);
+          }
+        }
+      }
+    } else {
+      // No projection data - reset state
+      currentProjection = undefined;
+      localScribble = '';
+      selectedRole = '';
+      if (editor) {
+        editor.setValue('');
+      }
     }
   }
 
-  onMount(() => {
-    if (!editorContainer) return;
-
+  // Function to set up Monaco environment and register language
+  function setupMonaco() {
     // Set up Monaco environment (needed for worker loading)
     (window as any).MonacoEnvironment = (window as any).MonacoEnvironment || {
       getWorkerUrl: function (_moduleId: string, label: string) {
@@ -97,34 +114,45 @@
         }
       });
     }
+  }
 
-    // Small delay to ensure container is fully rendered
-    setTimeout(() => {
-      if (!editorContainer) return;
+  // CORE FIX: Create editor only when container is bound AND we have data ready
+  // Using tick() ensures all reactive computations (including localScribble) are complete
+  $: if (editorContainer && !editor && $projectionData.length > 0) {
+    // Wait for next tick to ensure localScribble is fully computed in reactive block above
+    tick().then(() => {
+      // Double-check editor wasn't created during tick
+      if (!editor && localScribble) {
+        setupMonaco();
 
-      try {
-        // Create read-only Monaco editor
-        editor = monaco.editor.create(editorContainer, {
-          value: localScribble,
-          language: 'scribble',
-          theme: 'scribble-dark',
-          automaticLayout: true,
-          minimap: { enabled: false },
-          fontSize: 13,
-          lineNumbers: 'on',
-          renderWhitespace: 'selection',
-          scrollBeyondLastLine: false,
-          readOnly: true,
-          domReadOnly: true,
-          contextmenu: false,
-          folding: false,
-          lineDecorationsWidth: 0,
-          lineNumbersMinChars: 3,
-        });
-      } catch (e) {
-        console.error('Failed to create Monaco editor:', e);
+        try {
+          // Create read-only Monaco editor with computed localScribble value
+          editor = monaco.editor.create(editorContainer, {
+            value: localScribble,
+            language: 'scribble',
+            theme: 'scribble-dark',
+            automaticLayout: true,
+            minimap: { enabled: false },
+            fontSize: 13,
+            lineNumbers: 'on',
+            renderWhitespace: 'selection',
+            scrollBeyondLastLine: false,
+            readOnly: true,
+            domReadOnly: true,
+            contextmenu: false,
+            folding: false,
+            lineDecorationsWidth: 0,
+            lineNumbersMinChars: 3,
+          });
+        } catch (e) {
+          console.error('Failed to create Monaco editor:', e);
+        }
       }
-    }, 100);
+    });
+  }
+
+  onMount(() => {
+    setupMonaco();
   });
 
   onDestroy(() => {
@@ -133,11 +161,8 @@
 </script>
 
 <div class="local-projection-panel">
-  {#if $parseStatus !== 'success' || $projectionData.length === 0}
-    <div class="placeholder">
-      <p>Parse a protocol to see local projections</p>
-    </div>
-  {:else}
+  <!-- Role tabs - only shown when we have projection data -->
+  {#if $projectionData.length > 0}
     <div class="role-tabs">
       {#each $projectionData as projection}
         <button
@@ -149,11 +174,20 @@
         </button>
       {/each}
     </div>
-
-    <div class="projection-content">
-      <div class="editor-container" bind:this={editorContainer}></div>
-    </div>
   {/if}
+
+  <!-- Editor container - ALWAYS rendered to prevent recreation -->
+  <div class="projection-content">
+    <!-- Placeholder overlay - shown when no data -->
+    {#if $parseStatus !== 'success' || $projectionData.length === 0}
+      <div class="placeholder-overlay">
+        <p>Parse a protocol to see local projections</p>
+      </div>
+    {/if}
+
+    <!-- Monaco editor container - NEVER destroyed -->
+    <div class="editor-container" bind:this={editorContainer}></div>
+  </div>
 </div>
 
 <style>
@@ -163,15 +197,6 @@
     flex-direction: column;
     background: #1e1e1e;
     color: #ccc;
-  }
-
-  .placeholder {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #666;
-    font-style: italic;
   }
 
   .role-tabs {
@@ -208,6 +233,22 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    position: relative;
+  }
+
+  .placeholder-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1e1e1e;
+    color: #666;
+    font-style: italic;
+    z-index: 10;
   }
 
   .editor-container {

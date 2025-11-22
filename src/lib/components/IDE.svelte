@@ -32,11 +32,12 @@
     <Sidebar bind:collapsed={sidebarCollapsed} />
 
     <main class="tab-content">
-      {#if currentTab === 'code'}
+      <div class="tab-panel" class:hidden={currentTab !== 'code'}>
         <CodeTab />
-      {:else}
+      </div>
+      <div class="tab-panel" class:hidden={currentTab !== 'simulation'}>
         <SimulationTab />
-      {/if}
+      </div>
     </main>
   </div>
 </div>
@@ -85,5 +86,20 @@
   .tab-content {
     flex: 1;
     overflow: hidden;
+    position: relative;
+  }
+
+  .tab-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+  }
+
+  .tab-panel.hidden {
+    visibility: hidden;
+    pointer-events: none;
   }
 </style>
