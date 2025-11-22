@@ -63,6 +63,14 @@ export const ROUTES: Record<string, RouteDefinition> = {
     icon: 'settings',
     showInNav: false,
   },
+  WEBCOLA_SIM: {
+    path: '/webcola-sim',
+    name: 'webcola-sim',
+    title: 'WebCola Simulation',
+    icon: 'graph',
+    requiresProtocol: false,
+    showInNav: true,
+  },
 };
 
 // ============================================================================
