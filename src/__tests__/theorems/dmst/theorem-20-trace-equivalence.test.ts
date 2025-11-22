@@ -320,26 +320,49 @@ describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)',
    *   Shows interleaving of Main and SubTask protocols.
    */
   describe('Proof Obligation 2: Protocol Calls with Combining Operator', () => {
-    it.skip('proves: simple protocol call trace equivalence', () => {
-      // TODO: Test basic protocol call mechanism
+    it('proves: simple protocol call trace equivalence', () => {
+      // Test basic protocol call mechanism
+      // Protocol call: A calls Sub(B) followed by A -> B: AfterCall()
+      const protocol = `
+        protocol Main(role A, role B) {
+          A calls Sub(B);
+          A -> B: AfterCall();
+        }
+      `;
 
-      // const mainProtocol = `
-      //   protocol Main(role A, role B) {
-      //     A calls Sub(B);
-      //     A -> B: AfterCall();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const result = projectAll(cfg);
 
-      // const subProtocol = `
-      //   protocol Sub(role x) {
-      //     x -> A: SubMessage();
-      //   }
-      // `;
+      // Extract global trace
+      const globalTrace = extractGlobalTrace(cfg);
 
-      // Global trace should show: call(Sub), x→A:SubMessage, A→B:AfterCall
-      // Local traces should compose to match
+      // Global trace should include protocol-call and message
+      expect(globalTrace.some(e => e.type === 'protocol-call')).toBe(true);
+      expect(globalTrace.some(e => e.type === 'message' && e.label === 'AfterCall')).toBe(true);
 
-      expect(true).toBe(true); // Placeholder
+      // Extract local traces
+      const localTraceA = extractLocalTrace(result.cfsms.get('A')!);
+      const localTraceB = extractLocalTrace(result.cfsms.get('B')!);
+
+      // Both local traces should have consistent protocol-call events
+      const callEventA = localTraceA.find(e => e.type === 'protocol-call');
+      const callEventB = localTraceB.find(e => e.type === 'protocol-call');
+
+      expect(callEventA).toBeDefined();
+      expect(callEventB).toBeDefined();
+
+      // Both should report A as the caller (not the local role)
+      if (callEventA?.type === 'protocol-call' && callEventB?.type === 'protocol-call') {
+        expect(callEventA.caller).toBe('A');
+        expect(callEventB.caller).toBe('A'); // B also sees A as caller
+        expect(callEventA.protocol).toBe('Sub');
+        expect(callEventB.protocol).toBe('Sub');
+      }
+
+      // Verify trace equivalence
+      const traceResult = verifyTraceEquivalence(cfg, result.cfsms);
+      expect(traceResult.isEquivalent).toBe(true);
     });
 
     it.skip('proves: nested protocol calls trace equivalence', () => {

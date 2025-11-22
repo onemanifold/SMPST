@@ -189,6 +189,7 @@ export function projectProtocolCall(
       type: 'subprotocol-call',
       protocol,
       participants,
+      caller, // Preserve who initiated the call
     };
   }
 
@@ -198,6 +199,7 @@ export function projectProtocolCall(
       type: 'subprotocol-call',
       protocol,
       participants,
+      caller, // Preserve who initiated the call
     };
   }
 

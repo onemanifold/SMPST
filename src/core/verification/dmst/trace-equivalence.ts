@@ -245,7 +245,7 @@ export function extractLocalTrace(cfsm: CFSM): TraceEvent[] {
         case 'subprotocol-call':
           trace.push({
             type: 'protocol-call',
-            caller: cfsm.role,
+            caller: (action as any).caller || cfsm.role, // Use actual caller if available
             protocol: action.protocol,
             participants: action.participants,
           });
@@ -645,7 +645,7 @@ export function extractAllLocalTraces(
         case 'subprotocol-call':
           traceCopy.push({
             type: 'protocol-call',
-            caller: cfsm.role,
+            caller: (action as any).caller || cfsm.role, // Use actual caller if available
             protocol: action.protocol,
             participants: action.participants,
           });
