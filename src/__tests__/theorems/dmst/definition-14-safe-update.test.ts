@@ -124,59 +124,90 @@ describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', ()
    *   → SAFE ✓
    */
   describe('Proof Obligation 1: Independent Action Updates', () => {
-    it.skip('proves: adding independent action is safe', () => {
-      // TODO: Implement once safe update checker is ready
+    it('proves: adding independent action is safe', () => {
+      // Test the conceptual safe update: combining disjoint protocols
+      // The "update body" is modeled as a separate protocol that gets combined
+      //
+      // Base protocol: A -> B: Work(); B -> A: Done();
+      // Update body: A -> C: NewWork(); C -> A: NewDone();
+      // Combined via ♦ operator should be safe (disjoint channels)
 
-      // const protocol = `
-      //   protocol SafeUpdate(role A, role B, role C) {
-      //     rec Loop {
-      //       A -> B: Work();
-      //       B -> A: Done();
-      //       choice at A {
-      //         continue Loop with {
-      //           A -> C: NewWork();
-      //           C -> A: NewDone();
-      //         };
-      //       } or {
-      //         A -> B: Stop();
-      //       }
-      //     }
-      //   }
-      // `;
+      const baseProtocol = `
+        protocol Base(role A, role B) {
+          A -> B: Work();
+          B -> A: Done();
+        }
+      `;
 
-      // const ast = parse(protocol);
-      // const cfg = buildCFG(ast.declarations[0]);
+      const updateProtocol = `
+        protocol Update(role A, role C) {
+          A -> C: NewWork();
+          C -> A: NewDone();
+        }
+      `;
 
-      // // Extract updatable recursion
-      // const recNode = findRecursionNode(cfg);
-      // const updateBody = extractUpdateBody(recNode);
+      const baseAst = parse(baseProtocol);
+      const baseCfg = buildCFG(baseAst.declarations[0] as GlobalProtocolDeclaration);
 
-      // // Compute 1-unfolding
-      // const oneUnfolding = compute1Unfolding(recNode, updateBody);
+      const updateAst = parse(updateProtocol);
+      const updateCfg = buildCFG(updateAst.declarations[0] as GlobalProtocolDeclaration);
 
-      // // Definition 14: Check if 1-unfolding is safe
-      // const isSafe = checkSafeUpdate(oneUnfolding);
-      // expect(isSafe).toBe(true);
-      // // ✅ PROOF: Independent action update is safe
+      // Check channel disjointness: A-B and A-C are disjoint
+      const disjointness = checkChannelDisjointness(baseCfg, updateCfg);
+      expect(disjointness.isDisjoint).toBe(true);
 
-      // // Verify well-formedness of 1-unfolding
-      // const wf = verifyProtocol(oneUnfolding);
-      // expect(wf.connectedness.isConnected).toBe(true);
-      // expect(wf.choiceDeterminism.isDeterministic).toBe(true);
-      // expect(wf.raceConditions.hasRaces).toBe(false);
-      // expect(wf.progress.canProgress).toBe(true);
-      // // ✅ PROOF: 1-unfolding is well-formed → safe update
+      // Combine protocols using ♦ operator
+      const combined = combineProtocols(baseCfg, updateCfg);
+      expect(combined.success).toBe(true);
 
-      expect(true).toBe(true); // Placeholder
+      // Verify combined protocol is well-formed
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        expect(wf.structural.valid).toBe(true);
+      }
+
+      // By Definition 14: since channels are disjoint and both protocols
+      // are well-formed, the 1-unfolding (combining) is safe
     });
 
-    it.skip('proves: adding parallel independent action is safe', () => {
-      // TODO: Test update that adds action in parallel with existing actions
+    it('proves: adding parallel independent action is safe', () => {
+      // Test adding parallel independent actions
+      // Protocol 1: A -> D
+      // Protocol 2: B -> C
+      // Both protocols can run in parallel (disjoint channels)
 
-      // Update: continue Loop with { par { A -> D: X(); } and { B -> C: Y(); } }
-      // Should be safe if channels are disjoint
+      const protocol1 = `
+        protocol P1(role A, role D) {
+          A -> D: X();
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      const protocol2 = `
+        protocol P2(role B, role C) {
+          B -> C: Y();
+        }
+      `;
+
+      const ast1 = parse(protocol1);
+      const cfg1 = buildCFG(ast1.declarations[0] as GlobalProtocolDeclaration);
+
+      const ast2 = parse(protocol2);
+      const cfg2 = buildCFG(ast2.declarations[0] as GlobalProtocolDeclaration);
+
+      // Check channel disjointness
+      const disjointness = checkChannelDisjointness(cfg1, cfg2);
+      expect(disjointness.isDisjoint).toBe(true);
+
+      // Combine protocols (parallel composition)
+      const combined = combineProtocols(cfg1, cfg2);
+      expect(combined.success).toBe(true);
+
+      // Verify combined protocol is well-formed
+      if (combined.combined) {
+        const wf = verifyProtocol(combined.combined);
+        expect(wf.structural.valid).toBe(true);
+        expect(wf.raceConditions.hasRaces).toBe(false);
+      }
     });
   });
 
