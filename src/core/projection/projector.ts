@@ -28,6 +28,12 @@ import type {
   ForkNode,
   JoinNode,
   RecursiveNode,
+  // DMst action types (ECOOP 2023)
+  CreateParticipantsAction,
+  InvitationAction,
+  DynamicRoleDeclarationAction,
+  UpdatableRecursionAction,
+  ProtocolCallAction,
 } from '../cfg/types';
 import {
   isInitialNode,
@@ -52,6 +58,12 @@ import type {
   ProjectionResult,
   ProjectionError,
 } from './types';
+// DMst Projection helpers (ECOOP 2023 - Castro-Perez & Yoshida)
+import {
+  projectParticipantCreation,
+  projectInvitation,
+  projectProtocolCall,
+} from './dmst-projector';
 
 // ============================================================================
 // Main Projection Functions
@@ -525,6 +537,119 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
               lastStateId, // Keep same last state (epsilon)
             });
           }
+        } else if (action.kind === 'create-participants') {
+          // ================================================================
+          // DMst: CreateParticipants Action (ECOOP 2023, Definition 12)
+          // [[p creates r]]_p = !create(r)    (creator sends)
+          // [[p creates r]]_r = ?create from p (created receives)
+          // [[p creates r]]_q = ε             (not involved)
+          // ================================================================
+          const createAction = action as CreateParticipantsAction;
+          const dmstAction = projectParticipantCreation(
+            createAction.creator,
+            createAction.roleName,
+            createAction.instanceName,
+            role
+          );
+
+          if (dmstAction) {
+            // Role is involved in creation
+            const newState = createState(`create_${createAction.roleName}`);
+            cfgNodeToState.set(targetNode.id, newState.id);
+            createTransition(lastStateId, newState.id, dmstAction);
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId: newState.id,
+            });
+          } else {
+            // Role not involved - tau-elimination
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId,
+            });
+          }
+        } else if (action.kind === 'invitation') {
+          // ================================================================
+          // DMst: Invitation Action (ECOOP 2023, Definition 12)
+          // [[p invites q]]_p = !invite to q
+          // [[p invites q]]_q = ?invite from p
+          // [[p invites q]]_r = ε (not involved)
+          // ================================================================
+          const inviteAction = action as InvitationAction;
+          const dmstAction = projectInvitation(
+            inviteAction.inviter,
+            inviteAction.invitee,
+            role
+          );
+
+          if (dmstAction) {
+            // Role is involved in invitation
+            const newState = createState(`invite_${inviteAction.invitee}`);
+            cfgNodeToState.set(targetNode.id, newState.id);
+            createTransition(lastStateId, newState.id, dmstAction);
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId: newState.id,
+            });
+          } else {
+            // Role not involved - tau-elimination
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId,
+            });
+          }
+        } else if (action.kind === 'protocol-call') {
+          // ================================================================
+          // DMst: Protocol Call Action (ECOOP 2023, Definition 1)
+          // [[p calls Proto(q)]]_p = !call(Proto, q) (caller initiates)
+          // [[p calls Proto(q)]]_r where r ∈ q = subprotocol-call
+          // [[p calls Proto(q)]]_r where r ∉ {p} ∪ q = ε (not involved)
+          // ================================================================
+          const callAction = action as ProtocolCallAction;
+          const dmstAction = projectProtocolCall(
+            callAction.caller,
+            callAction.protocol,
+            callAction.roleArguments,
+            role
+          );
+
+          if (dmstAction) {
+            // Role is involved in protocol call
+            const newState = createState(`call_${callAction.protocol}`);
+            cfgNodeToState.set(targetNode.id, newState.id);
+            createTransition(lastStateId, newState.id, dmstAction);
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId: newState.id,
+            });
+          } else {
+            // Role not involved - tau-elimination
+            queue.push({
+              cfgNodeId: targetNode.id,
+              lastStateId,
+            });
+          }
+        } else if (action.kind === 'dynamic-role-declaration') {
+          // ================================================================
+          // DMst: Dynamic Role Declaration (ECOOP 2023, Definition 12)
+          // [[new role r]]_r = ε (declaration is transparent)
+          // Declaration doesn't produce CFSM action, just tau-elimination
+          // ================================================================
+          queue.push({
+            cfgNodeId: targetNode.id,
+            lastStateId, // tau-elimination
+          });
+        } else if (action.kind === 'updatable-recursion') {
+          // ================================================================
+          // DMst: Updatable Recursion (ECOOP 2023, Definition 13)
+          // [[continue X with { G }]]_r = project G for r, then continue X
+          // The update body is already in the CFG as a separate subgraph
+          // Projection handles it via normal CFG traversal
+          // ================================================================
+          queue.push({
+            cfgNodeId: targetNode.id,
+            lastStateId, // Continue traversal through update body
+          });
         } else {
           // RULE 2: Role NOT involved in message (tau-elimination)
           // (p→q:⟨U⟩.G) ↾ r = G↾r if r≠p, r≠q
@@ -754,9 +879,34 @@ export function projectAll(cfg: CFG): ProjectionResult {
   const cfsms = new Map<string, CFSM>();
   const errors: ProjectionError[] = [];
 
-  for (const role of cfg.roles) {
+  // ============================================================================
+  // DMst Extension: Collect dynamic roles (ECOOP 2023, Definition 12)
+  // Dynamic roles declared with 'new role X' need to be projected too
+  // ============================================================================
+  const dynamicRoles: string[] = [];
+  for (const node of cfg.nodes) {
+    if (
+      node.type === 'action' &&
+      (node as ActionNode).action.kind === 'dynamic-role-declaration'
+    ) {
+      const declAction = (node as ActionNode).action as DynamicRoleDeclarationAction;
+      if (!cfg.roles.includes(declAction.roleName) && !dynamicRoles.includes(declAction.roleName)) {
+        dynamicRoles.push(declAction.roleName);
+      }
+    }
+  }
+
+  // All roles to project: static roles + dynamic roles
+  const allRoles = [...cfg.roles, ...dynamicRoles];
+
+  for (const role of allRoles) {
     try {
-      const cfsm = project(cfg, role);
+      // For dynamic roles, temporarily add them to cfg.roles for projection
+      const projectionCfg = dynamicRoles.includes(role)
+        ? { ...cfg, roles: [...cfg.roles, role] }
+        : cfg;
+
+      const cfsm = project(projectionCfg, role);
       // CFSM is now pure LTS - no CFG pollution
       cfsms.set(role, cfsm);
     } catch (error) {
@@ -770,7 +920,7 @@ export function projectAll(cfg: CFG): ProjectionResult {
 
   return {
     cfsms,
-    roles: cfg.roles,
+    roles: allRoles, // Include dynamic roles in result
     errors,
   };
 }
