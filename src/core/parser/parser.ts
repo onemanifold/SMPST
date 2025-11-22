@@ -264,14 +264,25 @@ export class ScribbleParser extends CstParser {
       { ALT: () => this.SUBRULE(this.choice) },
       { ALT: () => this.SUBRULE(this.parallel) },
       { ALT: () => this.SUBRULE(this.recursion) },
+      // DMst - Dynamically Updatable MPST (Castro-Perez & Yoshida ECOOP 2023)
+      // IMPORTANT: updatableRecursion MUST come BEFORE continueStatement
+      // Both start with 'continue Identifier', but updatableRecursion has 'with { ... }'
+      // Use GATE with lookahead to distinguish: LA(1)=Continue, LA(2)=Identifier, LA(3)=With
+      {
+        GATE: () => {
+          const firstToken = this.LA(1);
+          const thirdToken = this.LA(3);
+          return firstToken.tokenType === tokens.Continue &&
+                 thirdToken.tokenType === tokens.With;
+        },
+        ALT: () => this.SUBRULE(this.updatableRecursion)
+      },
       { ALT: () => this.SUBRULE(this.continueStatement) },
       { ALT: () => this.SUBRULE(this.doStatement) },
-      // DMst - Dynamically Updatable MPST (Castro-Perez & Yoshida ECOOP 2023)
       { ALT: () => this.SUBRULE(this.dynamicRoleDeclaration) },
       { ALT: () => this.SUBRULE(this.protocolCall) },
       { ALT: () => this.SUBRULE(this.createParticipants) },
       { ALT: () => this.SUBRULE(this.invitation) },
-      { ALT: () => this.SUBRULE(this.updatableRecursion) },
       // TODO: Re-enable Exception Handling (Phase 4)
       // DISABLED: Not yet needed; enable after core projection complete
       // Requires: Exception propagation semantics, projection rules

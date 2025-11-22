@@ -94,15 +94,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-
-// NOTE: These imports will fail until we implement DMst extensions
-// This is intentional - tests guide implementation (TDD)
-// import { parse } from '../../../core/parser/parser';
-// import { buildCFG } from '../../../core/cfg/builder';
-// import { verifyProtocol } from '../../../core/verification/verifier';
-// import { detectDeadlock } from '../../../core/verification/verifier';
-// import { checkDMstWellFormedness } from '../../../core/verification/dmst/well-formedness';
-// import { buildStateGraph } from '../../../core/verification/dmst/state-graph';
+import { parse } from '../../../core/parser/parser';
+import { buildCFG } from '../../../core/cfg/builder';
+import { verifyProtocol, detectDeadlock } from '../../../core/verification/verifier';
+import type { GlobalProtocolDeclaration } from '../../../core/ast/types';
 
 describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', () => {
   /**
@@ -116,42 +111,56 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
    *   Verify that existing well-formedness checks extend to DMst syntax.
    */
   describe('Proof Obligation 1: Static DMst Protocols', () => {
-    it.skip('proves: simple DMst protocol is deadlock-free', () => {
-      // TODO: Test basic protocol using DMst syntax but no dynamic features
+    it('proves: simple DMst protocol is deadlock-free', () => {
+      const protocol = `
+        protocol SimpleDMst(role A, role B, role C) {
+          A -> B: Request();
+          B -> C: Forward();
+          C -> B: Response();
+          B -> A: Reply();
+        }
+      `;
 
-      // const protocol = `
-      //   protocol SimpleDMst(role A, role B, role C) {
-      //     A -> B: Request();
-      //     B -> C: Forward();
-      //     C -> B: Response();
-      //     B -> A: Reply();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // const ast = parse(protocol);
-      // const cfg = buildCFG(ast.declarations[0]);
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.connectedness.isConnected).toBe(true);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false);
 
-      // // Check well-formedness
-      // const wf = verifyProtocol(cfg);
-      // expect(wf.connectedness.isConnected).toBe(true);
-      // expect(wf.choiceDeterminism.isDeterministic).toBe(true);
-      // expect(wf.raceConditions.hasRaces).toBe(false);
-
-      // // Theorem 23: Well-formed → Deadlock-free
-      // expect(wf.progress.canProgress).toBe(true);
-      // const deadlock = detectDeadlock(cfg);
-      // expect(deadlock.hasDeadlock).toBe(false);
-      // // ✅ PROOF: Static DMst protocol is deadlock-free
-
-      expect(true).toBe(true); // Placeholder
+      // Theorem 23: Well-formed → Deadlock-free
+      expect(wf.progress.canProgress).toBe(true);
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Static DMst protocol is deadlock-free
     });
 
-    it.skip('proves: DMst choice protocol is deadlock-free', () => {
-      // TODO: Test choice construct in DMst
+    it('proves: DMst choice protocol is deadlock-free', () => {
+      const protocol = `
+        protocol ChoiceDMst(role Client, role Server) {
+          choice at Client {
+            Client -> Server: Login();
+            Server -> Client: LoginOK();
+          } or {
+            Client -> Server: Register();
+            Server -> Client: RegOK();
+          }
+        }
+      `;
 
-      // Choice with DMst syntax should maintain deadlock-freedom
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false);
+
+      // Theorem 23: Well-formed → Deadlock-free
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
     });
   });
 

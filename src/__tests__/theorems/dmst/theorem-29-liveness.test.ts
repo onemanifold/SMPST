@@ -95,16 +95,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
-
-// NOTE: These imports will fail until we implement DMst extensions
-// This is intentional - tests guide implementation (TDD)
-// import { parse } from '../../../core/parser/parser';
-// import { buildCFG } from '../../../core/cfg/builder';
-// import { projectAll } from '../../../core/projection/projector';
-// import { extractSendReceivePairs } from '../../../core/verification/liveness/message-matching';
-// import { checkOrphanFreedom } from '../../../core/verification/liveness/orphan-freedom';
-// import { buildParticipantStateGraphs } from '../../../core/verification/liveness/participant-progress';
-// import { simulateFIFODelivery } from '../../../core/verification/liveness/fifo-simulation';
+import { parse } from '../../../core/parser/parser';
+import { buildCFG } from '../../../core/cfg/builder';
+import { projectAll } from '../../../core/projection/projector';
+import {
+  extractSendReceivePairs,
+  checkOrphanFreedom,
+  buildParticipantStateGraphs,
+  checkParticipantProgress,
+  simulateFIFODelivery,
+  verifyLiveness,
+} from '../../../core/verification/dmst/liveness';
+import type { GlobalProtocolDeclaration } from '../../../core/ast/types';
 
 describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
   /**
@@ -121,30 +123,26 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
    *   Extract all send/receive pairs and verify matching.
    */
   describe('Proof Obligation 1: Orphan Message Freedom', () => {
-    it.skip('proves: simple protocol has no orphan messages', () => {
-      // TODO: Test basic message send/receive matching
+    it('proves: simple protocol has no orphan messages', () => {
+      const protocol = `
+        protocol Simple(role A, role B) {
+          A -> B: Request();
+          B -> A: Response();
+        }
+      `;
 
-      // const protocol = `
-      //   protocol Simple(role A, role B) {
-      //     A -> B: Request();
-      //     B -> A: Response();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
 
-      // const ast = parse(protocol);
-      // const cfg = buildCFG(ast.declarations[0]);
-      // const projections = projectAll(cfg);
+      // Extract send/receive pairs
+      const pairs = extractSendReceivePairs(projectionResult.cfsms);
 
-      // // Extract send/receive pairs
-      // const pairs = extractSendReceivePairs(projections);
-
-      // // Verify every send has matching receive
-      // const orphans = checkOrphanFreedom(pairs);
-      // expect(orphans.hasOrphans).toBe(false);
-      // expect(orphans.orphanedMessages).toHaveLength(0);
-      // // ✅ PROOF: No orphan messages
-
-      expect(true).toBe(true); // Placeholder
+      // Verify every send has matching receive
+      const orphans = checkOrphanFreedom(pairs);
+      expect(orphans.hasOrphans).toBe(false);
+      expect(orphans.orphanedMessages).toHaveLength(0);
+      // ✅ PROOF: No orphan messages
     });
 
     it.skip('proves: dynamic participant messages are not orphaned', () => {
@@ -223,32 +221,25 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
    *   can progress or terminate.
    */
   describe('Proof Obligation 2: No Stuck Participants', () => {
-    it.skip('proves: static participants never get stuck', () => {
-      // TODO: Test all static participants can progress
+    it('proves: static participants never get stuck', () => {
+      const protocol = `
+        protocol Progress(role A, role B, role C) {
+          A -> B: M1();
+          B -> C: M2();
+          C -> A: M3();
+        }
+      `;
 
-      // const protocol = `
-      //   protocol Progress(role A, role B, role C) {
-      //     A -> B: M1();
-      //     B -> C: M2();
-      //     C -> A: M3();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
+      const stateGraphs = buildParticipantStateGraphs(projectionResult.cfsms);
 
-      // const projections = projectAll(...);
-      // const stateGraphs = buildParticipantStateGraphs(projections);
-
-      // // For each participant
-      // for (const [participant, graph] of stateGraphs) {
-      //   // For each reachable state
-      //   for (const state of graph.reachableStates) {
-      //     const isTerminal = state.isTerminal();
-      //     const canProgress = state.hasEnabledAction();
-      //     expect(isTerminal || canProgress).toBe(true);
-      //   }
-      // }
-      // // ✅ PROOF: No participant gets stuck
-
-      expect(true).toBe(true); // Placeholder
+      // Verify no participant has stuck states
+      const progressResult = checkParticipantProgress(stateGraphs);
+      expect(progressResult.allCanProgress).toBe(true);
+      expect(progressResult.stuckParticipants).toHaveLength(0);
+      // ✅ PROOF: No participant gets stuck
     });
 
     it.skip('proves: dynamic participants never get stuck', () => {
@@ -277,20 +268,28 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       expect(true).toBe(true); // Placeholder
     });
 
-    it.skip('proves: choice branches never leave participants stuck', () => {
-      // TODO: Test all choice branches allow progress
+    it('proves: choice branches never leave participants stuck', () => {
+      const protocol = `
+        protocol ChoiceProgress(role A, role B) {
+          choice at A {
+            A -> B: Opt1();
+            B -> A: Reply1();
+          } or {
+            A -> B: Opt2();
+            B -> A: Reply2();
+          }
+        }
+      `;
 
-      // choice at A {
-      //   A -> B: Opt1();
-      //   B -> A: Reply1();
-      // } or {
-      //   A -> B: Opt2();
-      //   B -> A: Reply2();
-      // }
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
+      const stateGraphs = buildParticipantStateGraphs(projectionResult.cfsms);
 
       // Both branches should allow both participants to complete
-
-      expect(true).toBe(true); // Placeholder
+      const progressResult = checkParticipantProgress(stateGraphs);
+      expect(progressResult.allCanProgress).toBe(true);
+      expect(progressResult.stuckParticipants).toHaveLength(0);
     });
   });
 
