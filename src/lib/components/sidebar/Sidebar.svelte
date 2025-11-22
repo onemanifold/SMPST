@@ -3,6 +3,7 @@
   import { loadExample, editorContent } from '$lib/stores/editor';
   import { protocolDB, type SavedProtocol } from '$lib/stores/protocol-db';
   import { onMount } from 'svelte';
+  import { Button, Input } from '$lib/components/atoms';
 
   export let collapsed = false;
 
@@ -178,24 +179,23 @@
         </div>
 
         <div class="saved-actions">
-          <button class="btn-save" on:click={() => showSaveDialog = true}>
+          <Button variant="primary" size="sm" fullWidth on:click={() => showSaveDialog = true}>
             + Save Current Protocol
-          </button>
+          </Button>
         </div>
 
         {#if showSaveDialog}
           <div class="save-dialog">
-            <input
+            <Input
               type="text"
               bind:value={newProtocolName}
               placeholder="Protocol name..."
-              class="save-input"
-              on:keydown={(e) => e.key === 'Enter' && handleSaveProtocol()}
-              autofocus
+              size="sm"
+              on:keydown={(e) => e.detail && handleSaveProtocol()}
             />
             <div class="dialog-actions">
-              <button class="btn-dialog-save" on:click={handleSaveProtocol}>Save</button>
-              <button class="btn-dialog-cancel" on:click={() => { showSaveDialog = false; newProtocolName = ''; }}>Cancel</button>
+              <Button variant="primary" size="sm" on:click={handleSaveProtocol}>Save</Button>
+              <Button variant="secondary" size="sm" on:click={() => { showSaveDialog = false; newProtocolName = ''; }}>Cancel</Button>
             </div>
           </div>
         {/if}
@@ -235,41 +235,41 @@
 <style>
   .sidebar-container {
     display: flex;
-    background: #252526;
-    border-right: 1px solid #1e1e1e;
+    background: var(--color-bg-secondary);
+    border-right: 1px solid var(--color-bg-primary);
   }
 
   .icon-bar {
-    width: 48px;
-    background: #333333;
+    width: var(--sidebar-collapsed-width);
+    background: var(--color-bg-elevated);
     display: flex;
     flex-direction: column;
-    border-right: 1px solid #1e1e1e;
+    border-right: 1px solid var(--color-bg-primary);
   }
 
   .icon-btn {
-    width: 48px;
-    height: 48px;
+    width: var(--sidebar-collapsed-width);
+    height: var(--sidebar-collapsed-width);
     background: transparent;
     border: none;
     border-left: 2px solid transparent;
-    color: #ccc;
-    font-size: 20px;
+    color: var(--color-text-primary);
+    font-size: var(--font-size-2xl);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: all var(--transition-normal);
     position: relative;
   }
 
   .icon-btn:hover {
-    background: #2d2d2d;
+    background: var(--color-bg-tertiary);
   }
 
   .icon-btn.active {
-    border-left-color: #007acc;
-    background: #252526;
+    border-left-color: var(--color-accent);
+    background: var(--color-bg-secondary);
   }
 
   .sidebar-content {
@@ -283,16 +283,16 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px 8px;
-    background: #2d2d2d;
-    border-bottom: 1px solid #1e1e1e;
+    padding: var(--spacing-1) var(--spacing-2);
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-bg-primary);
   }
 
   .sidebar-title {
     margin: 0;
-    font-size: 12px;
-    font-weight: 500;
-    color: #ccc;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -300,156 +300,100 @@
   .btn-close {
     background: transparent;
     border: none;
-    color: #ccc;
+    color: var(--color-text-primary);
     cursor: pointer;
-    font-size: 16px;
+    font-size: var(--font-size-lg);
     line-height: 1;
-    padding: 2px 4px;
-    border-radius: 4px;
+    padding: 2px var(--spacing-1);
+    border-radius: var(--radius-md);
   }
 
   .btn-close:hover {
-    background: #3d3d3d;
+    background: var(--color-bg-hover);
   }
 
   .category-filter {
-    padding: 6px 8px;
-    border-bottom: 1px solid #1e1e1e;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-bottom: 1px solid var(--color-bg-primary);
   }
 
   .category-select {
     width: 100%;
-    padding: 3px 4px;
-    background: #3d3d3d;
-    color: #ccc;
-    border: 1px solid #555;
-    border-radius: 4px;
-    font-size: 11px;
+    padding: 3px var(--spacing-1);
+    background: var(--color-bg-hover);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-xs);
     cursor: pointer;
   }
 
   .category-select:focus {
     outline: none;
-    border-color: #007acc;
+    border-color: var(--color-accent);
   }
 
   .item-list {
     flex: 1;
     overflow-y: auto;
-    padding: 4px;
+    padding: var(--spacing-1);
   }
 
   .list-item {
     width: 100%;
-    padding: 5px 6px;
+    padding: var(--spacing-1) var(--spacing-1);
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     margin-bottom: 2px;
     cursor: pointer;
     text-align: left;
-    transition: all 0.2s;
+    transition: all var(--transition-normal);
   }
 
   .list-item:hover {
-    background: #2d2d2d;
-    border-color: #3d3d3d;
+    background: var(--color-bg-tertiary);
+    border-color: var(--color-bg-hover);
   }
 
   .item-name {
-    font-size: 13px;
-    color: #ccc;
-    font-weight: 500;
-    margin-bottom: 4px;
+    font-size: var(--font-size-base);
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-medium);
+    margin-bottom: var(--spacing-1);
   }
 
   .item-meta {
-    font-size: 11px;
-    color: #888;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
   }
 
   .saved-actions {
-    padding: 6px 8px;
-    border-bottom: 1px solid #1e1e1e;
-  }
-
-  .btn-save {
-    width: 100%;
-    padding: 4px 6px;
-    background: #007acc;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 500;
-  }
-
-  .btn-save:hover {
-    background: #005a9e;
+    padding: var(--spacing-1) var(--spacing-2);
+    border-bottom: 1px solid var(--color-bg-primary);
   }
 
   .save-dialog {
-    padding: 6px 8px;
-    background: #2d2d2d;
-    border-bottom: 1px solid #1e1e1e;
-  }
-
-  .save-input {
-    width: 100%;
-    padding: 4px;
-    background: #3d3d3d;
-    color: #ccc;
-    border: 1px solid #555;
-    border-radius: 4px;
-    font-size: 12px;
-    margin-bottom: 4px;
-  }
-
-  .save-input:focus {
-    outline: none;
-    border-color: #007acc;
+    padding: var(--spacing-1) var(--spacing-2);
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-bg-primary);
   }
 
   .dialog-actions {
     display: flex;
-    gap: 4px;
+    gap: var(--spacing-1);
+    margin-top: var(--spacing-1);
   }
 
-  .btn-dialog-save,
-  .btn-dialog-cancel {
+  .dialog-actions :global(.btn) {
     flex: 1;
-    padding: 3px 6px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  .btn-dialog-save {
-    background: #007acc;
-    color: #fff;
-  }
-
-  .btn-dialog-save:hover {
-    background: #005a9e;
-  }
-
-  .btn-dialog-cancel {
-    background: #3d3d3d;
-    color: #ccc;
-  }
-
-  .btn-dialog-cancel:hover {
-    background: #4d4d4d;
   }
 
   .empty-message {
-    padding: 20px;
+    padding: var(--spacing-5);
     text-align: center;
-    color: #666;
-    font-size: 13px;
+    color: var(--color-text-muted);
+    font-size: var(--font-size-base);
     font-style: italic;
     margin: 0;
   }
@@ -457,45 +401,45 @@
   .saved-item {
     display: flex;
     align-items: stretch;
-    margin-bottom: 4px;
+    margin-bottom: var(--spacing-1);
     border: 1px solid transparent;
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    transition: all 0.2s;
+    transition: all var(--transition-normal);
   }
 
   .saved-item:hover {
-    border-color: #3d3d3d;
+    border-color: var(--color-bg-hover);
   }
 
   .saved-item-load {
     flex: 1;
-    padding: 5px 6px;
+    padding: var(--spacing-1) var(--spacing-1);
     background: transparent;
     border: none;
     text-align: left;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background var(--transition-normal);
   }
 
   .saved-item-load:hover {
-    background: #2d2d2d;
+    background: var(--color-bg-tertiary);
   }
 
   .saved-item-delete {
     width: 24px;
     background: transparent;
     border: none;
-    border-left: 1px solid #3d3d3d;
-    color: #888;
+    border-left: 1px solid var(--color-bg-hover);
+    color: var(--color-text-secondary);
     cursor: pointer;
-    font-size: 18px;
+    font-size: var(--font-size-xl);
     line-height: 1;
-    transition: all 0.2s;
+    transition: all var(--transition-normal);
   }
 
   .saved-item-delete:hover {
-    background: #5f2d2d;
-    color: #ff6b6b;
+    background: var(--color-error-bg);
+    color: var(--color-error);
   }
 </style>
