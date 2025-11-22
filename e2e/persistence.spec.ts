@@ -127,9 +127,10 @@ test.describe('Routing', () => {
     // Try to go to simulation directly
     await page.goto('/#/simulation');
 
-    // Should show "no protocol" message or redirect
+    // Should show "no protocol" message or redirect to editor
+    // Use .first() because both .editor-page and .code-tab may exist as nested elements
     const noProtocol = page.locator('.no-protocol');
-    const editor = page.locator('.editor-page, .code-tab');
+    const editor = page.locator('.editor-page').first();
 
     await expect(noProtocol.or(editor)).toBeVisible({ timeout: 10000 });
   });
