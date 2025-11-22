@@ -25,20 +25,44 @@
   $: currentProjection = $projectionData.find(p => p.role === selectedRole);
   $: localScribble = currentProjection?.localProtocol || '';
 
+  // Track pending update to avoid duplicate RAF calls
+  let pendingEditorUpdate: number | null = null;
+
   // Update editor content when localScribble changes
+  // Use requestAnimationFrame to defer the expensive setValue() call
+  // This prevents UI stuttering when switching between role tabs
   $: if (editor && localScribble !== undefined) {
-    const currentValue = editor.getValue();
-    if (localScribble !== currentValue) {
-      try {
-        const currentPosition = editor.getPosition();
-        editor.setValue(localScribble);
-        if (currentPosition) {
-          editor.setPosition(currentPosition);
-        }
-      } catch (e) {
-        console.error('Failed to update editor:', e);
-      }
+    const newValue = localScribble;
+
+    // Cancel any pending update
+    if (pendingEditorUpdate !== null) {
+      cancelAnimationFrame(pendingEditorUpdate);
     }
+
+    // Defer the expensive Monaco update to prevent blocking the UI
+    pendingEditorUpdate = requestAnimationFrame(() => {
+      pendingEditorUpdate = null;
+      if (!editor) return;
+
+      const currentValue = editor.getValue();
+      if (newValue !== currentValue) {
+        try {
+          // Use pushEditOperations for smoother updates instead of setValue
+          // This preserves undo stack and is more efficient for partial changes
+          const model = editor.getModel();
+          if (model) {
+            const fullRange = model.getFullModelRange();
+            model.pushEditOperations(
+              [],
+              [{ range: fullRange, text: newValue }],
+              () => null
+            );
+          }
+        } catch (e) {
+          console.error('Failed to update editor:', e);
+        }
+      }
+    });
   }
 
   // Function to set up Monaco environment and register language
@@ -146,6 +170,10 @@
   });
 
   onDestroy(() => {
+    // Cancel any pending editor update
+    if (pendingEditorUpdate !== null) {
+      cancelAnimationFrame(pendingEditorUpdate);
+    }
     editor?.dispose();
   });
 </script>
