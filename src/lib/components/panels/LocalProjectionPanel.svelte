@@ -7,46 +7,36 @@
   let editorContainer: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 
-  // Derived state - computed in single reactive block to ensure deterministic order
+  // Derived state
   let currentProjection: typeof $projectionData[0] | undefined;
   let localScribble = '';
 
-  // CORE FIX: Single atomic reactive block that handles ALL data derivation and updates
-  // This ensures operations happen in guaranteed sequential order, eliminating race conditions
-  $: {
-    if ($projectionData.length > 0) {
-      // Step 1: Ensure selectedRole is valid (auto-select first role if needed)
-      const roleExists = $projectionData.some(p => p.role === selectedRole);
-      if (!selectedRole || !roleExists) {
-        selectedRole = $projectionData[0].role;
-      }
+  // Auto-select first role when projection data changes and no valid selection
+  $: if ($projectionData.length > 0) {
+    const roleExists = $projectionData.some(p => p.role === selectedRole);
+    if (!selectedRole || !roleExists) {
+      selectedRole = $projectionData[0].role;
+    }
+  } else if ($projectionData.length === 0) {
+    selectedRole = '';
+  }
 
-      // Step 2: Compute current projection (selectedRole is now guaranteed to be valid)
-      currentProjection = $projectionData.find(p => p.role === selectedRole);
-      localScribble = currentProjection?.localProtocol || '';
+  // Compute current projection based on selected role
+  $: currentProjection = $projectionData.find(p => p.role === selectedRole);
+  $: localScribble = currentProjection?.localProtocol || '';
 
-      // Step 3: Update editor content (only if editor exists and content is different)
-      if (editor && localScribble) {
-        const currentValue = editor.getValue();
-        if (localScribble !== currentValue) {
-          try {
-            const currentPosition = editor.getPosition();
-            editor.setValue(localScribble);
-            if (currentPosition) {
-              editor.setPosition(currentPosition);
-            }
-          } catch (e) {
-            console.error('Failed to update editor:', e);
-          }
+  // Update editor content when localScribble changes
+  $: if (editor && localScribble !== undefined) {
+    const currentValue = editor.getValue();
+    if (localScribble !== currentValue) {
+      try {
+        const currentPosition = editor.getPosition();
+        editor.setValue(localScribble);
+        if (currentPosition) {
+          editor.setPosition(currentPosition);
         }
-      }
-    } else {
-      // No projection data - reset state
-      currentProjection = undefined;
-      localScribble = '';
-      selectedRole = '';
-      if (editor) {
-        editor.setValue('');
+      } catch (e) {
+        console.error('Failed to update editor:', e);
       }
     }
   }
