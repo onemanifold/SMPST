@@ -9,10 +9,10 @@
  *
  * Based on Castro-Perez & Yoshida (ECOOP 2023) operational semantics.
  *
- * KNOWN GAPS (see docs/dmst/SIMULATOR_PARITY_PLAN.md):
- * - TODO(P0): Sub-protocol call stack not implemented (Issue #1)
- * - TODO(P0): Fair scheduling missing - steps all roles per step() (Issue #2)
- * - TODO(P0): Epsilon auto-advance missing (Issue #3)
+ * KNOWN GAPS:
+ * - DONE(P0): Sub-protocol call stack - implemented in executeProtocolCall()
+ * - DONE(P0): Fair scheduling - round-robin in step() (Honda et al. 2008)
+ * - DONE(P0): Epsilon auto-advance - implemented in stepRole() loop
  * - TODO(P0): Should refactor to use Executor pattern (Issue #4)
  * - TODO(P1): Observer pattern not implemented (Issue #5)
  * - TODO(P1): Trace recording not implemented (Issue #6)
@@ -78,6 +78,12 @@ export class DMstSimulator {
    */
   private cfsmRegistry: Map<string, Map<string, CFSM>>;
 
+  /**
+   * Fair scheduling: round-robin role selection index
+   * Ensures each role gets a turn to execute (Honda et al. 2008 semantics)
+   */
+  private nextRoleIndex: number = 0;
+
   constructor(
     staticRoles: Map<string, CFSM>,
     dynamicRoles: Map<string, CFSM> = new Map(),
@@ -89,6 +95,7 @@ export class DMstSimulator {
     this.cfsms = staticRoles;
     this.dynamicCFSMs = dynamicRoles;
     this.cfsmRegistry = cfsmRegistry || new Map();
+    this.nextRoleIndex = 0;
   }
 
   /**
@@ -104,16 +111,16 @@ export class DMstSimulator {
   /**
    * Execute one step of the simulation.
    *
+   * FAIR SCHEDULING (Honda et al. 2008 semantics):
+   * - One step() call = one CFSM transition = one role
+   * - Round-robin selection ensures fairness
+   *
    * Strategy:
    * 1. Process pending invitations
-   * 2. Step all ready participants
-   * 3. Handle creation/invitation actions
-   * 4. Detect completion/deadlock
-   *
-   * TODO(P0): Fair scheduling not implemented (Issue #2)
-   * Currently steps ALL roles per step(), should step ONE role per step()
-   * following Honda et al. 2008 semantics (one step = one transition).
-   * See src/core/runtime/simulator.ts:145-169 for reference implementation.
+   * 2. Select ONE ready participant (round-robin fair scheduling)
+   * 3. Execute one transition for that participant
+   * 4. Handle DMst-specific actions (creation/invitation)
+   * 5. Detect completion/deadlock
    *
    * @returns Step result with updates
    */
@@ -125,31 +132,46 @@ export class DMstSimulator {
 
     // Get all active participants
     const allParticipants = getAllActiveParticipants(this.state);
+    const roleNames = Array.from(allParticipants.keys());
 
     const updates = new Map<string, ExecutionResult>();
+    let selectedRole: string | null = null;
 
-    // TODO(P0): Implement round-robin fair scheduling here
-    // Should select ONE role to step, not all roles
-    // Step each participant
-    for (const [role, execState] of allParticipants) {
-      if (execState.completed || execState.blocked) {
+    // Fair scheduling: round-robin selection of ONE role to step
+    // Following Honda et al. 2008 semantics (one step = one transition)
+    const startIndex = this.nextRoleIndex % Math.max(roleNames.length, 1);
+    let attempts = 0;
+
+    while (attempts < roleNames.length) {
+      const candidateIndex = (startIndex + attempts) % roleNames.length;
+      const candidateRole = roleNames[candidateIndex];
+      const execState = allParticipants.get(candidateRole);
+
+      // Move to next role for next time (round-robin)
+      this.nextRoleIndex = (candidateIndex + 1) % Math.max(roleNames.length, 1);
+      attempts++;
+
+      if (!execState || execState.completed || execState.blocked) {
         continue; // Skip completed or blocked roles
       }
 
-      const cfsm = this.getCFSMForRole(role);
+      const cfsm = this.getCFSMForRole(candidateRole);
       if (!cfsm) {
         continue;
       }
 
-      const result = await this.stepRole(role, cfsm, execState);
-      updates.set(role, result);
+      const result = await this.stepRole(candidateRole, cfsm, execState);
+      updates.set(candidateRole, result);
+      selectedRole = candidateRole;
 
       // Handle DMst-specific actions
       if (result.success && result.messagesSent) {
         for (const msg of result.messagesSent) {
-          await this.handleDMstAction(role, msg);
+          await this.handleDMstAction(candidateRole, msg);
         }
       }
+
+      break; // Stepped ONE role - done (fair scheduling)
     }
 
     // Check completion
@@ -160,7 +182,7 @@ export class DMstSimulator {
     this.state.deadlocked = deadlocked;
 
     return {
-      success: true,
+      success: selectedRole !== null,
       updates,
       state: this.state,
       completed,
