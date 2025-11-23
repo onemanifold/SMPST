@@ -17,12 +17,29 @@ export default defineConfig({
     baseURL: 'http://localhost:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // Increase timeout for Monaco editor loading
+    actionTimeout: 15000,
+    navigationTimeout: 30000,
   },
+
+  // Increase global timeout for Monaco-heavy tests
+  timeout: 60000,
 
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Chromium flags for stable headless Monaco rendering
+        launchOptions: {
+          args: [
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+          ],
+        },
+      },
     },
     // Add Firefox and WebKit for full coverage in CI
     ...(process.env.CI ? [

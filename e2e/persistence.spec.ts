@@ -1,5 +1,17 @@
 import { test, expect } from '@playwright/test';
 
+// Helper to wait for Monaco editor with retry logic
+async function waitForMonacoEditor(page: any, timeout = 30000) {
+  // Wait for the app to initialize first
+  await page.waitForSelector('.layout', { timeout: 15000 });
+
+  // Then wait for Monaco editor
+  await page.waitForSelector('.monaco-editor', { timeout });
+
+  // Give Monaco time to fully initialize
+  await page.waitForTimeout(1000);
+}
+
 test.describe('Editor Content Persistence', () => {
   test.beforeEach(async ({ page }) => {
     // Clear localStorage before each test
@@ -10,8 +22,8 @@ test.describe('Editor Content Persistence', () => {
   test('should persist editor content on page refresh', async ({ page }) => {
     await page.goto('/');
 
-    // Wait for editor to load
-    await page.waitForSelector('.monaco-editor', { timeout: 10000 });
+    // Wait for editor to load with extended timeout
+    await waitForMonacoEditor(page);
 
     // Type some content in the editor
     const editor = page.locator('.monaco-editor textarea');
@@ -25,7 +37,7 @@ test.describe('Editor Content Persistence', () => {
     await page.reload();
 
     // Wait for editor to reload
-    await page.waitForSelector('.monaco-editor', { timeout: 10000 });
+    await waitForMonacoEditor(page);
 
     // Verify content is restored
     const editorContent = await page.locator('.monaco-editor .view-lines').textContent();
@@ -49,7 +61,7 @@ test.describe('Editor Content Persistence', () => {
 
     // Reload
     await page.reload();
-    await page.waitForSelector('.monaco-editor', { timeout: 10000 });
+    await waitForMonacoEditor(page);
 
     // Editor should be empty (old content not restored)
     const editorContent = await page.locator('.monaco-editor .view-lines').textContent();
@@ -98,7 +110,7 @@ test.describe('Routing', () => {
   test('should navigate to simulation route', async ({ page }) => {
     // First load a protocol so simulation is accessible
     await page.goto('/');
-    await page.waitForSelector('.monaco-editor', { timeout: 10000 });
+    await waitForMonacoEditor(page);
 
     // Navigate to simulation
     await page.goto('/#/simulation');
