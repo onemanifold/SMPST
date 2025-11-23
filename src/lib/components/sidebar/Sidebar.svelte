@@ -151,10 +151,9 @@
     </button>
   </div>
 
-  <!-- Main sidebar content -->
-  {#if !collapsed && activeView}
-    <div class="sidebar-content">
-      {#if activeView === 'examples'}
+  <!-- Main sidebar content - hidden via CSS instead of destroyed -->
+  <div class="sidebar-content" class:hidden={collapsed || !activeView}>
+    {#if activeView === 'examples'}
         <div class="sidebar-header">
           <h3 class="sidebar-title">Examples</h3>
           <button class="btn-close" on:click={toggleCollapse} title="Close sidebar">×</button>
@@ -237,8 +236,7 @@
           {/if}
         </div>
       {/if}
-    </div>
-  {/if}
+  </div>
 </div>
 
 <style>
@@ -286,6 +284,10 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .sidebar-content.hidden {
+    display: none;
   }
 
   .sidebar-header {
