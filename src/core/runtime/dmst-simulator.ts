@@ -13,9 +13,9 @@
  * - DONE(P0): Sub-protocol call stack - implemented in executeProtocolCall()
  * - DONE(P0): Fair scheduling - round-robin in step() (Honda et al. 2008)
  * - DONE(P0): Epsilon auto-advance - implemented in stepRole() loop
+ * - DONE(P1): Observer pattern - addObserver/removeObserver/notify methods
+ * - DONE(P1): Trace recording - addTraceRecorder() and getTrace()
  * - TODO(P0): Should refactor to use Executor pattern (Issue #4)
- * - TODO(P1): Observer pattern not implemented (Issue #5)
- * - TODO(P1): Trace recording not implemented (Issue #6)
  * - TODO(P1): Pause/resume not implemented (Issue #7)
  * - TODO(P1): Updatable CFSM runtime semantics not designed (Issue #8)
  */
@@ -30,6 +30,9 @@ import type {
   SimulationStepResult,
   ExecutorConfig,
   CallStackFrame,
+  ExecutionObserver,
+  ExecutionTrace,
+  TraceEvent,
 } from './types';
 import type {
   DMstSimulationState,
@@ -84,11 +87,27 @@ export class DMstSimulator {
    */
   private nextRoleIndex: number = 0;
 
+  /**
+   * Observer pattern: registered observers for execution events
+   */
+  private observers: Set<ExecutionObserver> = new Set();
+
+  /**
+   * Trace recording: stores execution events when enabled
+   */
+  private trace: ExecutionTrace;
+
+  /**
+   * Configuration options
+   */
+  private options: { recordTrace?: boolean; maxSteps?: number };
+
   constructor(
     staticRoles: Map<string, CFSM>,
     dynamicRoles: Map<string, CFSM> = new Map(),
     transport?: MessageTransport,
-    cfsmRegistry?: Map<string, Map<string, CFSM>>
+    cfsmRegistry?: Map<string, Map<string, CFSM>>,
+    options?: { recordTrace?: boolean; maxSteps?: number }
   ) {
     this.state = createDMstSimulationState(staticRoles);
     this.transport = transport || new InMemoryTransport();
@@ -96,6 +115,20 @@ export class DMstSimulator {
     this.dynamicCFSMs = dynamicRoles;
     this.cfsmRegistry = cfsmRegistry || new Map();
     this.nextRoleIndex = 0;
+    this.observers = new Set();
+    this.options = options || {};
+
+    // Initialize trace
+    this.trace = {
+      events: [],
+      startTime: Date.now(),
+      completed: false,
+    };
+
+    // Add trace recorder if enabled
+    if (this.options.recordTrace) {
+      this.addTraceRecorder();
+    }
   }
 
   /**
@@ -722,6 +755,103 @@ export class DMstSimulator {
     }
 
     return undefined;
+  }
+
+  // ==========================================================================
+  // Observer Pattern (Parity with main Simulator)
+  // ==========================================================================
+
+  /**
+   * Add an execution observer.
+   */
+  addObserver(observer: ExecutionObserver): void {
+    this.observers.add(observer);
+  }
+
+  /**
+   * Remove an observer.
+   */
+  removeObserver(observer: ExecutionObserver): void {
+    this.observers.delete(observer);
+  }
+
+  /**
+   * Get execution trace.
+   */
+  getTrace(): ExecutionTrace {
+    return {
+      ...this.trace,
+      events: [...this.trace.events],
+    };
+  }
+
+  /**
+   * Notify observers of a state change.
+   */
+  private notifyStateChange(role: string, fromState: string, toState: string): void {
+    const event: TraceEvent = {
+      type: 'state-change',
+      role,
+      timestamp: Date.now(),
+      fromState,
+      toState,
+    };
+
+    for (const observer of this.observers) {
+      observer.onStateChange?.(event as any);
+    }
+  }
+
+  /**
+   * Notify observers of a message sent.
+   */
+  private notifyMessageSent(message: Message): void {
+    const event: TraceEvent = {
+      type: 'message-sent',
+      timestamp: Date.now(),
+      message,
+    };
+
+    for (const observer of this.observers) {
+      observer.onMessageSent?.(event as any);
+    }
+  }
+
+  /**
+   * Notify observers of a message received.
+   */
+  private notifyMessageReceived(message: Message): void {
+    const event: TraceEvent = {
+      type: 'message-received',
+      timestamp: Date.now(),
+      message,
+    };
+
+    for (const observer of this.observers) {
+      observer.onMessageReceived?.(event as any);
+    }
+  }
+
+  /**
+   * Add trace recorder observer.
+   */
+  private addTraceRecorder(): void {
+    const recorder: ExecutionObserver = {
+      onStateChange: (event) => {
+        this.trace.events.push(event);
+      },
+      onMessageSent: (event) => {
+        this.trace.events.push(event);
+      },
+      onMessageReceived: (event) => {
+        this.trace.events.push(event);
+      },
+      onError: (event) => {
+        this.trace.events.push(event);
+      },
+    };
+
+    this.addObserver(recorder);
   }
 }
 
