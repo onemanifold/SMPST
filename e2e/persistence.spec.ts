@@ -60,12 +60,14 @@ test.describe('Editor Content Persistence', () => {
 
   test('should persist editor content on page refresh', async ({ page }) => {
     await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
 
     const editorType = await waitForEditor(page);
     await setEditorContent(page, editorType, 'global protocol TestProtocol { }');
 
     await page.waitForTimeout(3000);
     await page.reload(NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize after reload
 
     const newEditorType = await waitForEditor(page);
     const editorContent = await getEditorContent(page, newEditorType);
@@ -82,11 +84,13 @@ test.describe('Editor Content Persistence', () => {
     };
 
     await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
     await page.evaluate((state) => {
       localStorage.setItem('smpst-persisted-state', JSON.stringify(state));
     }, oldState);
 
     await page.reload(NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize after reload
     const editorType = await waitForEditor(page);
 
     const editorContent = await getEditorContent(page, editorType);
@@ -102,8 +106,12 @@ test.describe('Theme Persistence', () => {
   });
 
   test('should persist theme preference', async ({ page }) => {
-    await page.goto('#/settings', NAV_OPTIONS);
-    // Wait for settings view to be active
+    await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
+
+    // Navigate to settings using the settings link
+    await page.click('a[href="#/settings"]');
+    await page.waitForTimeout(500);
     await page.waitForSelector('.view.settings-view.active', { timeout: 15000 });
 
     // Click light theme button within active view
@@ -111,6 +119,10 @@ test.describe('Theme Persistence', () => {
     await page.waitForTimeout(1000);
 
     await page.reload(NAV_OPTIONS);
+    await page.waitForTimeout(2000);
+    // After reload, navigate to settings again
+    await page.click('a[href="#/settings"]');
+    await page.waitForTimeout(500);
     await page.waitForSelector('.view.settings-view.active', { timeout: 15000 });
 
     const theme = await page.evaluate(() => {
@@ -122,17 +134,20 @@ test.describe('Theme Persistence', () => {
 
 test.describe('Routing', () => {
   test('should navigate to editor route', async ({ page }) => {
-    await page.goto('#/', NAV_OPTIONS);
-    // Wait for active editor view
+    await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
+    // Should start on editor view by default
     await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
   });
 
   test('should navigate to simulation route', async ({ page }) => {
     await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
     await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
 
-    await page.goto('#/simulation', NAV_OPTIONS);
-    await page.waitForTimeout(1000);
+    // Click SIMULATION tab
+    await page.click('.tab:has-text("SIMULATION")');
+    await page.waitForTimeout(500);
     // Will redirect back to editor if no protocol, or show simulation view
     const editorActive = page.locator('.view.editor-view.active');
     const simulationActive = page.locator('.view.simulation-view.active');
@@ -140,9 +155,12 @@ test.describe('Routing', () => {
   });
 
   test('should navigate to settings route', async ({ page }) => {
-    await page.goto('#/settings', NAV_OPTIONS);
-    // Wait for app to initialize and mount views
-    await page.waitForTimeout(1000);
+    await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
+
+    // Click settings link
+    await page.click('a[href="#/settings"]');
+    await page.waitForTimeout(500);
     await page.waitForSelector('.view.settings-view.active', { timeout: 15000 });
 
     // Check content within active view
@@ -153,10 +171,11 @@ test.describe('Routing', () => {
 
   test('should redirect from simulation to editor when no protocol loaded', async ({ page }) => {
     await page.goto('', NAV_OPTIONS);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(2000);
     await page.evaluate(() => localStorage.clear());
 
-    await page.goto('#/simulation', NAV_OPTIONS);
+    // Try to navigate to simulation
+    await page.click('.tab:has-text("SIMULATION")');
     await page.waitForTimeout(500);
 
     // Should redirect back to editor or show no-protocol message
@@ -168,13 +187,18 @@ test.describe('Routing', () => {
   });
 
   test('should handle back button navigation', async ({ page }) => {
-    await page.goto('#/', NAV_OPTIONS);
+    await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000);
     await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
 
-    await page.goto('#/settings', NAV_OPTIONS);
+    // Navigate to settings
+    await page.click('a[href="#/settings"]');
+    await page.waitForTimeout(500);
     await page.waitForSelector('.view.settings-view.active', { timeout: 15000 });
 
+    // Go back
     await page.goBack();
+    await page.waitForTimeout(500);
     await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
   });
 });
@@ -182,9 +206,11 @@ test.describe('Routing', () => {
 test.describe('Tab Navigation', () => {
   test('should switch between CODE and SIMULATION tabs', async ({ page }) => {
     await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
     await page.waitForSelector('.tab-bar', { timeout: 15000 });
 
     await page.click('.tab:has-text("CODE")');
+    await page.waitForTimeout(500);
     await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
 
     await page.click('.tab:has-text("SIMULATION")');

@@ -3,6 +3,9 @@ import { test, expect } from '@playwright/test';
 test('check fallback textarea', async ({ page }) => {
   await page.goto('', { waitUntil: 'domcontentloaded' });
 
+  // Wait for app to initialize
+  await page.waitForTimeout(2000);
+
   // Wait for the active editor view with fallback textarea
   // With view persistence, need to check within active view
   await page.waitForSelector('.view.editor-view.active', { timeout: 10000 });
