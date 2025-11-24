@@ -198,21 +198,39 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       // Protocol call messages are properly matched
     });
 
-    it.skip('proves: updatable recursion messages are not orphaned', () => {
-      // TODO: Test updatable recursion preserves message matching
+    it('proves: updatable recursion messages are not orphaned', () => {
+      // Test updatable recursion preserves message matching
+      // Definition 13: Update body messages must have matching send/receive pairs
+      const protocol = `
+        protocol UpdateLoop(role A, role B, role C) {
+          rec Loop {
+            A -> B: Work();
+            B -> A: Done();
+            choice at A {
+              continue Loop with {
+                A -> C: Extra();
+                C -> A: ExtraDone();
+              };
+            } or {
+              A -> B: Stop();
+            }
+          }
+        }
+      `;
 
-      // rec Loop {
-      //   A -> B: Work();
-      //   B -> A: Done();
-      //   continue Loop with {
-      //     A -> C: Extra();
-      //     C -> A: ExtraDone();
-      //   };
-      // }
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projectionResult = projectAll(cfg);
+
+      // Extract send/receive pairs (including update body messages)
+      const pairs = extractSendReceivePairs(projectionResult.cfsms);
 
       // All iterations should have matching send/receive pairs
-
-      expect(true).toBe(true); // Placeholder
+      // Including messages from G_update (Extra, ExtraDone)
+      const orphans = checkOrphanFreedom(pairs);
+      expect(orphans.hasOrphans).toBe(false);
+      expect(orphans.orphanedMessages).toHaveLength(0);
+      // ✅ PROOF: Updatable recursion preserves orphan-freedom
     });
   });
 
