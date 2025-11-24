@@ -2,32 +2,17 @@
   /**
    * App Root Component
    *
-   * Sets up routing and global providers.
-   * Uses hash-based routing for GitHub Pages compatibility.
+   * SPA with View Persistence:
+   * - All views mount once and stay in DOM
+   * - Navigation toggles visibility with CSS (no remounting)
+   * - Preserves state, scroll position, and form inputs across navigation
+   * - Hash-based routing for GitHub Pages compatibility
    */
-  import Router from 'svelte-spa-router';
   import MainLayout from '$lib/components/layouts/MainLayout.svelte';
   import { EditorPage, SimulationPage, SettingsPage, WebColaSimPage } from '$lib/pages';
-  import { appStore } from '$lib/stores/app.store';
+  import { appStore, currentRoute } from '$lib/stores/app.store';
   import { initializePersistence, forceSaveAll } from '$lib/stores/persistence.integration';
   import { onMount, onDestroy } from 'svelte';
-
-  // Route definitions
-  const routes = {
-    '/': EditorPage,
-    '/simulation': SimulationPage,
-    '/simulation/*': SimulationPage,
-    '/webcola-sim': WebColaSimPage,
-    '/settings': SettingsPage,
-    // Catch-all redirect to home
-    '*': EditorPage,
-  };
-
-  // Handle route changes
-  function handleRouteLoaded(event: CustomEvent) {
-    const { route } = event.detail;
-    appStore.setRoute(route || '/');
-  }
 
   // Save state before page unload
   function handleBeforeUnload() {
@@ -52,5 +37,34 @@
 </script>
 
 <MainLayout>
-  <Router {routes} on:routeLoaded={handleRouteLoaded} />
+  <!-- All views exist in DOM, toggled by CSS -->
+  <!-- This prevents remounting and preserves state -->
+
+  <div class="view editor-view" class:active={$currentRoute === '/'}>
+    <EditorPage />
+  </div>
+
+  <div class="view simulation-view" class:active={$currentRoute === '/simulation' || $currentRoute.startsWith('/simulation/')}>
+    <SimulationPage />
+  </div>
+
+  <div class="view webcola-view" class:active={$currentRoute === '/webcola-sim'}>
+    <WebColaSimPage />
+  </div>
+
+  <div class="view settings-view" class:active={$currentRoute === '/settings'}>
+    <SettingsPage />
+  </div>
 </MainLayout>
+
+<style>
+  .view {
+    display: none;
+    width: 100%;
+    height: 100%;
+  }
+
+  .view.active {
+    display: block;
+  }
+</style>

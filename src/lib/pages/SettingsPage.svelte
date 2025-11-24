@@ -11,7 +11,6 @@
   import { appStore, isDarkMode } from '$lib/stores/app.store';
   import { persistenceStore } from '$lib/stores/persistence.store';
   import { platform } from '$lib/platform';
-  import { push } from 'svelte-spa-router';
   import { onMount } from 'svelte';
   import { Button, Input } from '$lib/components/atoms';
 
@@ -24,9 +23,7 @@
   let playbackSpeed = persistedState.simulation.playbackSpeed;
   let maxSteps = persistedState.simulation.maxSteps;
 
-  onMount(() => {
-    appStore.setRoute('/settings');
-  });
+  // No need to set route in onMount - app.store handles it via URL
 
   function saveSettings() {
     persistenceStore.updateUI({
@@ -75,7 +72,7 @@
   }
 
   function goBack() {
-    push('/');
+    appStore.navigateTo('/');
   }
 
   function setTheme(newTheme: 'dark' | 'light') {

@@ -10,9 +10,8 @@
    * - Time-travel debugging
    */
   import SimulationTab from '$lib/components/tabs/SimulationTab.svelte';
-  import { appStore } from '$lib/stores/app.store';
+  import { appStore, currentRoute } from '$lib/stores/app.store';
   import { parseStatus } from '$lib/stores/editor';
-  import { push } from 'svelte-spa-router';
   import { onMount } from 'svelte';
 
   // Check if we have a parsed protocol
@@ -21,21 +20,15 @@
   $: hasProtocol = $parseStatus === 'success';
 
   onMount(() => {
-    appStore.setRoute('/simulation');
-
     // Redirect to editor if no protocol loaded
     if (!hasProtocol) {
-      push('/');
+      appStore.navigateTo('/');
     }
   });
 
-  // Watch for protocol changes
-  $: if (!hasProtocol && typeof window !== 'undefined') {
-    // Only redirect if we're on this page
-    const currentPath = window.location.hash.slice(1) || '/';
-    if (currentPath.startsWith('/simulation')) {
-      push('/');
-    }
+  // Watch for protocol changes - redirect if protocol is lost
+  $: if (!hasProtocol && $currentRoute.startsWith('/simulation')) {
+    appStore.navigateTo('/');
   }
 </script>
 
@@ -47,7 +40,7 @@
       <div class="message">
         <h2>No Protocol Loaded</h2>
         <p>Parse a protocol in the Editor before starting simulation.</p>
-        <button class="go-to-editor" on:click={() => push('/')}>
+        <button class="go-to-editor" on:click={() => appStore.navigateTo('/')}>
           Go to Editor
         </button>
       </div>

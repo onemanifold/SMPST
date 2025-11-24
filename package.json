@@ -78,7 +78,6 @@
     "d3": "^7.9.0",
     "dexie": "^4.2.1",
     "monaco-editor": "^0.54.0",
-    "svelte-spa-router": "^4.0.1",
     "ts-morph": "^27.0.2",
     "vite-plugin-monaco-editor": "^1.1.0",
     "webcola": "^3.4.0"

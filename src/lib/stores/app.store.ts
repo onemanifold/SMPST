@@ -136,6 +136,47 @@ function createAppStore() {
       }));
     },
 
+    /**
+     * Navigate to a route (updates both store and URL)
+     * For SPA view persistence, this just toggles visibility
+     */
+    navigateTo: (route: string) => {
+      update(state => {
+        // Only update if route changed
+        if (state.currentRoute === route) return state;
+
+        // Update URL hash for browser history
+        if (typeof window !== 'undefined') {
+          window.history.pushState({}, '', `#${route}`);
+        }
+
+        return {
+          ...state,
+          previousRoute: state.currentRoute,
+          currentRoute: route,
+        };
+      });
+    },
+
+    /**
+     * Go back to previous route
+     */
+    goBack: () => {
+      update(state => {
+        const targetRoute = state.previousRoute || '/';
+
+        if (typeof window !== 'undefined') {
+          window.history.back();
+        }
+
+        return {
+          ...state,
+          previousRoute: null,
+          currentRoute: targetRoute,
+        };
+      });
+    },
+
     // ========================================
     // Loading Actions
     // ========================================
@@ -236,5 +277,21 @@ if (typeof window !== 'undefined') {
       const resolvedTheme: ResolvedTheme = e.matches ? 'dark' : 'light';
       document.documentElement.setAttribute('data-theme', resolvedTheme);
     }
+  });
+}
+
+// ============================================================================
+// Browser Navigation Listener (back/forward buttons)
+// ============================================================================
+
+if (typeof window !== 'undefined') {
+  // Initialize route from URL hash
+  const initialRoute = window.location.hash.slice(1) || '/';
+  appStore.setRoute(initialRoute);
+
+  // Listen for browser back/forward buttons
+  window.addEventListener('popstate', () => {
+    const route = window.location.hash.slice(1) || '/';
+    appStore.setRoute(route);
   });
 }
