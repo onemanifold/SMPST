@@ -268,7 +268,7 @@ export const hasNotifications = derived(appStore, $app => $app.notifications.len
 // System Theme Listener
 // ============================================================================
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && window.matchMedia) {
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
   mediaQuery.addEventListener('change', (e) => {
