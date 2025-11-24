@@ -1,11 +1,18 @@
 /**
  * Simulation State Management - Dual-Execution Architecture
  *
+ * SINGLE SOURCE OF TRUTH PATTERN:
+ * - Debugger instances (cfgDebugger, distributedDebugger) OWN all execution state
+ * - ALL state access goes through derived stores that read from debuggers
+ * - NO state mirrors (prevents desync bugs)
+ * - State updates trigger via stateVersion increment
+ *
+ * Architecture Layers:
+ *
  * Layer 4 (Frontend/UI):
  * - Execution mode switching: CFG | Distributed | Bisimulation
  * - UI state (idle/stepping/playing, playback speed)
  * - Reactivity via derived stores
- * - NO state duplication - debuggers are source of truth
  *
  * Layer 3 (Debugging):
  * - CFGDebugger (wraps CFGSimulator)
@@ -79,14 +86,20 @@ let distributedDebugger: DistributedDebugger | null = null;
 let bisimulationValidator: BisimulationValidator | null = null;
 
 // ============================================================================
-// Current State (mirrored for reactivity)
+// Current State (derived from debuggers - NO MIRRORS)
 // ============================================================================
 
-// CFG execution state
-export const cfgExecutionState = writable<CFGExecutionState | null>(null);
+// CFG execution state - reads directly from debugger
+export const cfgExecutionState = derived(
+  stateVersion,
+  () => cfgDebugger?.getState() ?? null
+);
 
-// Distributed execution state
-export const distributedExecutionState = writable<DistributedExecutionState | null>(null);
+// Distributed execution state - reads directly from debugger
+export const distributedExecutionState = derived(
+  stateVersion,
+  () => distributedDebugger?.getState() ?? null
+);
 
 // Legacy: points to active execution state based on mode
 export const executionState = derived(
@@ -138,10 +151,9 @@ export async function initializeCFGSimulation(cfg: CFG) {
   });
 
   currentCFG.set(cfg);
-  cfgExecutionState.set(cfgDebugger.getState());
   executionMode.set('cfg');
   simulationMode.set('idle');
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers cfgExecutionState to update
 }
 
 /**
@@ -160,10 +172,9 @@ export async function initializeDistributedSimulation(cfsms: Map<string, CFSM>) 
   });
 
   currentCFSMs.set(cfsms);
-  distributedExecutionState.set(distributedDebugger.getState());
   executionMode.set('distributed');
   simulationMode.set('idle');
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers distributedExecutionState to update
 }
 
 /**
@@ -194,11 +205,9 @@ export async function initializeBisimulation(cfg: CFG, cfsms: Map<string, CFSM>)
 
   currentCFG.set(cfg);
   currentCFSMs.set(cfsms);
-  cfgExecutionState.set(cfgDebugger.getState());
-  distributedExecutionState.set(distributedDebugger.getState());
   executionMode.set('bisimulation');
   simulationMode.set('idle');
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers both execution states to update
 }
 
 /**
@@ -259,19 +268,15 @@ export async function stepSimulation() {
 
   if (mode === 'cfg' && cfgDebugger) {
     const result = cfgDebugger.stepForward();
-    cfgExecutionState.set(result.state);
-    stateVersion.update(v => v + 1);
+    stateVersion.update(v => v + 1); // Triggers cfgExecutionState to update
     if (result.state.completed) simulationMode.set('idle');
   } else if (mode === 'distributed' && distributedDebugger) {
     const result = await distributedDebugger.stepForward();
-    distributedExecutionState.set(result.state);
-    stateVersion.update(v => v + 1);
+    stateVersion.update(v => v + 1); // Triggers distributedExecutionState to update
     if (result.state.allCompleted) simulationMode.set('idle');
   } else if (mode === 'bisimulation' && bisimulationValidator) {
     await bisimulationValidator.stepBoth();
-    if (cfgDebugger) cfgExecutionState.set(cfgDebugger.getState());
-    if (distributedDebugger) distributedExecutionState.set(distributedDebugger.getState());
-    stateVersion.update(v => v + 1);
+    stateVersion.update(v => v + 1); // Triggers both execution states to update
   }
 }
 
@@ -283,8 +288,7 @@ export function makeChoice(choiceIndex: number) {
 
   cfgDebugger.choose(choiceIndex);
   const result = cfgDebugger.stepForward();
-  cfgExecutionState.set(result.state);
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers cfgExecutionState to update
 
   if (result.state.completed) {
     simulationMode.set('idle');
@@ -347,20 +351,16 @@ export async function stepBack() {
   if (mode === 'cfg' && cfgDebugger) {
     const result = cfgDebugger.stepBackward();
     if (result.success) {
-      cfgExecutionState.set(result.state);
-      stateVersion.update(v => v + 1);
+      stateVersion.update(v => v + 1); // Triggers cfgExecutionState to update
     }
   } else if (mode === 'distributed' && distributedDebugger) {
     const result = await distributedDebugger.stepBackward();
     if (result.success) {
-      distributedExecutionState.set(result.state);
-      stateVersion.update(v => v + 1);
+      stateVersion.update(v => v + 1); // Triggers distributedExecutionState to update
     }
   } else if (mode === 'bisimulation' && bisimulationValidator) {
     await bisimulationValidator.stepBackBoth();
-    if (cfgDebugger) cfgExecutionState.set(cfgDebugger.getState());
-    if (distributedDebugger) distributedExecutionState.set(distributedDebugger.getState());
-    stateVersion.update(v => v + 1);
+    stateVersion.update(v => v + 1); // Triggers both execution states to update
   }
 }
 
@@ -380,14 +380,12 @@ export async function jumpToStep(stepNumber: number) {
   if (mode === 'cfg' && cfgDebugger) {
     const result = cfgDebugger.jumpToStep(stepNumber);
     if (result.success) {
-      cfgExecutionState.set(result.state);
-      stateVersion.update(v => v + 1);
+      stateVersion.update(v => v + 1); // Triggers cfgExecutionState to update
     }
   } else if (mode === 'distributed' && distributedDebugger) {
     const result = await distributedDebugger.jumpToStep(stepNumber);
     if (result.success) {
-      distributedExecutionState.set(result.state);
-      stateVersion.update(v => v + 1);
+      stateVersion.update(v => v + 1); // Triggers distributedExecutionState to update
     }
   }
 }
@@ -402,18 +400,14 @@ export function resetSimulation() {
 
   if (mode === 'cfg' && cfgDebugger) {
     cfgDebugger.reset();
-    cfgExecutionState.set(cfgDebugger.getState());
   } else if (mode === 'distributed' && distributedDebugger) {
     distributedDebugger.reset();
-    distributedExecutionState.set(distributedDebugger.getState());
   } else if (mode === 'bisimulation' && bisimulationValidator) {
     bisimulationValidator.resetBoth();
-    if (cfgDebugger) cfgExecutionState.set(cfgDebugger.getState());
-    if (distributedDebugger) distributedExecutionState.set(distributedDebugger.getState());
   }
 
   simulationMode.set('idle');
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers execution states to update
 }
 
 /**
@@ -424,12 +418,10 @@ export function stopSimulation() {
   cfgDebugger = null;
   distributedDebugger = null;
   bisimulationValidator = null;
-  cfgExecutionState.set(null);
-  distributedExecutionState.set(null);
   currentCFG.set(null);
   currentCFSMs.set(null);
   simulationMode.set('idle');
-  stateVersion.set(0);
+  stateVersion.set(0); // Reset version; execution states will derive null
 }
 
 // ============================================================================
