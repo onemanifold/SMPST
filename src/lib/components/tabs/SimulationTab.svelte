@@ -1,6 +1,7 @@
 <script lang="ts">
   import CFSMNetwork from '../visualizations/CFSMNetwork.svelte';
   import CFGSequence from '../visualizations/CFGSequence.svelte';
+  import WebColaGraph from '../webcola-sim/WebColaGraph.svelte';
   import SimulationControls from '../controls/SimulationControls.svelte';
   import EventLog from '../panels/EventLog.svelte';
   import BisimulationResults from '../panels/BisimulationResults.svelte';
@@ -8,6 +9,7 @@
 
   let splitPos = 50; // percentage
   let eventLogHeight = 200; // pixels
+  let networkView: 'cfsm' | 'webcola' = 'cfsm'; // Network visualization mode
 </script>
 
 <div class="simulation-tab">
@@ -20,8 +22,18 @@
   <div class="main-content">
     <div class="split-container" style="--split-pos: {splitPos}%">
       <div class="left-pane">
-        <div class="pane-header">CFSM Network</div>
-        <CFSMNetwork />
+        <div class="pane-header-controls">
+          <select bind:value={networkView} class="view-selector">
+            <option value="cfsm">CFSM Network</option>
+            <option value="webcola">WebCola Network</option>
+          </select>
+        </div>
+
+        {#if networkView === 'cfsm'}
+          <CFSMNetwork />
+        {:else}
+          <WebColaGraph />
+        {/if}
       </div>
 
       <div class="resize-handle" />
@@ -92,6 +104,32 @@
     z-index: 10;
     backdrop-filter: blur(4px);
     width: auto;
+  }
+
+  .pane-header-controls {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 4px 8px;
+    background: rgba(45, 45, 45, 0.5);
+    border-bottom-left-radius: 4px;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+  }
+
+  .view-selector {
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #ccc;
+    background: rgba(30, 30, 30, 0.8);
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .view-selector:hover {
+    border-color: #007acc;
   }
 
   .resize-handle {

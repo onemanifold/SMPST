@@ -42,13 +42,6 @@
     >
       SIMULATION
     </a>
-    <a
-      href="#/webcola-sim"
-      class="tab"
-      class:active={$currentRoute === '/webcola-sim'}
-    >
-      WEBCOLA
-    </a>
     <div class="tab-spacer"></div>
     <a
       href="#/settings"

@@ -9,7 +9,7 @@
    * - Hash-based routing for GitHub Pages compatibility
    */
   import MainLayout from '$lib/components/layouts/MainLayout.svelte';
-  import { EditorPage, SimulationPage, SettingsPage, WebColaSimPage } from '$lib/pages';
+  import { EditorPage, SimulationPage, SettingsPage } from '$lib/pages';
   import { appStore, currentRoute } from '$lib/stores/app.store';
   import { initializePersistence, forceSaveAll } from '$lib/stores/persistence.integration';
   import { onMount, onDestroy } from 'svelte';
@@ -46,10 +46,6 @@
 
   <div class="view simulation-view" class:active={$currentRoute === '/simulation' || $currentRoute.startsWith('/simulation/')}>
     <SimulationPage />
-  </div>
-
-  <div class="view webcola-view" class:active={$currentRoute === '/webcola-sim'}>
-    <WebColaSimPage />
   </div>
 
   <div class="view settings-view" class:active={$currentRoute === '/settings'}>
