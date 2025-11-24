@@ -141,7 +141,7 @@ test.describe('Routing', () => {
     await page.goto('#/simulation', NAV_OPTIONS);
 
     const noProtocol = page.locator('.no-protocol');
-    const editor = page.locator('.editor-page').first();
+    const editor = page.locator('.editor-page');
     await expect(noProtocol.or(editor)).toBeVisible({ timeout: 15000 });
   });
 

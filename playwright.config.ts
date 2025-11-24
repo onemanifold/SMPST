@@ -18,10 +18,13 @@ export default defineConfig({
     baseURL: 'http://localhost:4173/SMPST/',
     trace: 'on-first-retry',
     screenshot: 'on',
-    // Don't wait for full load - Monaco is heavy
+    // Don't wait for full load - Monaco is heavy (but we use textarea fallback in headless)
     navigationTimeout: 15000,
     actionTimeout: 10000,
   },
+
+  // Increase global timeout for heavy tests
+  timeout: 60000,
 
   projects: [
     {
