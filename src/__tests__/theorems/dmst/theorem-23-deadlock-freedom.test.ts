@@ -350,66 +350,74 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
    *   Without it, updatable recursion could introduce deadlocks.
    */
   describe('Proof Obligation 4: Updatable Recursion', () => {
-    it.skip('proves: simple updatable recursion is deadlock-free', () => {
-      // TODO: Test basic updatable recursion
+    it('proves: simple updatable recursion is deadlock-free', () => {
+      // Test basic updatable recursion with safe update (Definition 14)
+      const protocol = `
+        protocol UpdatableLoop(role A, role B, role C) {
+          rec Loop {
+            A -> B: Work();
+            B -> A: Done();
+            choice at A {
+              continue Loop with {
+                A -> C: Extra();
+              };
+            } or {
+              A -> B: Stop();
+            }
+          }
+        }
+      `;
 
-      // const protocol = `
-      //   protocol UpdatableLoop(role A, role B, role C) {
-      //     rec Loop {
-      //       A -> B: Work();
-      //       B -> A: Done();
-      //       choice at A {
-      //         continue Loop with {
-      //           A -> C: Extra();
-      //         };
-      //       } or {
-      //         A -> B: Stop();
-      //       }
-      //     }
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // const ast = parse(protocol);
-      // const cfg = buildCFG(ast.declarations[0]);
+      // Check well-formedness (includes safe update verification)
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.connectedness.isConnected).toBe(true);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
 
-      // // Check safe update (Definition 14)
-      // const recNode = findRecursionNode(cfg);
-      // const updateBody = extractUpdateBody(recNode);
-      // const oneUnfolding = compute1Unfolding(recNode, updateBody);
-      // expect(checkSafeUpdate(oneUnfolding)).toBe(true);
-
-      // // Theorem 23: Safe update → Deadlock-free
-      // const deadlock = detectDeadlock(cfg);
-      // expect(deadlock.hasDeadlock).toBe(false);
-      // // ✅ PROOF: Updatable recursion is deadlock-free
-
-      expect(true).toBe(true); // Placeholder
+      // Theorem 23: Safe update (Definition 14) → Deadlock-free
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Updatable recursion is deadlock-free when update is safe
     });
 
-    it.skip('proves: updatable recursion with dynamic participants is deadlock-free', () => {
-      // TODO: Test updatable recursion that creates participants
+    it('proves: updatable recursion with dynamic participants is deadlock-free', () => {
+      // Test updatable recursion that creates participants (combines Definition 12 + 13 + 14)
+      // This is a key DMst feature: growing participant set via recursion
+      const protocol = `
+        protocol DynamicPipeline(role Manager) {
+          new role Worker;
+          Manager creates Worker as w1;
+          Manager invites w1;
+          rec Loop {
+            Manager -> w1: Task();
+            w1 -> Manager: Result();
+            choice at Manager {
+              continue Loop with {
+                Manager creates Worker as w_new;
+                Manager invites w_new;
+                Manager -> w_new: Task();
+              };
+            } or {
+              Manager -> w1: Done();
+            }
+          }
+        }
+      `;
 
-      // const protocol = `
-      //   protocol DynamicPipeline(role Manager) {
-      //     new role Worker;
-      //     rec Loop {
-      //       Manager -> Worker: Task();
-      //       Worker -> Manager: Result();
-      //       choice at Manager {
-      //         Manager creates Worker as w_new;
-      //         continue Loop with {
-      //           Manager -> w_new: Task();
-      //         };
-      //       } or {
-      //         Manager -> Worker: Done();
-      //       }
-      //     }
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
 
       // Each iteration adds worker, should not deadlock
-
-      expect(true).toBe(true); // Placeholder
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Dynamic participant creation in updatable recursion is deadlock-free
     });
 
     it.skip('proves: updatable recursion with protocol calls is deadlock-free', () => {
