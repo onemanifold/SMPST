@@ -121,6 +121,42 @@ export const lastError = writable<any>(null);
 // Last event from debugger operations
 export const lastEvent = writable<DebugEvent | DistributedDebugEvent | null>(null);
 
+// ============================================================================
+// Execution State Details (derived from execution state)
+// ============================================================================
+
+/**
+ * Recursion stack - shows active recursion labels
+ */
+export const recursionStack = derived(
+  cfgExecutionState,
+  $state => $state?.recursionStack ?? []
+);
+
+/**
+ * Whether execution is currently inside a parallel block
+ */
+export const isInParallel = derived(
+  cfgExecutionState,
+  $state => $state?.inParallel ?? false
+);
+
+/**
+ * Active parallel branches
+ */
+export const activeBranches = derived(
+  cfgExecutionState,
+  $state => $state?.activeBranches ?? []
+);
+
+/**
+ * Whether max steps limit has been reached
+ */
+export const hasReachedMaxSteps = derived(
+  cfgExecutionState,
+  $state => $state?.reachedMaxSteps ?? false
+);
+
 // Current CFG/CFSMs
 export const currentCFG = writable<CFG | null>(null);
 export const currentCFSMs = writable<Map<string, CFSM> | null>(null);
