@@ -1,11 +1,18 @@
 /**
  * Simulation State Management - Dual-Execution Architecture
  *
+ * SINGLE SOURCE OF TRUTH PATTERN:
+ * - Debugger instances (cfgDebugger, distributedDebugger) OWN all execution state
+ * - ALL state access goes through derived stores that read from debuggers
+ * - NO state mirrors (prevents desync bugs)
+ * - State updates trigger via stateVersion increment
+ *
+ * Architecture Layers:
+ *
  * Layer 4 (Frontend/UI):
  * - Execution mode switching: CFG | Distributed | Bisimulation
  * - UI state (idle/stepping/playing, playback speed)
  * - Reactivity via derived stores
- * - NO state duplication - debuggers are source of truth
  *
  * Layer 3 (Debugging):
  * - CFGDebugger (wraps CFGSimulator)
@@ -27,6 +34,7 @@ import type { DistributedDebugger } from '../../core/simulation/distributed-debu
 import type { BisimulationValidator } from '../../core/simulation/bisimulation-validator';
 import type { DebugEvent } from '../../core/simulation/cfg-debugger';
 import type { DistributedDebugEvent } from '../../core/simulation/distributed-debugger';
+import { handleDebugStepResult, handleDistributedDebugStepResult } from './contracts/backend-contract';
 
 // Re-export types for backward compatibility
 export type SteppedExecutionEvent = DebugEvent;
@@ -79,14 +87,20 @@ let distributedDebugger: DistributedDebugger | null = null;
 let bisimulationValidator: BisimulationValidator | null = null;
 
 // ============================================================================
-// Current State (mirrored for reactivity)
+// Current State (derived from debuggers - NO MIRRORS)
 // ============================================================================
 
-// CFG execution state
-export const cfgExecutionState = writable<CFGExecutionState | null>(null);
+// CFG execution state - reads directly from debugger
+export const cfgExecutionState = derived(
+  stateVersion,
+  () => cfgDebugger?.getState() ?? null
+);
 
-// Distributed execution state
-export const distributedExecutionState = writable<DistributedExecutionState | null>(null);
+// Distributed execution state - reads directly from debugger
+export const distributedExecutionState = derived(
+  stateVersion,
+  () => distributedDebugger?.getState() ?? null
+);
 
 // Legacy: points to active execution state based on mode
 export const executionState = derived(
@@ -95,6 +109,52 @@ export const executionState = derived(
     if ($mode === 'cfg' || $mode === 'bisimulation') return $cfg;
     return null; // Distributed state is different structure
   }
+);
+
+// ============================================================================
+// Error State (contract enforcement)
+// ============================================================================
+
+// Last error from debugger operations - exposed to UI
+export const lastError = writable<any>(null);
+
+// Last event from debugger operations
+export const lastEvent = writable<DebugEvent | DistributedDebugEvent | null>(null);
+
+// ============================================================================
+// Execution State Details (derived from execution state)
+// ============================================================================
+
+/**
+ * Recursion stack - shows active recursion labels
+ */
+export const recursionStack = derived(
+  cfgExecutionState,
+  $state => $state?.recursionStack ?? []
+);
+
+/**
+ * Whether execution is currently inside a parallel block
+ */
+export const isInParallel = derived(
+  cfgExecutionState,
+  $state => $state?.inParallel ?? false
+);
+
+/**
+ * Active parallel branches
+ */
+export const activeBranches = derived(
+  cfgExecutionState,
+  $state => $state?.activeBranches ?? []
+);
+
+/**
+ * Whether max steps limit has been reached
+ */
+export const hasReachedMaxSteps = derived(
+  cfgExecutionState,
+  $state => $state?.reachedMaxSteps ?? false
 );
 
 // Current CFG/CFSMs
@@ -138,10 +198,9 @@ export async function initializeCFGSimulation(cfg: CFG) {
   });
 
   currentCFG.set(cfg);
-  cfgExecutionState.set(cfgDebugger.getState());
   executionMode.set('cfg');
   simulationMode.set('idle');
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers cfgExecutionState to update
 }
 
 /**
@@ -160,10 +219,9 @@ export async function initializeDistributedSimulation(cfsms: Map<string, CFSM>) 
   });
 
   currentCFSMs.set(cfsms);
-  distributedExecutionState.set(distributedDebugger.getState());
   executionMode.set('distributed');
   simulationMode.set('idle');
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers distributedExecutionState to update
 }
 
 /**
@@ -194,11 +252,9 @@ export async function initializeBisimulation(cfg: CFG, cfsms: Map<string, CFSM>)
 
   currentCFG.set(cfg);
   currentCFSMs.set(cfsms);
-  cfgExecutionState.set(cfgDebugger.getState());
-  distributedExecutionState.set(distributedDebugger.getState());
   executionMode.set('bisimulation');
   simulationMode.set('idle');
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers both execution states to update
 }
 
 /**
@@ -253,42 +309,82 @@ export async function switchExecutionMode(mode: ExecutionMode) {
 
 /**
  * Step forward one execution step (mode-aware)
+ * ✅ CONTRACT ENFORCED: All result properties must be handled
  */
 export async function stepSimulation() {
   const mode = get(executionMode);
 
   if (mode === 'cfg' && cfgDebugger) {
     const result = cfgDebugger.stepForward();
-    cfgExecutionState.set(result.state);
-    stateVersion.update(v => v + 1);
-    if (result.state.completed) simulationMode.set('idle');
+
+    // ✅ Contract enforcement: MUST handle both success and error cases
+    handleDebugStepResult(result, {
+      onSuccess: (state, event) => {
+        stateVersion.update(v => v + 1); // Triggers cfgExecutionState to update
+        lastError.set(null); // Clear any previous error
+        lastEvent.set(event ?? null);
+        if (state.completed) simulationMode.set('idle');
+      },
+      onError: (error, state) => {
+        stateVersion.update(v => v + 1); // Update state even on error
+        lastError.set(error);
+        lastEvent.set(null);
+        console.error('[CFG Debugger] Step error:', error);
+        simulationMode.set('idle'); // Stop on error
+      }
+    });
   } else if (mode === 'distributed' && distributedDebugger) {
     const result = await distributedDebugger.stepForward();
-    distributedExecutionState.set(result.state);
-    stateVersion.update(v => v + 1);
-    if (result.state.allCompleted) simulationMode.set('idle');
+
+    // ✅ Contract enforcement: MUST handle both success and error cases
+    handleDistributedDebugStepResult(result, {
+      onSuccess: (state, event) => {
+        stateVersion.update(v => v + 1); // Triggers distributedExecutionState to update
+        lastError.set(null);
+        lastEvent.set(event ?? null);
+        if (state.allCompleted) simulationMode.set('idle');
+      },
+      onError: (error, state) => {
+        stateVersion.update(v => v + 1);
+        lastError.set(error);
+        lastEvent.set(null);
+        console.error('[Distributed Debugger] Step error:', error);
+        simulationMode.set('idle');
+      }
+    });
   } else if (mode === 'bisimulation' && bisimulationValidator) {
     await bisimulationValidator.stepBoth();
-    if (cfgDebugger) cfgExecutionState.set(cfgDebugger.getState());
-    if (distributedDebugger) distributedExecutionState.set(distributedDebugger.getState());
-    stateVersion.update(v => v + 1);
+    stateVersion.update(v => v + 1); // Triggers both execution states to update
+    lastError.set(null); // Bisimulation validator handles errors internally
   }
 }
 
 /**
  * Make a choice at a choice point (CFG mode only)
+ * ✅ CONTRACT ENFORCED: All result properties must be handled
  */
 export function makeChoice(choiceIndex: number) {
   if (!cfgDebugger) return;
 
   cfgDebugger.choose(choiceIndex);
   const result = cfgDebugger.stepForward();
-  cfgExecutionState.set(result.state);
-  stateVersion.update(v => v + 1);
 
-  if (result.state.completed) {
-    simulationMode.set('idle');
-  }
+  // ✅ Contract enforcement
+  handleDebugStepResult(result, {
+    onSuccess: (state, event) => {
+      stateVersion.update(v => v + 1);
+      lastError.set(null);
+      lastEvent.set(event ?? null);
+      if (state.completed) simulationMode.set('idle');
+    },
+    onError: (error, state) => {
+      stateVersion.update(v => v + 1);
+      lastError.set(error);
+      lastEvent.set(null);
+      console.error('[CFG Debugger] Choice error:', error);
+      simulationMode.set('idle');
+    }
+  });
 }
 
 /**
@@ -340,27 +436,45 @@ export function pauseSimulation() {
 
 /**
  * Step backward (mode-aware)
+ * ✅ CONTRACT ENFORCED: All result properties must be handled
  */
 export async function stepBack() {
   const mode = get(executionMode);
 
   if (mode === 'cfg' && cfgDebugger) {
     const result = cfgDebugger.stepBackward();
-    if (result.success) {
-      cfgExecutionState.set(result.state);
-      stateVersion.update(v => v + 1);
-    }
+
+    // ✅ Contract enforcement
+    handleDebugStepResult(result, {
+      onSuccess: (state, event) => {
+        stateVersion.update(v => v + 1);
+        lastError.set(null);
+        lastEvent.set(event ?? null);
+      },
+      onError: (error, state) => {
+        lastError.set(error);
+        console.error('[CFG Debugger] Step back error:', error);
+      }
+    });
   } else if (mode === 'distributed' && distributedDebugger) {
     const result = await distributedDebugger.stepBackward();
-    if (result.success) {
-      distributedExecutionState.set(result.state);
-      stateVersion.update(v => v + 1);
-    }
+
+    // ✅ Contract enforcement
+    handleDistributedDebugStepResult(result, {
+      onSuccess: (state, event) => {
+        stateVersion.update(v => v + 1);
+        lastError.set(null);
+        lastEvent.set(event ?? null);
+      },
+      onError: (error, state) => {
+        lastError.set(error);
+        console.error('[Distributed Debugger] Step back error:', error);
+      }
+    });
   } else if (mode === 'bisimulation' && bisimulationValidator) {
     await bisimulationValidator.stepBackBoth();
-    if (cfgDebugger) cfgExecutionState.set(cfgDebugger.getState());
-    if (distributedDebugger) distributedExecutionState.set(distributedDebugger.getState());
     stateVersion.update(v => v + 1);
+    lastError.set(null);
   }
 }
 
@@ -373,22 +487,41 @@ export function stepForward() {
 
 /**
  * Jump to a specific step
+ * ✅ CONTRACT ENFORCED: All result properties must be handled
  */
 export async function jumpToStep(stepNumber: number) {
   const mode = get(executionMode);
 
   if (mode === 'cfg' && cfgDebugger) {
     const result = cfgDebugger.jumpToStep(stepNumber);
-    if (result.success) {
-      cfgExecutionState.set(result.state);
-      stateVersion.update(v => v + 1);
-    }
+
+    // ✅ Contract enforcement
+    handleDebugStepResult(result, {
+      onSuccess: (state, event) => {
+        stateVersion.update(v => v + 1);
+        lastError.set(null);
+        lastEvent.set(event ?? null);
+      },
+      onError: (error, state) => {
+        lastError.set(error);
+        console.error('[CFG Debugger] Jump to step error:', error);
+      }
+    });
   } else if (mode === 'distributed' && distributedDebugger) {
     const result = await distributedDebugger.jumpToStep(stepNumber);
-    if (result.success) {
-      distributedExecutionState.set(result.state);
-      stateVersion.update(v => v + 1);
-    }
+
+    // ✅ Contract enforcement
+    handleDistributedDebugStepResult(result, {
+      onSuccess: (state, event) => {
+        stateVersion.update(v => v + 1);
+        lastError.set(null);
+        lastEvent.set(event ?? null);
+      },
+      onError: (error, state) => {
+        lastError.set(error);
+        console.error('[Distributed Debugger] Jump to step error:', error);
+      }
+    });
   }
 }
 
@@ -402,18 +535,14 @@ export function resetSimulation() {
 
   if (mode === 'cfg' && cfgDebugger) {
     cfgDebugger.reset();
-    cfgExecutionState.set(cfgDebugger.getState());
   } else if (mode === 'distributed' && distributedDebugger) {
     distributedDebugger.reset();
-    distributedExecutionState.set(distributedDebugger.getState());
   } else if (mode === 'bisimulation' && bisimulationValidator) {
     bisimulationValidator.resetBoth();
-    if (cfgDebugger) cfgExecutionState.set(cfgDebugger.getState());
-    if (distributedDebugger) distributedExecutionState.set(distributedDebugger.getState());
   }
 
   simulationMode.set('idle');
-  stateVersion.update(v => v + 1);
+  stateVersion.update(v => v + 1); // Triggers execution states to update
 }
 
 /**
@@ -424,12 +553,10 @@ export function stopSimulation() {
   cfgDebugger = null;
   distributedDebugger = null;
   bisimulationValidator = null;
-  cfgExecutionState.set(null);
-  distributedExecutionState.set(null);
   currentCFG.set(null);
   currentCFSMs.set(null);
   simulationMode.set('idle');
-  stateVersion.set(0);
+  stateVersion.set(0); // Reset version; execution states will derive null
 }
 
 // ============================================================================

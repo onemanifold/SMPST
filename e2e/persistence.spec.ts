@@ -5,14 +5,20 @@ const NAV_OPTIONS = { waitUntil: 'commit' as const };
 
 /**
  * Wait for either Monaco or fallback textarea to be ready
+ * With view persistence, we need to wait for the active view first
  */
 async function waitForEditor(page: Page, timeout = 15000): Promise<'monaco' | 'textarea'> {
-  const monaco = page.locator('.monaco-editor');
-  const textarea = page.locator('.fallback-textarea');
+  // Wait for the editor view to be active
+  await page.waitForSelector('.view.editor-view.active', { timeout });
 
-  await expect(monaco.or(textarea)).toBeVisible({ timeout });
+  // Now check for editor within the active view
+  const monaco = page.locator('.view.editor-view.active .monaco-editor');
+  const textarea = page.locator('.view.editor-view.active .fallback-textarea');
 
-  if (await monaco.isVisible()) {
+  // Wait for either to be present (not checking visibility since parent view handles that)
+  await page.waitForSelector('.view.editor-view.active .monaco-editor, .view.editor-view.active .fallback-textarea', { timeout });
+
+  if (await monaco.count() > 0) {
     return 'monaco';
   }
   return 'textarea';
@@ -20,24 +26,26 @@ async function waitForEditor(page: Page, timeout = 15000): Promise<'monaco' | 't
 
 /**
  * Get editor content (works with both Monaco and textarea)
+ * Scoped to active editor view
  */
 async function getEditorContent(page: Page, editorType: 'monaco' | 'textarea'): Promise<string> {
   if (editorType === 'monaco') {
-    return await page.locator('.monaco-editor .view-lines').textContent() || '';
+    return await page.locator('.view.editor-view.active .monaco-editor .view-lines').textContent() || '';
   }
-  return await page.locator('.fallback-textarea').inputValue();
+  return await page.locator('.view.editor-view.active .fallback-textarea').inputValue();
 }
 
 /**
  * Set editor content (works with both Monaco and textarea)
+ * Scoped to active editor view
  */
 async function setEditorContent(page: Page, editorType: 'monaco' | 'textarea', content: string): Promise<void> {
   if (editorType === 'monaco') {
-    const editor = page.locator('.monaco-editor textarea');
+    const editor = page.locator('.view.editor-view.active .monaco-editor textarea');
     await editor.click();
     await editor.fill(content);
   } else {
-    const textarea = page.locator('.fallback-textarea');
+    const textarea = page.locator('.view.editor-view.active .fallback-textarea');
     await textarea.click();
     await textarea.fill(content);
   }
@@ -52,12 +60,14 @@ test.describe('Editor Content Persistence', () => {
 
   test('should persist editor content on page refresh', async ({ page }) => {
     await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
 
     const editorType = await waitForEditor(page);
     await setEditorContent(page, editorType, 'global protocol TestProtocol { }');
 
     await page.waitForTimeout(3000);
     await page.reload(NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize after reload
 
     const newEditorType = await waitForEditor(page);
     const editorContent = await getEditorContent(page, newEditorType);
@@ -74,11 +84,13 @@ test.describe('Editor Content Persistence', () => {
     };
 
     await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
     await page.evaluate((state) => {
       localStorage.setItem('smpst-persisted-state', JSON.stringify(state));
     }, oldState);
 
     await page.reload(NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize after reload
     const editorType = await waitForEditor(page);
 
     const editorContent = await getEditorContent(page, editorType);
@@ -94,14 +106,24 @@ test.describe('Theme Persistence', () => {
   });
 
   test('should persist theme preference', async ({ page }) => {
-    await page.goto('#/settings', NAV_OPTIONS);
-    await page.waitForSelector('.settings-page', { timeout: 15000 });
+    await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
 
-    await page.click('button:has-text("Light")');
+    // Navigate to settings using the settings link
+    await page.click('a[href="#/settings"]');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('.view.settings-view.active', { timeout: 15000 });
+
+    // Click light theme button within active view
+    await page.locator('.view.settings-view.active button:has-text("Light")').click();
     await page.waitForTimeout(1000);
 
     await page.reload(NAV_OPTIONS);
-    await page.waitForSelector('.settings-page', { timeout: 15000 });
+    await page.waitForTimeout(2000);
+    // After reload, navigate to settings again
+    await page.click('a[href="#/settings"]');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('.view.settings-view.active', { timeout: 15000 });
 
     const theme = await page.evaluate(() => {
       return document.documentElement.getAttribute('data-theme');
@@ -112,64 +134,91 @@ test.describe('Theme Persistence', () => {
 
 test.describe('Routing', () => {
   test('should navigate to editor route', async ({ page }) => {
-    await page.goto('#/', NAV_OPTIONS);
-    await page.waitForSelector('.editor-page', { timeout: 15000 });
+    await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
+    // Should start on editor view by default
+    await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
   });
 
   test('should navigate to simulation route', async ({ page }) => {
     await page.goto('', NAV_OPTIONS);
-    await page.waitForSelector('.editor-page', { timeout: 15000 });
+    await page.waitForTimeout(2000); // Wait for app to initialize
+    await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
 
-    await page.goto('#/simulation', NAV_OPTIONS);
-    await page.waitForSelector('.simulation-page, .no-protocol', { timeout: 15000 });
+    // Click SIMULATION tab
+    await page.click('.tab:has-text("SIMULATION")');
+    await page.waitForTimeout(500);
+    // Will redirect back to editor if no protocol, or show simulation view
+    const editorActive = page.locator('.view.editor-view.active');
+    const simulationActive = page.locator('.view.simulation-view.active');
+    await expect(editorActive.or(simulationActive)).toBeVisible({ timeout: 15000 });
   });
 
   test('should navigate to settings route', async ({ page }) => {
-    await page.goto('#/settings', NAV_OPTIONS);
-    await page.waitForSelector('.settings-page', { timeout: 15000 });
+    await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
 
-    await expect(page.locator('h2:has-text("Appearance")')).toBeVisible();
-    await expect(page.locator('h2:has-text("Editor")')).toBeVisible();
-    await expect(page.locator('h2:has-text("Simulation")')).toBeVisible();
+    // Click settings link
+    await page.click('a[href="#/settings"]');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('.view.settings-view.active', { timeout: 15000 });
+
+    // Check content within active view
+    await expect(page.locator('.view.settings-view.active h2:has-text("Appearance")')).toBeVisible();
+    await expect(page.locator('.view.settings-view.active h2:has-text("Editor")')).toBeVisible();
+    await expect(page.locator('.view.settings-view.active h2:has-text("Simulation")')).toBeVisible();
   });
 
   test('should redirect from simulation to editor when no protocol loaded', async ({ page }) => {
     await page.goto('', NAV_OPTIONS);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(2000);
     await page.evaluate(() => localStorage.clear());
 
-    await page.goto('#/simulation', NAV_OPTIONS);
+    // Try to navigate to simulation
+    await page.click('.tab:has-text("SIMULATION")');
+    await page.waitForTimeout(500);
 
-    const noProtocol = page.locator('.no-protocol');
-    const editor = page.locator('.editor-page');
-    await expect(noProtocol.or(editor)).toBeVisible({ timeout: 15000 });
+    // Should redirect back to editor or show no-protocol message
+    // Check if either editor view is active OR simulation view shows no-protocol
+    const editorActive = page.locator('.view.editor-view.active');
+    const simulationWithNoProtocol = page.locator('.view.simulation-view.active .no-protocol');
+
+    await expect(editorActive.or(simulationWithNoProtocol)).toBeVisible({ timeout: 15000 });
   });
 
   test('should handle back button navigation', async ({ page }) => {
-    await page.goto('#/', NAV_OPTIONS);
-    await page.waitForSelector('.editor-page', { timeout: 15000 });
+    await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000);
+    await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
 
-    await page.goto('#/settings', NAV_OPTIONS);
-    await page.waitForSelector('.settings-page', { timeout: 15000 });
+    // Navigate to settings
+    await page.click('a[href="#/settings"]');
+    await page.waitForTimeout(500);
+    await page.waitForSelector('.view.settings-view.active', { timeout: 15000 });
 
+    // Go back
     await page.goBack();
-    await page.waitForSelector('.editor-page', { timeout: 15000 });
+    await page.waitForTimeout(500);
+    await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
   });
 });
 
 test.describe('Tab Navigation', () => {
   test('should switch between CODE and SIMULATION tabs', async ({ page }) => {
     await page.goto('', NAV_OPTIONS);
+    await page.waitForTimeout(2000); // Wait for app to initialize
     await page.waitForSelector('.tab-bar', { timeout: 15000 });
 
     await page.click('.tab:has-text("CODE")');
-    await expect(page.locator('.editor-page')).toBeVisible();
+    await page.waitForTimeout(500);
+    await page.waitForSelector('.view.editor-view.active', { timeout: 15000 });
 
     await page.click('.tab:has-text("SIMULATION")');
-    // When no protocol is loaded, SimulationPage shows no-protocol or redirects to editor
-    const simulation = page.locator('.simulation-page');
-    const noProtocol = page.locator('.no-protocol');
-    const editor = page.locator('.editor-page');
-    await expect(simulation.or(noProtocol).or(editor).first()).toBeVisible({ timeout: 15000 });
+    await page.waitForTimeout(500);
+
+    // When no protocol is loaded, should show editor view or simulation view with no-protocol
+    const editorActive = page.locator('.view.editor-view.active');
+    const simulationActive = page.locator('.view.simulation-view.active');
+    await expect(editorActive.or(simulationActive)).toBeVisible({ timeout: 15000 });
   });
 });

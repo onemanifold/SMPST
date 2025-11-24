@@ -6,7 +6,7 @@
  */
 
 import { get } from 'svelte/store';
-import { push } from 'svelte-spa-router';
+import { appStore } from '$lib/stores/app.store';
 import { routeRequiresProtocol, ROUTES } from './routes';
 
 // Import stores (will be connected after store refactor)
@@ -60,14 +60,15 @@ export function protocolGuard(
 /**
  * Apply guards to a route condition function
  *
- * Usage with svelte-spa-router:
+ * Usage with app.store routing:
  * ```typescript
- * const routes = {
- *   '/simulation': wrap({
- *     component: SimulationPage,
- *     conditions: [applyGuards([protocolGuard(() => hasProtocol)])]
- *   })
- * };
+ * // Guards are applied within components using onMount or reactive statements
+ * // Example in SimulationPage.svelte:
+ * // onMount(() => {
+ * //   if (!hasProtocol) {
+ * //     appStore.navigateTo('/');
+ * //   }
+ * // });
  * ```
  */
 export function applyGuards(guards: RouteGuard[]): (detail: { location: string }) => boolean | Promise<boolean> {
@@ -81,7 +82,7 @@ export function applyGuards(guards: RouteGuard[]): (detail: { location: string }
 
       if (typeof result === 'string') {
         // Redirect
-        push(result);
+        appStore.navigateTo(result);
         return false;
       }
     }

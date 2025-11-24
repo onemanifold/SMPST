@@ -6,6 +6,9 @@
  */
 
 import type { CFGStepResult, CFGExecutionState } from '../../../core/simulation/types';
+import type { DebugStepResult } from '../../../core/simulation/cfg-debugger';
+import type { DistributedDebugStepResult } from '../../../core/simulation/distributed-debugger';
+import type { DistributedExecutionState } from '../../../core/simulation/types';
 
 /**
  * Contract handler forces you to explicitly handle all backend properties
@@ -81,4 +84,55 @@ export function extractStepResult(result: CFGStepResult) {
     event: result.event,
     error: result.error,
   } as const;
+}
+
+// ============================================================================
+// CFG Debugger Contract Handlers
+// ============================================================================
+
+/**
+ * Contract handler for CFG debugger step results
+ */
+export interface DebugStepResultHandler<TState, TEvent> {
+  /**
+   * Called when step succeeds
+   */
+  onSuccess: (state: TState, event?: TEvent) => void;
+
+  /**
+   * Called when step fails
+   */
+  onError: (error: any, state: TState) => void;
+}
+
+/**
+ * Handle a DebugStepResult with compile-time guarantee all properties are used
+ */
+export function handleDebugStepResult(
+  result: DebugStepResult,
+  handler: DebugStepResultHandler<CFGExecutionState, DebugStepResult['event']>
+): void {
+  if (!result.success || result.error) {
+    handler.onError(result.error ?? 'Unknown error', result.state);
+  } else {
+    handler.onSuccess(result.state, result.event);
+  }
+}
+
+// ============================================================================
+// Distributed Debugger Contract Handlers
+// ============================================================================
+
+/**
+ * Handle a DistributedDebugStepResult with compile-time guarantee all properties are used
+ */
+export function handleDistributedDebugStepResult(
+  result: DistributedDebugStepResult,
+  handler: DebugStepResultHandler<DistributedExecutionState, DistributedDebugStepResult['event']>
+): void {
+  if (!result.success || result.error) {
+    handler.onError(result.error ?? 'Unknown error', result.state);
+  } else {
+    handler.onSuccess(result.state, result.event);
+  }
 }
