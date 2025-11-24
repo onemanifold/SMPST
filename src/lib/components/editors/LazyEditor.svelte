@@ -2,27 +2,66 @@
   /**
    * Lazy Editor
    *
-   * Wrapper component that lazy loads the Monaco-based GlobalEditor.
-   * Shows a loading state while Monaco is being loaded.
+   * In headless environments: immediately uses textarea (no Monaco attempt)
+   * In normal environments: lazy loads Monaco Editor
    */
   import { onMount } from 'svelte';
+  import { editorContent, parseProtocol } from '$lib/stores/editor';
 
   let EditorComponent: typeof import('./GlobalEditor.svelte').default | null = null;
   let loading = true;
   let error: string | null = null;
+  let useTextareaFallback = false;
+
+  /**
+   * Detect if running in headless environment - check BEFORE any Monaco loading
+   */
+  function isHeadlessEnvironment(): boolean {
+    if (typeof window === 'undefined') return true;
+
+    return (
+      navigator.webdriver === true ||
+      /HeadlessChrome/.test(navigator.userAgent) ||
+      /PhantomJS/.test(navigator.userAgent)
+    );
+  }
+
+  // Check headless immediately on script load (before onMount)
+  const headless = typeof window !== 'undefined' && isHeadlessEnvironment();
 
   onMount(async () => {
+    // If headless, use textarea immediately - DO NOT load Monaco
+    if (headless) {
+      console.log('[LazyEditor] Headless detected, using textarea (Monaco not loaded)');
+      useTextareaFallback = true;
+      loading = false;
+      return;
+    }
+
+    // Normal environment - load Monaco
     try {
-      // Dynamically import the editor
       const module = await import('./GlobalEditor.svelte');
       EditorComponent = module.default;
       loading = false;
     } catch (err) {
-      console.error('Failed to load editor:', err);
-      error = err instanceof Error ? err.message : 'Failed to load editor';
+      console.error('Failed to load Monaco:', err);
+      useTextareaFallback = true;
       loading = false;
     }
   });
+
+  // Handle textarea changes
+  function handleTextareaInput(event: Event) {
+    const textarea = event.target as HTMLTextAreaElement;
+    editorContent.set(textarea.value);
+  }
+
+  // Handle parse on Ctrl+Enter
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.ctrlKey && event.key === 'Enter') {
+      parseProtocol($editorContent);
+    }
+  }
 </script>
 
 <div class="lazy-editor-container">
@@ -30,6 +69,18 @@
     <div class="loading-state">
       <div class="spinner"></div>
       <span>Loading editor...</span>
+    </div>
+  {:else if useTextareaFallback}
+    <!-- Fallback textarea for headless/constrained environments -->
+    <div class="fallback-editor">
+      <textarea
+        class="fallback-textarea"
+        value={$editorContent}
+        on:input={handleTextareaInput}
+        on:keydown={handleKeydown}
+        placeholder="Enter Scribble protocol... (Ctrl+Enter to parse)"
+        spellcheck="false"
+      ></textarea>
     </div>
   {:else if error}
     <div class="error-state">
@@ -98,5 +149,35 @@
 
   .error-state button:hover {
     background: var(--color-accent-hover, #1a8ad4);
+  }
+
+  /* Fallback textarea styles */
+  .fallback-editor {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-primary, #1e1e1e);
+  }
+
+  .fallback-textarea {
+    flex: 1;
+    width: 100%;
+    padding: var(--spacing-3, 12px);
+    background: var(--color-bg-secondary, #252526);
+    color: var(--color-text-primary, #cccccc);
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: var(--font-family-mono, 'Consolas', 'Monaco', monospace);
+    font-size: var(--font-size-base, 14px);
+    line-height: 1.5;
+  }
+
+  .fallback-textarea::placeholder {
+    color: var(--color-text-muted, #6e6e6e);
+  }
+
+  .fallback-textarea:focus {
+    box-shadow: inset 0 0 0 1px var(--color-accent, #007acc);
   }
 </style>
