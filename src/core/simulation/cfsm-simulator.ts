@@ -51,13 +51,14 @@ import { CFSMExecutionHistory } from './execution-history';
 
 export class CFSMSimulator {
   private rootCFSM: CFSM;  // Root CFSM (never changes)
-  private config: Required<Omit<CFSMSimulatorConfig, 'executionHistory' | 'transport' | 'cfsmRegistry'>>;
+  private config: Required<Omit<CFSMSimulatorConfig, 'executionHistory' | 'channels' | 'cfsmRegistry'>>;
 
   // Execution history (for backward stepping)
   private executionHistory: ICFSMExecutionHistory;
 
-  // Message transport (optional - for decentralized execution)
-  private transport?: any; // MessageTransport from runtime/types
+  // Channels for peer-to-peer communication (optional - for true distributed execution)
+  // Maps peer role → channel end
+  private channels?: Map<string, any>; // Map<string, ChannelEnd> - avoiding circular import
 
   // CFSM registry for sub-protocol execution
   // Maps protocol name → (role → CFSM)
@@ -127,8 +128,8 @@ export class CFSMSimulator {
       maxSnapshots: 1000,
     });
 
-    // Store transport if provided
-    this.transport = config.transport;
+    // Store channels if provided
+    this.channels = config.channels;
 
     // Initialize CFSM registry for sub-protocol support
     this.cfsmRegistry = config.cfsmRegistry || new Map();
@@ -182,34 +183,32 @@ export class CFSMSimulator {
    *
    * A transition is enabled if:
    * - Send: Always (asynchronous)
-   * - Receive: Message available in buffer/transport
+   * - Receive: Always structurally enabled (blocks during execution if message not ready)
    * - Tau: Always
    * - Choice: Always
    * - SubProtocol: Always (invocation check happens at execution)
+   *
+   * Note: With async channels, receive transitions are always structurally enabled.
+   * The simulator will naturally block when executing receive() if no message is available.
+   * Legacy mode still checks buffer for compatibility.
    */
   getEnabledTransitions(): CFSMTransition[] {
     const transitions = this.currentCFSM.transitions.filter(t => t.from === this.currentState);
 
+    // With async channels, all transitions from current state are enabled
+    if (this.channels) {
+      return transitions;
+    }
+
+    // Legacy mode: check buffer for receive transitions
     return transitions.filter(t => {
       if (t.action.type === 'receive') {
-        const from = t.action.from;
-        const label = t.action.label;
+        const queue = this.buffer.channels.get(t.action.from);
+        if (!queue || queue.length === 0) return false;
 
-        if (this.transport) {
-          // Transport mode: check if any message available for this role
-          // Note: We can't peek at message label without consuming it,
-          // so we just check if ANY message is available
-          // The actual label matching happens during execution
-          return this.transport.hasMessage(this.rootCFSM.role);
-        } else {
-          // Legacy mode: check buffer
-          const queue = this.buffer.channels.get(from);
-          if (!queue || queue.length === 0) return false;
-
-          // Check if first message matches (FIFO)
-          const firstMsg = queue[0];
-          return firstMsg.label === label;
-        }
+        // Check if first message matches (FIFO)
+        const firstMsg = queue[0];
+        return firstMsg.label === t.action.message.label;
       }
 
       // Send, tau, choice always enabled
@@ -381,16 +380,20 @@ export class CFSMSimulator {
       id: `${this.rootCFSM.role}-msg-${this.messageIdCounter++}`,
       from: this.rootCFSM.role,
       to,
-      label: action.label,
-      payloadType: action.payloadType,
+      label: action.message.label,
+      payloadType: action.message.payload?.payloadType.name,
       timestamp: Date.now(),
     }));
 
-    if (this.transport) {
-      // Transport mode: send directly via transport
+    if (this.channels) {
+      // Channel mode: send directly to peer via channel
       for (const msg of messages) {
-        // Await transport send - ensures delivery happens before continuing
-        await this.transport.send(msg);
+        const channel = this.channels.get(msg.to);
+        if (!channel) {
+          throw new Error(`No channel to ${msg.to} from ${this.rootCFSM.role}`);
+        }
+        // Await channel send - blocks until peer receives
+        await channel.send(msg);
       }
     } else {
       // Legacy mode: add to outgoing queue (coordinator will deliver)
@@ -443,7 +446,8 @@ export class CFSMSimulator {
 
   /**
    * Execute receive action
-   * Consumes message from transport or buffer (legacy)
+   * Consumes message from channel or buffer (legacy)
+   * With async channels, blocks until message arrives
    */
   private async executeReceive(transition: CFSMTransition): Promise<CFSMStepResult> {
     const action = transition.action;
@@ -451,18 +455,24 @@ export class CFSMSimulator {
 
     let msg: Message;
 
-    if (this.transport) {
-      // Transport mode: receive from transport asynchronously
-      const receivedMsg = await this.transport.receive(this.rootCFSM.role);
-
-      if (!receivedMsg) {
-        throw new Error(`No message available from transport for ${this.rootCFSM.role}`);
+    if (this.channels) {
+      // Channel mode: receive from peer via channel (blocks until available)
+      const channel = this.channels.get(action.from);
+      if (!channel) {
+        throw new Error(`No channel from ${action.from} to ${this.rootCFSM.role}`);
       }
 
-      msg = receivedMsg;
+      // Await channel receive - blocks naturally until message arrives
+      msg = await channel.receive();
 
-      // In transport mode, we trust the transport to maintain FIFO ordering
-      // Verification would happen at the transport layer
+      // Verify message label matches expected
+      if (msg.label !== action.message.label) {
+        throw new Error(
+          `Protocol violation: expected ${action.message.label} from ${action.from}, got ${msg.label}`
+        );
+      }
+
+      // Channel guarantees FIFO ordering - no need to verify
     } else {
       // Legacy mode: get message from buffer (FIFO)
       const queue = this.buffer.channels.get(action.from);
@@ -501,7 +511,7 @@ export class CFSMSimulator {
     });
 
     // Emit buffer-dequeue event (only in legacy mode)
-    if (!this.transport) {
+    if (!this.channels) {
       const queue = this.buffer.channels.get(action.from);
       this.emit('buffer-dequeue', {
         from: msg.from,
@@ -516,8 +526,8 @@ export class CFSMSimulator {
         type: 'receive',
         timestamp: Date.now(),
         from: action.from,
-        label: action.label,
-        payloadType: action.payloadType,
+        label: action.message.label,
+        payloadType: action.message.payload?.payloadType.name,
         messageId: msg.id,
         stateId: this.currentState,
       });

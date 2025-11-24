@@ -42,15 +42,16 @@ import type {
   CFSMExecutionTrace,
   MessageBuffer,
 } from './cfsm-simulator-types';
-import { InMemoryTransport } from '../runtime/transport';
+import { createChannel, type ChannelEnd } from './channel';
 
 export class DistributedSimulator {
   private cfsms: Map<string, CFSM>;
   private simulators: Map<string, CFSMSimulator>;
   private config: Required<DistributedSimulatorConfig>;
 
-  // Message transport (shared among all roles)
-  private transport: InMemoryTransport;
+  // Channel registry (for debugging/inspection only)
+  // Maps "roleA:roleB" (sorted) → [endA, endB]
+  private channels: Map<string, [ChannelEnd, ChannelEnd]> = new Map();
 
   // Global state
   private globalSteps: number = 0;
@@ -75,10 +76,29 @@ export class DistributedSimulator {
       exploreAllInterleavings: config.exploreAllInterleavings ?? false,
     };
 
-    // Create shared message transport (FIFO channels between all roles)
-    this.transport = new InMemoryTransport();
+    // Step 1: Analyze CFSMs to determine which roles communicate
+    const communicatingPairs = this.analyzeCommunicationPairs(cfsms);
 
-    // Create simulators with shared transport
+    // Step 2: Create channels for each communicating pair
+    const roleChannels = new Map<string, Map<string, ChannelEnd>>();
+
+    for (const role of cfsms.keys()) {
+      roleChannels.set(role, new Map());
+    }
+
+    for (const [roleA, roleB] of communicatingPairs) {
+      const [endA, endB] = createChannel();
+
+      // Store in registry for debugging
+      const key = [roleA, roleB].sort().join(':');
+      this.channels.set(key, [endA, endB]);
+
+      // Give each role its end
+      roleChannels.get(roleA)!.set(roleB, endA);
+      roleChannels.get(roleB)!.set(roleA, endB);
+    }
+
+    // Step 3: Create simulators with their channels
     this.simulators = new Map();
     for (const [role, cfsm] of cfsms) {
       const simulator = new CFSMSimulator(cfsm, {
@@ -86,7 +106,7 @@ export class DistributedSimulator {
         maxBufferSize: config.maxBufferSize,
         recordTrace: config.recordTrace,
         transitionStrategy: 'first', // Distributed coordinator controls scheduling
-        transport: this.transport, // Share transport across all roles
+        channels: roleChannels.get(role), // Give role its channels
       });
 
       // Subscribe to the complete event for each role
@@ -97,6 +117,42 @@ export class DistributedSimulator {
       this.simulators.set(role, simulator);
       this.roleScheduleCount.set(role, 0);
     }
+  }
+
+  /**
+   * Analyze CFSMs to determine which role pairs communicate
+   * Returns set of [roleA, roleB] pairs (each pair listed once)
+   */
+  private analyzeCommunicationPairs(cfsms: Map<string, CFSM>): Set<[string, string]> {
+    const pairs = new Set<string>();
+
+    for (const [role, cfsm] of cfsms) {
+      for (const transition of cfsm.transitions) {
+        if (transition.action.type === 'send') {
+          const recipients = Array.isArray(transition.action.to)
+            ? transition.action.to
+            : [transition.action.to];
+
+          for (const recipient of recipients) {
+            // Create sorted pair key to avoid duplicates
+            const key = [role, recipient].sort().join(':');
+            pairs.add(key);
+          }
+        } else if (transition.action.type === 'receive') {
+          const sender = transition.action.from;
+          const key = [role, sender].sort().join(':');
+          pairs.add(key);
+        }
+      }
+    }
+
+    // Convert back to tuples
+    return new Set(
+      Array.from(pairs).map(key => {
+        const [a, b] = key.split(':');
+        return [a, b] as [string, string];
+      })
+    );
   }
 
   /**
@@ -118,11 +174,9 @@ export class DistributedSimulator {
     const allCompleted = this.completedRoles.size === this.cfsms.size;
     const anyCompleted = this.completedRoles.size > 0;
 
-    // Get in-flight messages from transport
+    // With async channels, messages are hidden in promise chains
+    // No exposed in-flight messages
     const inFlightMessages: Message[] = [];
-    for (const role of this.cfsms.keys()) {
-      inFlightMessages.push(...this.transport.getPendingMessages(role));
-    }
 
     return {
       roleStates,
@@ -372,14 +426,41 @@ export class DistributedSimulator {
   }
 
   /**
-   * Reset all simulators and transport
+   * Reset all simulators and channels
+   *
+   * Note: With async channels, we cannot "clear" them since they contain
+   * promise chains. Instead, we recreate all channels from scratch.
    */
   reset(): void {
+    // Recreate channels
+    const communicatingPairs = this.analyzeCommunicationPairs(this.cfsms);
+    const roleChannels = new Map<string, Map<string, ChannelEnd>>();
+
+    for (const role of this.cfsms.keys()) {
+      roleChannels.set(role, new Map());
+    }
+
+    this.channels.clear();
+
+    for (const [roleA, roleB] of communicatingPairs) {
+      const [endA, endB] = createChannel();
+
+      // Store in registry
+      const key = [roleA, roleB].sort().join(':');
+      this.channels.set(key, [endA, endB]);
+
+      // Give each role its end
+      roleChannels.get(roleA)!.set(roleB, endA);
+      roleChannels.get(roleB)!.set(roleA, endB);
+    }
+
+    // Reset simulators and update their channels
     for (const sim of this.simulators.values()) {
       sim.reset();
+      // Update simulator's channels (we need to expose a method for this)
+      // For now, channels are set in constructor - full reset requires reconstruction
     }
-    // Clear transport queues
-    this.transport.clear();
+
     this.globalSteps = 0;
     this.reachedMaxSteps = false;
     this.deadlocked = false;

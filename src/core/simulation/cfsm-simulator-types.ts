@@ -77,14 +77,15 @@ export interface CFSMSimulatorConfig {
   executionHistory?: ICFSMExecutionHistory;
 
   /**
-   * Message transport for async message passing
+   * Channels for async message passing
+   * Maps peer role → channel end
    * Optional - if not provided, uses internal buffers (legacy mode)
-   * When provided, enables decentralized execution:
-   * - Sends go directly to transport
-   * - Receives pull from transport
-   * - No coordinator message delivery needed
+   * When provided, enables true distributed execution:
+   * - Sends go directly to peer via channel
+   * - Receives block until peer sends
+   * - No coordinator mediation after setup
    */
-  transport?: any; // Will be MessageTransport from runtime/types
+  channels?: Map<string, any>; // Map<string, ChannelEnd> - avoiding circular import
 
   /**
    * CFSM registry for sub-protocol execution
