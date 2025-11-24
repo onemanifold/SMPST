@@ -242,55 +242,78 @@ describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', ()
    *   → SAFE ✓
    */
   describe('Proof Obligation 2: Dynamic Participant Updates', () => {
-    it.skip('proves: creating new participant in update is safe', () => {
-      // TODO: Test dynamic participant creation in updatable recursion
+    it('proves: creating new participant in update is safe', () => {
+      // Test dynamic participant creation in updatable recursion (Definition 14)
+      // This tests the canonical DMst pattern: growing participant set
+      const protocol = `
+        protocol DynamicWorkers(role Manager) {
+          new role Worker;
+          Manager creates Worker as w1;
+          Manager invites w1;
+          rec Loop {
+            Manager -> w1: Task();
+            w1 -> Manager: Result();
+            choice at Manager {
+              continue Loop with {
+                Manager creates Worker as w_new;
+                Manager invites w_new;
+                Manager -> w_new: Task();
+              };
+            } or {
+              Manager -> w1: Stop();
+            }
+          }
+        }
+      `;
 
-      // const protocol = `
-      //   protocol DynamicWorkers(role Manager) {
-      //     new role Worker;
-      //     rec Loop {
-      //       Manager -> Worker: Task();
-      //       Worker -> Manager: Result();
-      //       choice at Manager {
-      //         Manager creates Worker as w_new;
-      //         continue Loop with {
-      //           Manager -> w_new: Task();
-      //         };
-      //       } or {
-      //         Manager -> Worker: Stop();
-      //       }
-      //     }
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // 1-unfolding should show:
-      // - Original Manager->Worker interaction
+      // Check well-formedness (Definition 14: 1-unfolding must be well-formed)
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.connectedness.isConnected).toBe(true);
+
+      // 1-unfolding shows:
+      // - Original Manager->w1 interaction
       // - Plus new Manager->w_new interaction
-      // - No conflicts between them
-      // → SAFE
-
-      expect(true).toBe(true); // Placeholder
+      // - No conflicts between them (independent channels)
+      // → SAFE ✓
+      expect(wf.raceConditions.hasRaces).toBe(false);
+      expect(wf.deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Creating new participants in update body is safe
     });
 
-    it.skip('proves: protocol call in update is safe', () => {
-      // TODO: Test updatable recursion that calls sub-protocol
+    it('proves: protocol call in update is safe', () => {
+      // Test updatable recursion that calls sub-protocol (Definition 14 + protocol calls)
+      // Combining operator ♢ used in update body
+      const protocol = `
+        protocol UpdateWithCall(role A, role B) {
+          rec Loop {
+            A -> B: Work();
+            choice at A {
+              A calls SubTask(B);
+              continue Loop;
+            } or {
+              A -> B: Done();
+            }
+          }
+        }
+      `;
 
-      // const protocol = `
-      //   rec Loop {
-      //     A -> B: Work();
-      //     choice at A {
-      //       A calls SubTask(B);
-      //       continue Loop;
-      //     } or {
-      //       A -> B: Done();
-      //     }
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // 1-unfolding should combine Loop body with SubTask
+      // 1-unfolding should combine Loop body with SubTask via ♢
       // Check for races and progress
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.connectedness.isConnected).toBe(true);
 
-      expect(true).toBe(true); // Placeholder
+      // Protocol calls in updates should not create races
+      expect(wf.raceConditions.hasRaces).toBe(false);
+      expect(wf.deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Protocol calls in update body preserve safety
     });
   });
 
