@@ -278,18 +278,19 @@ describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)',
     });
 
     it('proves: multiple dynamic participants trace equivalence', () => {
-      // Test protocol creating multiple workers
-      // Uses independent dynamic roles (different role types)
+      // Test protocol creating multiple INSTANCES of the same role type
+      // Formal DMst: multiple instances (w1, w2) of same type (Worker)
       const protocol = `
         protocol MultiWorker(role Manager) {
-          new role Worker1;
-          new role Worker2;
-          Manager creates Worker1;
-          Manager creates Worker2;
-          Manager -> Worker1: Task1();
-          Manager -> Worker2: Task2();
-          Worker1 -> Manager: Result1();
-          Worker2 -> Manager: Result2();
+          new role Worker;
+          Manager creates Worker as w1;
+          Manager creates Worker as w2;
+          Manager invites w1;
+          Manager invites w2;
+          Manager -> w1: Task1();
+          Manager -> w2: Task2();
+          w1 -> Manager: Result1();
+          w2 -> Manager: Result2();
         }
       `;
 
@@ -297,9 +298,14 @@ describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)',
       const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
       const projections = projectAll(cfg);
 
-      // Verify both workers are projected
-      expect(projections.cfsms.has('Worker1')).toBe(true);
-      expect(projections.cfsms.has('Worker2')).toBe(true);
+      // Formal correctness: ONE CFSM for role type "Worker"
+      // Multiple instances (w1, w2) share the same CFSM template at runtime
+      expect(projections.cfsms.has('Worker')).toBe(true);
+      expect(projections.cfsms.has('Manager')).toBe(true);
+
+      // There should be exactly 2 CFSMs: Manager and Worker (the type)
+      // NOT separate CFSMs for w1 and w2 (they're instances, not types)
+      expect(projections.cfsms.size).toBe(2);
 
       // Extract global trace
       const globalTrace = extractGlobalTrace(cfg);
@@ -311,15 +317,15 @@ describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)',
 
       // Extract local traces
       const managerTrace = extractLocalTrace(projections.cfsms.get('Manager')!);
-      const worker1Trace = extractLocalTrace(projections.cfsms.get('Worker1')!);
-      const worker2Trace = extractLocalTrace(projections.cfsms.get('Worker2')!);
+      const workerTrace = extractLocalTrace(projections.cfsms.get('Worker')!);
 
-      // All local traces should have messages
+      // Both Manager and Worker CFSMs should have message actions
       expect(managerTrace.some(e => e.type === 'message')).toBe(true);
-      expect(worker1Trace.some(e => e.type === 'message')).toBe(true);
-      expect(worker2Trace.some(e => e.type === 'message')).toBe(true);
+      expect(workerTrace.some(e => e.type === 'message')).toBe(true);
 
       // Note: Full trace equivalence verified by Theorem 20 for projectable protocols
+      // Formal DMst: w1 and w2 are runtime instances of Worker type
+      // Both instances execute using the same Worker CFSM template
     });
   });
 

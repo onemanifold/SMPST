@@ -206,18 +206,19 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
     });
 
     it('proves: multiple dynamic participants are deadlock-free', () => {
-      // Test protocol creating multiple dynamic participants
-      // Uses independent dynamic roles (different role types)
+      // Test protocol creating multiple INSTANCES of the same role type
+      // Formal DMst: multiple instances (w1, w2) of same type (Worker)
       const protocol = `
         protocol MultiWorker(role Manager) {
-          new role Worker1;
-          new role Worker2;
-          Manager creates Worker1;
-          Manager creates Worker2;
-          Manager -> Worker1: Task1();
-          Manager -> Worker2: Task2();
-          Worker1 -> Manager: Result1();
-          Worker2 -> Manager: Result2();
+          new role Worker;
+          Manager creates Worker as w1;
+          Manager creates Worker as w2;
+          Manager invites w1;
+          Manager invites w2;
+          Manager -> w1: Task1();
+          Manager -> w2: Task2();
+          w1 -> Manager: Result1();
+          w2 -> Manager: Result2();
         }
       `;
 
@@ -228,10 +229,10 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
       const wf = verifyProtocol(cfg);
       expect(wf.structural.valid).toBe(true);
 
-      // Multiple workers should not deadlock (independent channels)
+      // Multiple instances of same type should not deadlock (independent channels)
       const deadlock = detectDeadlock(cfg);
       expect(deadlock.hasDeadlock).toBe(false);
-      // ✅ PROOF: Multiple dynamic participants preserve deadlock-freedom
+      // ✅ PROOF: Multiple instances of same role type preserve deadlock-freedom
     });
 
     it('proves: dynamic participant with choice is deadlock-free', () => {
