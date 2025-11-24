@@ -170,6 +170,6 @@ test.describe('Tab Navigation', () => {
     const simulation = page.locator('.simulation-page');
     const noProtocol = page.locator('.no-protocol');
     const editor = page.locator('.editor-page');
-    await expect(simulation.or(noProtocol).or(editor)).toBeVisible({ timeout: 15000 });
+    await expect(simulation.or(noProtocol).or(editor).first()).toBeVisible({ timeout: 15000 });
   });
 });
