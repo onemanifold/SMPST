@@ -1,6 +1,6 @@
 <script lang="ts">
   import { protocolExamples, categories, getExamplesByCategory } from '$lib/data/examples';
-  import { loadExample, editorContent } from '$lib/stores/editor';
+  import { loadExample, editorContent, selectedExample } from '$lib/stores/editor';
   import { protocolDB, type SavedProtocol } from '$lib/stores/protocol-db';
   import { onMount } from 'svelte';
   import { Button, Input } from '$lib/components/atoms';
@@ -12,6 +12,7 @@
   let savedProtocols: SavedProtocol[] = [];
   let newProtocolName = '';
   let showSaveDialog = false;
+  let currentLoadedSavedId: number | null = null;
 
   // Load saved protocols from Dexie
   onMount(() => {
@@ -27,8 +28,12 @@
   }
 
   async function handleLoadExample(exampleId: string) {
+    // Skip if this example is already loaded
+    if ($selectedExample?.id === exampleId) return;
+
     const example = protocolExamples.find(ex => ex.id === exampleId);
     if (example) {
+      currentLoadedSavedId = null; // Clear saved protocol tracking
       await loadExample(example);
     }
   }
@@ -71,8 +76,12 @@
 
   async function handleLoadSaved(id: number | undefined) {
     if (!id) return;
+    // Skip if this saved protocol is already loaded
+    if (currentLoadedSavedId === id) return;
+
     const protocol = savedProtocols.find(p => p.id === id);
     if (protocol) {
+      currentLoadedSavedId = id;
       editorContent.set(protocol.code);
       // Trigger parsing for saved protocols too
       const { parseProtocol } = await import('$lib/stores/editor');
@@ -142,10 +151,9 @@
     </button>
   </div>
 
-  <!-- Main sidebar content -->
-  {#if !collapsed && activeView}
-    <div class="sidebar-content">
-      {#if activeView === 'examples'}
+  <!-- Main sidebar content - hidden via CSS instead of destroyed -->
+  <div class="sidebar-content" class:hidden={collapsed || !activeView}>
+    {#if activeView === 'examples'}
         <div class="sidebar-header">
           <h3 class="sidebar-title">Examples</h3>
           <button class="btn-close" on:click={toggleCollapse} title="Close sidebar">×</button>
@@ -228,8 +236,7 @@
           {/if}
         </div>
       {/if}
-    </div>
-  {/if}
+  </div>
 </div>
 
 <style>
@@ -277,6 +284,10 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .sidebar-content.hidden {
+    display: none;
   }
 
   .sidebar-header {

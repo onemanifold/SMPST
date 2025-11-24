@@ -15,14 +15,14 @@
     <button
       class="tab"
       class:active={currentTab === 'code'}
-      on:click={() => currentTab = 'code'}
+      on:click={() => { if (currentTab !== 'code') currentTab = 'code'; }}
     >
       CODE
     </button>
     <button
       class="tab"
       class:active={currentTab === 'simulation'}
-      on:click={() => currentTab = 'simulation'}
+      on:click={() => { if (currentTab !== 'simulation') currentTab = 'simulation'; }}
     >
       SIMULATION
     </button>
