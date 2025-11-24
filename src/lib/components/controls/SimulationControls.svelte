@@ -21,6 +21,7 @@
     type ExecutionMode,
     type ChoiceStrategy,
   } from '$lib/stores/simulation';
+  import { IconButton } from '$lib/components/atoms';
   import TimelineControls from './TimelineControls.svelte';
   import ChoicePreview from '../panels/ChoicePreview.svelte';
 
@@ -133,32 +134,29 @@
     {/if}
 
     <div class="control-group">
-      <button
-        class="control-btn"
-        class:active={$isPlaying}
+      <IconButton
+        active={$isPlaying}
         on:click={$isPlaying ? handlePause : handlePlay}
         disabled={$executionState?.completed}
         title={$isPlaying ? 'Pause (auto-random mode)' : 'Play (auto-random mode)'}
       >
         {$isPlaying ? '⏸' : '▶'}
-      </button>
+      </IconButton>
 
-      <button
-        class="control-btn"
+      <IconButton
         on:click={handleStep}
         disabled={!$canStep || ($isAtChoice && selectedChoice === null)}
         title="Step forward"
       >
         ⏭
-      </button>
+      </IconButton>
 
-      <button
-        class="control-btn"
+      <IconButton
         on:click={handleReset}
         title="Reset simulation"
       >
         ⏮
-      </button>
+      </IconButton>
     </div>
 
     <div class="status-group">
@@ -335,37 +333,6 @@
   .control-group {
     display: flex;
     gap: 2px;
-  }
-
-  .control-btn {
-    width: 32px;
-    height: 32px;
-    background: var(--color-bg-hover);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    cursor: pointer;
-    font-size: var(--font-size-lg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all var(--transition-normal);
-  }
-
-  .control-btn:hover:not(:disabled) {
-    background: var(--color-bg-active);
-    border-color: var(--color-accent);
-  }
-
-  .control-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-
-  .control-btn.active {
-    background: var(--color-accent);
-    color: var(--color-text-inverse);
-    border-color: var(--color-accent);
   }
 
   .status-group {

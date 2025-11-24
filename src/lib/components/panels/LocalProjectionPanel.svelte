@@ -1,11 +1,20 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
   import { projectionData, parseStatus } from '$lib/stores/editor';
-  import * as monaco from 'monaco-editor';
+
+  // Detect headless environment - DO NOT load Monaco in headless
+  const isHeadless = typeof window !== 'undefined' && (
+    navigator.webdriver === true ||
+    /HeadlessChrome/.test(navigator.userAgent) ||
+    /PhantomJS/.test(navigator.userAgent)
+  );
 
   let selectedRole = '';
   let editorContainer: HTMLDivElement;
-  let editor: monaco.editor.IStandaloneCodeEditor | null = null;
+  let editor: any = null; // Monaco editor instance (loaded dynamically)
+  let monaco: any = null; // Monaco module (loaded dynamically)
+  let useTextareaFallback = isHeadless;
+  let monacoLoaded = false;
 
   // Derived state
   let currentProjection: typeof $projectionData[0] | undefined;
@@ -28,10 +37,10 @@
   // Track pending update to avoid duplicate RAF calls
   let pendingEditorUpdate: number | null = null;
 
-  // Update editor content when localScribble changes
+  // Update editor content when localScribble changes (only for Monaco)
   // Use requestAnimationFrame to defer the expensive setValue() call
   // This prevents UI stuttering when switching between role tabs
-  $: if (editor && localScribble !== undefined) {
+  $: if (editor && localScribble !== undefined && !useTextareaFallback) {
     const newValue = localScribble;
 
     // Cancel any pending update
@@ -67,6 +76,8 @@
 
   // Function to set up Monaco environment and register language
   function setupMonaco() {
+    if (!monaco) return;
+
     // Set up Monaco environment (needed for worker loading)
     (window as any).MonacoEnvironment = (window as any).MonacoEnvironment || {
       getWorkerUrl: function (_moduleId: string, label: string) {
@@ -89,7 +100,7 @@
 
     // Ensure Monaco language and theme are registered
     const languages = monaco.languages.getLanguages();
-    const hasScribble = languages.some(lang => lang.id === 'scribble');
+    const hasScribble = languages.some((lang: any) => lang.id === 'scribble');
 
     if (!hasScribble) {
       // Register Scribble language
@@ -130,17 +141,26 @@
     }
   }
 
-  // CORE FIX: Create editor only when container is bound AND we have data ready
-  // Using tick() ensures all reactive computations (including localScribble) are complete
-  $: if (editorContainer && !editor && $projectionData.length > 0) {
-    // Wait for next tick to ensure localScribble is fully computed in reactive block above
-    tick().then(() => {
-      // Double-check editor wasn't created during tick
-      if (!editor && localScribble) {
-        setupMonaco();
+  // Dynamically load Monaco only when not headless
+  async function loadMonaco() {
+    if (useTextareaFallback || monacoLoaded) return;
 
+    try {
+      const monacoModule = await import('monaco-editor');
+      monaco = monacoModule;
+      monacoLoaded = true;
+      setupMonaco();
+    } catch (e) {
+      console.error('[LocalProjectionPanel] Failed to load Monaco:', e);
+      useTextareaFallback = true;
+    }
+  }
+
+  // Create editor only when container is bound, Monaco loaded, AND we have data ready
+  $: if (editorContainer && !editor && $projectionData.length > 0 && monacoLoaded && monaco && !useTextareaFallback) {
+    tick().then(() => {
+      if (!editor && localScribble && monaco) {
         try {
-          // Create read-only Monaco editor with computed localScribble value
           editor = monaco.editor.create(editorContainer, {
             value: localScribble,
             language: 'scribble',
@@ -160,13 +180,19 @@
           });
         } catch (e) {
           console.error('Failed to create Monaco editor:', e);
+          useTextareaFallback = true;
         }
       }
     });
   }
 
   onMount(() => {
-    setupMonaco();
+    if (isHeadless) {
+      console.log('[LocalProjectionPanel] Headless detected, using textarea (Monaco not loaded)');
+      useTextareaFallback = true;
+    } else {
+      loadMonaco();
+    }
   });
 
   onDestroy(() => {
@@ -201,10 +227,20 @@
       <div class="placeholder-overlay">
         <p>Parse a protocol to see local projections</p>
       </div>
+    {:else if useTextareaFallback}
+      <!-- Textarea fallback for headless environments -->
+      <textarea
+        class="fallback-textarea projection-textarea"
+        readonly
+        value={localScribble}
+        spellcheck="false"
+      ></textarea>
     {/if}
 
-    <!-- Monaco editor container - NEVER destroyed -->
-    <div class="editor-container" bind:this={editorContainer}></div>
+    <!-- Monaco editor container - only used when not headless -->
+    {#if !useTextareaFallback}
+      <div class="editor-container" bind:this={editorContainer}></div>
+    {/if}
   </div>
 </div>
 
@@ -272,5 +308,20 @@
   .editor-container {
     flex: 1;
     overflow: hidden;
+  }
+
+  /* Fallback textarea for projection panel */
+  .projection-textarea {
+    flex: 1;
+    width: 100%;
+    padding: var(--spacing-3, 12px);
+    background: var(--color-bg-secondary, #252526);
+    color: var(--color-text-primary, #cccccc);
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: var(--font-family-mono, 'Consolas', 'Monaco', monospace);
+    font-size: var(--font-size-base, 14px);
+    line-height: 1.5;
   }
 </style>

@@ -37,3 +37,4 @@ coverage/
 # Claude session notes (local only, not committed)
 CLAUDE.md
 CLAUDE_*.md
+test-results
