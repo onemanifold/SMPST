@@ -16,9 +16,12 @@
    * - Animated message particles
    */
   import { onMount, onDestroy, tick } from 'svelte';
-  import { webcolaSimStore, type GraphNode, type QueuedMessage } from '$lib/stores/webcola-simulation.store';
+  import { webcolaSimStore, type GraphNode, type QueuedMessage, type AnimatingMessage } from '$lib/stores/webcola-simulation.store';
   import * as d3 from 'd3';
   import * as cola from 'webcola';
+
+  // Animation duration in ms
+  const ANIMATION_DURATION = 400;
 
   let containerElement: HTMLDivElement;
   let svgElement: SVGSVGElement;
@@ -29,6 +32,10 @@
   let hoveredMessage: QueuedMessage | null = null;
   let tooltipX = 0;
   let tooltipY = 0;
+
+  // Track active animations
+  let activeAnimations: Map<string, { startTime: number; msg: AnimatingMessage }> = new Map();
+  let animationFrame: number | null = null;
 
   // Layout constants
   const NODE_RADIUS = 40;
@@ -76,6 +83,7 @@
     const dx = target.x - source.x;
     const dy = target.y - source.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist === 0) return { x: source.x, y: source.y };
 
     // Arc control point offset
     const midX = (source.x + target.x) / 2;
@@ -90,6 +98,153 @@
     const y = (1-t)*(1-t)*source.y + 2*(1-t)*t*ctrlY + t*t*target.y;
 
     return { x, y };
+  }
+
+  /**
+   * Calculate position for animating message
+   * - Sending: t=0 at source node edge, t=1 at center queue
+   * - Receiving: t=0 at center queue, t=1 at target node edge
+   */
+  function getAnimatedPosition(
+    source: any,
+    target: any,
+    progress: number,
+    action: 'sending' | 'receiving'
+  ): { x: number; y: number } {
+    if (action === 'sending') {
+      // Animate from source (t=0) to center (t=0.5)
+      const t = progress * 0.5;
+      return getPointOnArc(source, target, t);
+    } else {
+      // Animate from center (t=0.5) to target (t=1)
+      const t = 0.5 + progress * 0.5;
+      return getPointOnArc(source, target, t);
+    }
+  }
+
+  /**
+   * Start animation for a new animating message
+   */
+  function startAnimation(msg: AnimatingMessage) {
+    if (activeAnimations.has(msg.id)) return;
+
+    activeAnimations.set(msg.id, {
+      startTime: performance.now(),
+      msg
+    });
+
+    // Start animation loop if not running
+    if (!animationFrame) {
+      animationFrame = requestAnimationFrame(animateMessages);
+    }
+  }
+
+  /**
+   * Animation loop for message particles
+   */
+  function animateMessages(timestamp: number) {
+    if (!svgElement) {
+      animationFrame = null;
+      return;
+    }
+
+    const svg = d3.select(svgElement);
+    const state = webcolaSimStore.getState();
+    let hasActive = false;
+
+    activeAnimations.forEach((anim, id) => {
+      const elapsed = timestamp - anim.startTime;
+      const progress = Math.min(1, elapsed / ANIMATION_DURATION);
+
+      // Find the link for this message
+      const linkId = `${anim.msg.from}->${anim.msg.to}`;
+      const link = state.links.find(l => l.id === linkId);
+
+      if (!link) {
+        activeAnimations.delete(id);
+        return;
+      }
+
+      // Get source and target node positions
+      const sourceNode = state.nodes.find(n => n.id === anim.msg.from);
+      const targetNode = state.nodes.find(n => n.id === anim.msg.to);
+
+      if (!sourceNode || !targetNode || !sourceNode.x || !targetNode.x) {
+        activeAnimations.delete(id);
+        return;
+      }
+
+      // Calculate current position
+      const pos = getAnimatedPosition(sourceNode, targetNode, progress, anim.msg.action);
+
+      // Update or create the animated particle
+      let particle = svg.select(`.animating-particle[data-id="${id}"]`);
+
+      if (particle.empty()) {
+        // Create new particle
+        const container = svg.select('.zoom-container');
+        const particleGroup = container.append('g')
+          .attr('class', 'animating-particle')
+          .attr('data-id', id);
+
+        // Glow circle
+        particleGroup.append('circle')
+          .attr('r', 14)
+          .attr('fill', anim.msg.action === 'sending' ? '#4FC3F7' : '#81C784')
+          .attr('opacity', 0.4)
+          .style('filter', 'url(#glow)');
+
+        // Main circle
+        particleGroup.append('circle')
+          .attr('r', 10)
+          .attr('fill', anim.msg.action === 'sending' ? '#4FC3F7' : '#81C784')
+          .attr('stroke', '#fff')
+          .attr('stroke-width', 2);
+
+        // Label
+        particleGroup.append('text')
+          .attr('text-anchor', 'middle')
+          .attr('dy', 4)
+          .attr('font-size', 8)
+          .attr('font-weight', 'bold')
+          .attr('fill', '#fff')
+          .text(anim.msg.label.substring(0, 3));
+
+        particle = particleGroup;
+      }
+
+      // Update position with easing
+      const eased = easeOutCubic(progress);
+      const easedPos = getAnimatedPosition(sourceNode, targetNode, eased, anim.msg.action);
+      particle.attr('transform', `translate(${easedPos.x},${easedPos.y})`);
+
+      // Scale effect (grow in, shrink out)
+      const scale = progress < 0.2 ? progress / 0.2 : (progress > 0.8 ? (1 - progress) / 0.2 : 1);
+      particle.attr('transform', `translate(${easedPos.x},${easedPos.y}) scale(${0.5 + scale * 0.5})`);
+
+      if (progress >= 1) {
+        // Animation complete - remove particle
+        particle.remove();
+        activeAnimations.delete(id);
+        webcolaSimStore.clearAnimation(id);
+      } else {
+        hasActive = true;
+      }
+    });
+
+    // Continue animation loop if needed
+    if (hasActive) {
+      animationFrame = requestAnimationFrame(animateMessages);
+    } else {
+      animationFrame = null;
+    }
+  }
+
+  /**
+   * Easing function for smooth animation
+   */
+  function easeOutCubic(t: number): number {
+    return 1 - Math.pow(1 - t, 3);
   }
 
   /**
@@ -454,6 +609,7 @@
     if (unsubscribe) unsubscribe();
     if (simulation) simulation.stop();
     if (resizeObserver) resizeObserver.disconnect();
+    if (animationFrame) cancelAnimationFrame(animationFrame);
   });
 
   // Re-render when store reinitializes
@@ -463,6 +619,14 @@
 
   // Get display message (hovered or last)
   $: displayMessage = hoveredMessage || getLastMessage();
+
+  // Watch for new animating messages and trigger animations
+  $: {
+    const animating = $webcolaSimStore.animatingMessages;
+    for (const msg of animating) {
+      startAnimation(msg);
+    }
+  }
 </script>
 
 <div class="webcola-graph" bind:this={containerElement}>
@@ -729,5 +893,14 @@
 
   :global(.webcola-graph .message-pill:hover rect) {
     filter: brightness(1.3) url(#glow);
+  }
+
+  /* Animating particles */
+  :global(.webcola-graph .animating-particle) {
+    pointer-events: none;
+  }
+
+  :global(.webcola-graph .animating-particle text) {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   }
 </style>
