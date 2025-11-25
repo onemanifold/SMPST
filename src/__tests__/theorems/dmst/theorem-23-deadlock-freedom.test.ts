@@ -371,32 +371,67 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
       expect(wf.structural.valid).toBe(true);
     });
 
-    it.skip('proves: nested protocol calls are deadlock-free', () => {
-      // TODO: Test protocol calling protocol calling protocol
+    it('proves: nested protocol calls are deadlock-free', () => {
+      // Test nested protocol calls (chain: Main -> Sub -> SubSub)
+      const protocol = `
+        protocol SubSub(role W) {
+          W -> W: DeepWork();
+        }
 
-      // A calls B(x); B calls C(x); ...
-      // Chain of calls should preserve deadlock-freedom
+        protocol Sub(role W) {
+          W calls SubSub(W);
+          W -> W: Work();
+        }
 
-      expect(true).toBe(true); // Placeholder
+        protocol Main(role M, role W) {
+          M calls Sub(W);
+          M -> W: Done();
+        }
+      `;
+
+      const ast = parse(protocol);
+      const main = ast.declarations[2] as GlobalProtocolDeclaration;
+      const cfg = buildCFG(main);
+
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+
+      // Nested protocol calls preserve deadlock-freedom
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Nested protocol calls are deadlock-free
     });
 
-    it.skip('proves: parallel protocol calls are deadlock-free', () => {
-      // TODO: Test protocol making multiple concurrent calls
+    it('proves: parallel protocol calls are deadlock-free', () => {
+      // Test protocol making concurrent protocol calls in parallel branches
+      const protocol = `
+        protocol Task(role W) {
+          W -> W: Process();
+        }
 
-      // const protocol = `
-      //   protocol Parallel(role Coordinator) {
-      //     new role W1, W2;
-      //     par {
-      //       Coordinator calls Task(W1);
-      //     } and {
-      //       Coordinator calls Task(W2);
-      //     }
-      //   }
-      // `;
+        protocol Parallel(role Coordinator, role W1, role W2) {
+          par {
+            Coordinator calls Task(W1);
+          } and {
+            Coordinator calls Task(W2);
+          }
+        }
+      `;
 
-      // Independent calls should not deadlock
+      const ast = parse(protocol);
+      const parallel = ast.declarations[1] as GlobalProtocolDeclaration;
+      const cfg = buildCFG(parallel);
 
-      expect(true).toBe(true); // Placeholder
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false); // Independent calls
+
+      // Parallel protocol calls don't deadlock
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Parallel protocol calls are deadlock-free
     });
   });
 
@@ -486,13 +521,40 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
       // ✅ PROOF: Dynamic participant creation in updatable recursion is deadlock-free
     });
 
-    it.skip('proves: updatable recursion with protocol calls is deadlock-free', () => {
-      // TODO: Test updatable recursion calling sub-protocols
+    it('proves: updatable recursion with protocol calls is deadlock-free', () => {
+      // Test updatable recursion that calls sub-protocols in update body
+      const protocol = `
+        protocol Extend(role W) {
+          W -> W: ExtendedWork();
+        }
 
-      // Recursion that expands by calling nested protocols
-      // Should preserve deadlock-freedom if updates are safe
+        protocol UpdateableWithCalls(role M, role W) {
+          rec Loop {
+            M -> W: Start();
+            choice at M {
+              continue Loop with {
+                M calls Extend(W);
+                M -> W: More();
+              };
+            } or {
+              M -> W: Stop();
+            }
+          }
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      const ast = parse(protocol);
+      const main = ast.declarations[1] as GlobalProtocolDeclaration;
+      const cfg = buildCFG(main);
+
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+
+      // Updatable recursion with protocol calls preserves deadlock-freedom
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Updatable recursion with protocol calls is deadlock-free
     });
   });
 

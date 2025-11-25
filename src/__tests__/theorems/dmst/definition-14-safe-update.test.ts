@@ -772,17 +772,43 @@ describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', ()
       // ✅ PROOF: Nested updatable recursions are safe when both satisfy Definition 14
     });
 
-    it.skip('handles: update with multiple protocol calls', () => {
-      // TODO: Update that calls multiple sub-protocols
+    it('handles: update with multiple protocol calls', () => {
+      // Test update body with multiple protocol calls
+      const protocol = `
+        protocol Sub1(role W) {
+          W -> W: Work1();
+        }
 
-      // continue Loop with {
-      //   A calls Sub1(B);
-      //   A calls Sub2(C);
-      // }
+        protocol Sub2(role W) {
+          W -> W: Work2();
+        }
 
-      // All calls must combine safely
+        protocol MultiCall(role Manager, role Worker1, role Worker2) {
+          rec Loop {
+            Manager -> Worker1: Start();
+            choice at Manager {
+              continue Loop with {
+                Manager calls Sub1(Worker1);
+                Manager calls Sub2(Worker2);
+              };
+            } or {
+              Manager -> Worker1: Stop();
+            }
+          }
+        }
+      `;
 
-      expect(true).toBe(true); // Placeholder
+      const ast = parse(protocol);
+      const main = ast.declarations[2] as GlobalProtocolDeclaration;
+      const cfg = buildCFG(main);
+
+      // Check well-formedness (Definition 14: safe 1-unfolding)
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+
+      // Multiple protocol calls in update body must not create races
+      expect(wf.raceConditions.hasRaces).toBe(false);
+      // ✅ PROOF: Multiple protocol calls in update are safe
     });
   });
 
