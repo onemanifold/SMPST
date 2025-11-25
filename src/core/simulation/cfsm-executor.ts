@@ -159,10 +159,10 @@ export class CFSMExecutor {
       // Select transition (first for now)
       const transition = transitions[0];
 
-      // Emit 'ready' before executing
-      this.emit('ready', { transition, state: this.currentState });
-
       // Execute transition
+      // Note: 'ready' events are emitted by debugger's mediated channels
+      // when messages arrive, not here. This avoids premature 'ready'
+      // emission for receive transitions that might block.
       await this.executeTransition(transition);
 
       this.stepCount++;

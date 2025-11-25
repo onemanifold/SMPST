@@ -33,6 +33,7 @@
 
 import type { CFSM } from '../projection/types';
 import { CFSMSimulator } from './cfsm-simulator';
+import { CFSMDebugger } from './cfsm-debugger';
 import type {
   Message,
   DistributedSimulatorConfig,
@@ -43,6 +44,33 @@ import type {
   MessageBuffer,
 } from './cfsm-simulator-types';
 import { createChannel, type ChannelEnd } from './channel';
+
+/**
+ * Mediated Channel for coordinator-level event emission
+ *
+ * Wraps a channel to notify when messages are sent, allowing the
+ * coordinator to check if receivers become ready.
+ */
+class MediatedChannel implements ChannelEnd {
+  constructor(
+    private actualChannel: ChannelEnd,
+    private onSend: () => void
+  ) {}
+
+  async send(message: Message): Promise<void> {
+    await this.actualChannel.send(message);
+    // After send completes, message is available for peer
+    this.onSend();
+  }
+
+  async receive(): Promise<Message> {
+    return this.actualChannel.receive();
+  }
+
+  hasMessage(): boolean {
+    return this.actualChannel.hasMessage();
+  }
+}
 
 export class DistributedSimulator {
   private cfsms: Map<string, CFSM>;

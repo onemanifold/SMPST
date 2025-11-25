@@ -198,7 +198,7 @@ describe('CFSMExecutor - Autonomous Execution', () => {
     expect(executor.getState().stepCount).toBe(2);
   });
 
-  it('should emit ready events during autonomous execution', async () => {
+  it('should emit action events during autonomous execution', async () => {
     const cfsm: CFSM = {
       role: 'A',
       states: [{ id: 's0' }, { id: 's1' }],
@@ -215,14 +215,19 @@ describe('CFSMExecutor - Autonomous Execution', () => {
     };
 
     const executor = new CFSMExecutor(cfsm);
-    const readyEvents: any[] = [];
-    executor.on('ready', (data) => readyEvents.push(data));
+    const tauEvents: any[] = [];
+    const completeEvents: any[] = [];
+    executor.on('tau', (data) => tauEvents.push(data));
+    executor.on('complete', (data) => completeEvents.push(data));
 
     await executor.run();
 
-    expect(readyEvents).toHaveLength(1);
-    expect(readyEvents[0].state).toBe('s0');
-    expect(readyEvents[0].transition.id).toBe('t0');
+    // Executor emits action-specific events (tau, send, receive)
+    // not 'ready' events (those are for debugger/coordinator)
+    expect(tauEvents).toHaveLength(1);
+    expect(tauEvents[0].from).toBe('s0');
+    expect(tauEvents[0].to).toBe('s1');
+    expect(completeEvents).toHaveLength(1);
   });
 
   it('should stop at maxSteps', async () => {
@@ -364,14 +369,14 @@ describe('CFSMExecutor - Event-Driven Coordination', () => {
     const executor = new CFSMExecutor(cfsm, { channels });
 
     const events: string[] = [];
-    executor.on('ready', () => events.push('ready'));
     executor.on('send', () => events.push('send'));
     executor.on('tau', () => events.push('tau'));
     executor.on('complete', () => events.push('complete'));
 
     await executor.run();
 
-    expect(events).toEqual(['ready', 'send', 'ready', 'tau', 'complete']);
+    // Executor emits action events, not 'ready' events (coordinator responsibility)
+    expect(events).toEqual(['send', 'tau', 'complete']);
   });
 
   it('should allow coordinator to observe without controlling', async () => {
@@ -392,18 +397,17 @@ describe('CFSMExecutor - Event-Driven Coordination', () => {
 
     const executor = new CFSMExecutor(cfsm);
 
-    // Coordinator observes but doesn't control
+    // Coordinator observes execution via action events
     const observations: any[] = [];
-    executor.on('ready', (data) => observations.push({ event: 'ready', ...data }));
     executor.on('tau', (data) => observations.push({ event: 'tau', ...data }));
     executor.on('complete', () => observations.push({ event: 'complete' }));
 
     // Executor runs autonomously
     await executor.run();
 
-    // Coordinator received observations
+    // Coordinator received observations of action events
     expect(observations.length).toBeGreaterThan(0);
-    expect(observations.map(o => o.event)).toContain('ready');
+    expect(observations.map(o => o.event)).toContain('tau');
     expect(observations.map(o => o.event)).toContain('complete');
   });
 });

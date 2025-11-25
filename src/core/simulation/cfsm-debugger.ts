@@ -70,7 +70,9 @@ export class CFSMDebugger {
       cfsmRegistry: config.cfsmRegistry || new Map(),
     };
 
-    // Create executor
+    // Create executor with provided channels
+    // Note: Channel mediation happens at the coordinator level
+    // (DistributedSimulator), not here, to enable cross-CFSM notifications
     this.executor = new CFSMExecutor(cfsm, {
       maxSteps: this.config.maxSteps,
       channels: this.config.channels,
@@ -82,6 +84,25 @@ export class CFSMDebugger {
 
     // Record initial snapshot
     this.recordSnapshot();
+  }
+
+  /**
+   * Check if executor is ready to step and emit 'ready' event if so
+   * Called by coordinator when messages arrive or state changes
+   */
+  checkAndEmitReady(): void {
+    if (this.executor.isComplete()) return;
+
+    const transitions = this.executor.getEnabledTransitions();
+    if (transitions.length > 0) {
+      // Emit 'ready' event with first enabled transition
+      this.emit('ready', {
+        transition: transitions[0],
+        state: this.executor.getState().currentState,
+        timestamp: Date.now(),
+        stepNumber: this.currentStepNumber,
+      });
+    }
   }
 
   /**
