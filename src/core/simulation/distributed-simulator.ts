@@ -87,6 +87,7 @@ export class DistributedSimulator {
         recordTrace: config.recordTrace,
         transitionStrategy: 'first', // Distributed coordinator controls scheduling
         transport: this.transport, // Share transport across all roles
+        cfsmRegistry: config.cfsmRegistry, // Pass through CFSM registry for sub-protocol support
       });
 
       // Subscribe to the complete event for each role

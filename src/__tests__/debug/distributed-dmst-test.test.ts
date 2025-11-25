@@ -2,8 +2,8 @@
  * Test DistributedSimulator compatibility with DMst protocols
  *
  * Status: DistributedSimulator has partial DMst support
- * ✅ Works: Basic messages, updatable recursion, FIFO delivery
- * ❌ Needs work: Protocol calls (registry required), dynamic participants (create/invite)
+ * ✅ Works: Basic messages, updatable recursion, FIFO delivery, protocol calls (with registry)
+ * ❌ Needs work: Dynamic participants (create/invite actions)
  */
 
 import { describe, it, expect } from 'vitest';
@@ -51,16 +51,7 @@ describe('DistributedSimulator DMst Compatibility', () => {
     expect(result.state.deadlocked).toBe(false);
   });
 
-  it.skip('should handle DMst protocol with protocol calls', async () => {
-    // KNOWN LIMITATION: DistributedSimulator needs protocol registry
-    // Error: "Sub-protocol 'Sub' not found in registry"
-    // Reason: Simulator needs access to all protocols, not just Main
-    //
-    // To fix: Add protocol registry to DistributedSimulator:
-    // - Pass all protocols to simulator
-    // - executeSubProtocol should look up protocol CFSMs
-    // - Instantiate sub-protocol with roleMapping
-    //
+  it('should handle DMst protocol with protocol calls', async () => {
     const protocol = `
       protocol Sub(role W) {
         W -> W: SubWork();
@@ -73,15 +64,30 @@ describe('DistributedSimulator DMst Compatibility', () => {
     `;
 
     const ast = parse(protocol);
-    const main = ast.declarations[1] as GlobalProtocolDeclaration;
-    const cfg = buildCFG(main);
-    const projections = projectAll(cfg);
 
-    // Run distributed simulation
-    const sim = new DistributedSimulator(projections.cfsms, { maxSteps: 100 });
+    // Build CFSMs for both protocols
+    const sub = ast.declarations[0] as GlobalProtocolDeclaration;
+    const main = ast.declarations[1] as GlobalProtocolDeclaration;
+
+    const subCfg = buildCFG(sub);
+    const mainCfg = buildCFG(main);
+
+    const subProjections = projectAll(subCfg);
+    const mainProjections = projectAll(mainCfg);
+
+    // Build CFSM registry: protocol name → (role → CFSM)
+    const cfsmRegistry = new Map<string, Map<string, any>>();
+    cfsmRegistry.set('Sub', subProjections.cfsms);
+    cfsmRegistry.set('Main', mainProjections.cfsms);
+
+    // Run distributed simulation with registry
+    const sim = new DistributedSimulator(mainProjections.cfsms, {
+      maxSteps: 100,
+      cfsmRegistry,
+    });
     const result = await sim.run();
 
-    // Should complete successfully once protocol registry is added
+    // Should complete successfully
     expect(result.success).toBe(true);
     expect(result.state.deadlocked).toBe(false);
   });

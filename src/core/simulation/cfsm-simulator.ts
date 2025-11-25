@@ -633,7 +633,31 @@ export class CFSMSimulator {
     const action = transition.action;
     if (action.type !== 'subprotocol') throw new Error('Expected subprotocol action');
 
-    // Look up sub-protocol CFSM from registry
+    // Check if this role is the caller (initiator) - they don't execute the sub-protocol
+    if ((action as any).isCaller === true) {
+      // Caller just records the call in trace and advances state
+      if (this.config.recordTrace) {
+        this.trace.events.push({
+          type: 'subprotocol',
+          timestamp: Date.now(),
+          protocol: action.protocol,
+          stateId: this.currentState,
+        } as any);
+      }
+
+      // Move to next state
+      this.currentState = transition.to;
+      this.visitedStates.push(transition.to);
+      this.recordSnapshot();
+
+      return {
+        success: true,
+        transition,
+        state: this.getState(),
+      };
+    }
+
+    // Participant execution - look up sub-protocol CFSM from registry
     const protocolCFSMs = this.cfsmRegistry.get(action.protocol);
     if (!protocolCFSMs) {
       const error = {
@@ -644,10 +668,23 @@ export class CFSMSimulator {
       return { success: false, error, state: this.getState() };
     }
 
+    // Build role mapping if not provided
+    // The roleMapping maps: formalRole → actualRole (e.g., {W: 'Worker'})
+    let roleMapping = action.roleMapping;
+    if (Object.keys(roleMapping).length === 0 && (action as any).participants) {
+      // Auto-generate mapping by matching participants (actual) with protocol CFSMs (formal) positionally
+      const formalRoles = Array.from(protocolCFSMs.keys()).sort();
+      const actualRoles = (action as any).participants as string[];
+
+      roleMapping = {};
+      for (let i = 0; i < Math.min(formalRoles.length, actualRoles.length); i++) {
+        roleMapping[formalRoles[i]] = actualRoles[i];
+      }
+    }
+
     // Map this role to the sub-protocol's formal parameter using role mapping
-    // The roleMapping maps: formalRole → actualRole (e.g., {Client: 'Alice', Server: 'Bob'})
     // We need to find which formal role corresponds to this executor's actual role
-    const formalRole = Object.entries(action.roleMapping)
+    const formalRole = Object.entries(roleMapping)
       .find(([formal, actual]) => actual === this.rootCFSM.role)?.[0];
 
     if (!formalRole) {

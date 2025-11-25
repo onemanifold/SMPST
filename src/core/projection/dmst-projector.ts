@@ -188,22 +188,24 @@ export function projectProtocolCall(
     return {
       type: 'subprotocol',
       protocol,
-      roleMapping: {}, // TODO: Map formal parameters to actual roles
-      returnState: '', // TODO: Determine return state
+      roleMapping: {}, // Not used for caller
+      returnState: '', // Not used for caller
       caller,
       participants,
+      isCaller: true, // Flag to indicate this role is the caller, not a participant
     } as any;
   }
 
-  // Participants receive the call
+  // Participants receive and execute the call
   if (participants.includes(role)) {
     return {
       type: 'subprotocol',
       protocol,
-      roleMapping: {},
-      returnState: '',
+      roleMapping: {}, // Auto-generated at runtime
+      returnState: '', // Auto-generated at runtime
       caller,
       participants,
+      isCaller: false,
     } as any;
   }
 

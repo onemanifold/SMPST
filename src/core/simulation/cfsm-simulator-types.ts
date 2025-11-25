@@ -457,6 +457,12 @@ export interface DistributedSimulatorConfig {
    * Whether to explore all interleavings (for verification)
    */
   exploreAllInterleavings?: boolean;
+
+  /**
+   * CFSM registry for sub-protocol execution
+   * Maps protocol name → (role → CFSM)
+   */
+  cfsmRegistry?: Map<string, Map<string, CFSM>>;
 }
 
 /**
