@@ -1,108 +1,85 @@
 /**
  * Async Channel Implementation
  *
- * Pure async communication primitives using promise chains.
- * Each channel has two ends - send on one end blocks until receive on the other.
+ * FIFO message channels with MPST semantics:
+ * - Send is ASYNCHRONOUS (non-blocking) - message queued, sender continues
+ * - Receive BLOCKS until message available
  *
- * Based on CSP (Communicating Sequential Processes) and Go channels.
+ * Based on MPST (Multiparty Session Types) formal semantics.
  */
 
 import type { Message } from './cfsm-simulator-types';
 
 /**
- * Message cell in the promise chain
- * [message, acknowledgment, nextPromise]
- */
-type MessageCell = [Message, () => void, MessagePromise];
-type MessagePromise = Promise<MessageCell>;
-
-/**
  * One end of a bidirectional channel
- * Supports async send/receive with blocking semantics
+ * Supports async send (non-blocking) and receive (blocking)
  */
 export interface ChannelEnd {
   /**
-   * Send a message - blocks until the other end receives it
+   * Send a message - ASYNCHRONOUS (returns immediately)
+   * Message is queued for receiver
    */
   send(message: Message): Promise<void>;
 
   /**
-   * Receive a message - blocks until the other end sends one
+   * Receive a message - BLOCKS until message available
    */
   receive(): Promise<Message>;
 }
 
 /**
- * Create a bidirectional async channel
+ * Create a bidirectional async channel with MPST semantics
  * Returns two ends - what you send on one end is received on the other
  */
 export function createChannel(): [ChannelEnd, ChannelEnd] {
-  // Shared state for both promise chains
-  // Chain A: endA sends, endB receives
-  // Chain B: endB sends, endA receives
-  const stateA = {
-    chain: null as unknown as MessagePromise,
-    resolve: null as unknown as (cell: MessageCell) => void
+  // Each end has its own inbox (queue + waiters)
+  const inboxA = {
+    queue: [] as Message[],
+    waiters: [] as Array<(msg: Message) => void>
   };
 
-  const stateB = {
-    chain: null as unknown as MessagePromise,
-    resolve: null as unknown as (cell: MessageCell) => void
+  const inboxB = {
+    queue: [] as Message[],
+    waiters: [] as Array<(msg: Message) => void>
   };
 
-  // Initialize the promise chains
-  stateA.chain = new Promise<MessageCell>(resolve => {
-    stateA.resolve = resolve;
-  });
-
-  stateB.chain = new Promise<MessageCell>(resolve => {
-    stateB.resolve = resolve;
-  });
-
-  // Factory: creates an end that sends on sendState, receives on recvState
+  // Factory: creates an end that receives from myInbox, sends to peerInbox
   const makeEnd = (
-    sendState: typeof stateA,
-    recvState: typeof stateB
+    myInbox: typeof inboxA,
+    peerInbox: typeof inboxB
   ): ChannelEnd => ({
     async send(message: Message): Promise<void> {
-      // Create acknowledgment promise
-      let ack: () => void;
-      const ackPromise = new Promise<void>(resolve => {
-        ack = resolve;
-      });
-
-      // Create next promise in chain
-      const nextPromise: MessagePromise = new Promise(resolve => {
-        sendState.resolve = resolve;
-      });
-
-      // Resolve current promise with [message, ack, next]
-      sendState.resolve([message, ack!, nextPromise]);
-      sendState.chain = nextPromise;
-
-      // Block until receiver acknowledges
-      await ackPromise;
+      // Check if peer is waiting
+      const waiter = peerInbox.waiters.shift();
+      if (waiter) {
+        // Direct delivery to waiting receiver
+        waiter(message);
+      } else {
+        // Queue for later
+        peerInbox.queue.push(message);
+      }
+      // IMPORTANT: Return immediately - async send (MPST semantics)
     },
 
     async receive(): Promise<Message> {
-      // Wait for message on receive chain
-      const [message, ack, nextPromise] = await recvState.chain;
+      // Check if message already queued
+      const msg = myInbox.queue.shift();
+      if (msg) {
+        return msg;
+      }
 
-      // Advance to next promise in chain
-      recvState.chain = nextPromise;
-
-      // Acknowledge sender (unblocks their send)
-      ack();
-
-      return message;
+      // Wait for sender to deliver
+      return new Promise(resolve => {
+        myInbox.waiters.push(resolve);
+      });
     }
   });
 
   // Create both ends - cross-wired
-  // endA sends on stateA, receives on stateB
-  // endB sends on stateB, receives on stateA
-  const endA = makeEnd(stateA, stateB);
-  const endB = makeEnd(stateB, stateA);
+  // endA receives from inboxA, sends to inboxB
+  // endB receives from inboxB, sends to inboxA
+  const endA = makeEnd(inboxA, inboxB);
+  const endB = makeEnd(inboxB, inboxA);
 
   return [endA, endB];
 }
