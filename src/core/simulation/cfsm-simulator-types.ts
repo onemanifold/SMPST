@@ -102,6 +102,29 @@ export interface CFSMSimulatorConfig {
 }
 
 /**
+ * Configuration for CFSM executor (pure execution engine)
+ * Minimal config without debugging features
+ */
+export interface CFSMExecutorConfig {
+  /**
+   * Maximum steps before stopping
+   */
+  maxSteps?: number;
+
+  /**
+   * Channels for async message passing
+   * Maps peer role → channel end
+   */
+  channels?: Map<string, any>; // Map<string, ChannelEnd>
+
+  /**
+   * CFSM registry for sub-protocol execution
+   * Maps protocol name → (role → CFSM)
+   */
+  cfsmRegistry?: Map<string, Map<string, CFSM>>;
+}
+
+/**
  * A message in flight or buffered
  */
 export interface Message {

@@ -450,6 +450,67 @@ export class DistributedSimulator {
   }
 
   /**
+   * Run all roles concurrently (TRUE distributed execution)
+   *
+   * This is the intended execution model for distributed simulation:
+   * - All CFSMs run in parallel via Promise.all()
+   * - Roles coordinate via channels (not coordinator)
+   * - Execution order emerges from protocol dependencies
+   * - Natural blocking on receive() - no polling needed
+   * - Deadlocks and liveness issues surface naturally
+   *
+   * Use this mode to:
+   * - Test for true concurrency bugs
+   * - Surface deadlocks from bad protocols
+   * - Validate liveness properties
+   * - Observe emergent execution order
+   *
+   * Note: For deterministic testing, use run() (sequential stepping) instead
+   */
+  async runConcurrent(): Promise<DistributedRunResult> {
+    // Launch all CFSMs concurrently
+    const runPromises = Array.from(this.simulators.entries()).map(async ([role, simulator]) => {
+      try {
+        // Each simulator runs autonomously
+        await simulator.run();
+        return { role, success: true };
+      } catch (error) {
+        return { role, success: false, error };
+      }
+    });
+
+    // Wait for all to complete
+    const results = await Promise.all(runPromises);
+
+    // Check if any failed
+    const failures = results.filter(r => !r.success);
+    if (failures.length > 0) {
+      return {
+        success: false,
+        globalSteps: this.globalSteps,
+        state: this.getState(),
+        traces: this.getTraces(),
+        error: {
+          type: 'execution-error',
+          message: `${failures.length} role(s) failed`,
+          roles: failures.map(f => f.role),
+        },
+      };
+    }
+
+    // All completed successfully
+    const allComplete = Array.from(this.simulators.values()).every(sim => sim.isComplete());
+    const traces = this.getTraces();
+
+    return {
+      success: allComplete,
+      globalSteps: this.globalSteps,
+      state: this.getState(),
+      traces,
+    };
+  }
+
+  /**
    * Get execution traces for all roles
    */
   getTraces(): Map<string, CFSMExecutionTrace> {
