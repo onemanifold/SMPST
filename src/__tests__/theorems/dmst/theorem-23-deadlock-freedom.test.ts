@@ -525,17 +525,45 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
       expect(true).toBe(true); // Placeholder
     });
 
-    it.skip('proves: recursive server with client spawning is deadlock-free', () => {
-      // TODO: Server that creates client handlers on demand
+    it('proves: recursive server with client spawning is deadlock-free', () => {
+      // Server that dynamically creates client handlers in updatable recursion
+      const protocol = `
+        protocol RecursiveServer(role Server) {
+          new role Client;
+          rec ServerLoop {
+            Server creates Client as c;
+            Server invites c;
+            Server -> c: Request();
+            c -> Server: Response();
+            choice at Server {
+              continue ServerLoop with {
+                Server creates Client as c_new;
+                Server invites c_new;
+                Server -> c_new: Request();
+              };
+            } or {
+              Server -> c: Shutdown();
+            }
+          }
+        }
+      `;
 
-      // rec ServerLoop {
-      //   accept connection;
-      //   create ClientHandler;
-      //   ClientHandler processes request;
-      //   continue ServerLoop with { new handler };
-      // }
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.connectedness.isConnected).toBe(true);
+
+      // Dynamic participant creation in update is safe (Definition 14)
+      // Each iteration creates a new client instance
+      expect(wf.raceConditions.hasRaces).toBe(false);
+
+      // Theorem 23: Well-formed recursive server is deadlock-free
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Recursive server with dynamic client spawning is deadlock-free
     });
   });
 
