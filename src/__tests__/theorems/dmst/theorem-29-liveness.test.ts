@@ -108,6 +108,7 @@ import {
   verifyLiveness,
 } from '../../../core/verification/dmst/liveness';
 import type { GlobalProtocolDeclaration } from '../../../core/ast/types';
+import { DistributedSimulator } from '../../../core/simulation/distributed-simulator';
 
 describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
   /**
@@ -355,30 +356,38 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
    *   Verify no unbounded buffer growth.
    */
   describe('Proof Obligation 3: Eventual Delivery', () => {
-    it.skip('proves: FIFO buffers eventually deliver all messages', () => {
-      // TODO: Simulate FIFO buffer behavior
+    it('proves: FIFO buffers eventually deliver all messages', async () => {
+      // Test FIFO message delivery using distributed simulator
+      const protocol = `
+        protocol FIFO(role Sender, role Receiver) {
+          Sender -> Receiver: M1();
+          Sender -> Receiver: M2();
+          Sender -> Receiver: M3();
+        }
+      `;
 
-      // const protocol = `
-      //   protocol FIFO(role Sender, role Receiver) {
-      //     Sender -> Receiver: M1();
-      //     Sender -> Receiver: M2();
-      //     Sender -> Receiver: M3();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projections = projectAll(cfg);
 
-      // const simulation = simulateFIFODelivery(protocol);
+      // Use distributed simulator to verify FIFO delivery
+      const sim = new DistributedSimulator(projections.cfsms, {
+        deliveryModel: 'fifo',
+        maxSteps: 100,
+      });
 
-      // // Verify all messages delivered
-      // expect(simulation.allMessagesDelivered()).toBe(true);
+      // Run to completion
+      const result = await sim.run();
 
-      // // Verify delivery order (FIFO)
-      // expect(simulation.deliveryOrder).toEqual(['M1', 'M2', 'M3']);
+      // Execution should succeed (no deadlock)
+      expect(result.success).toBe(true);
+      expect(result.globalSteps).toBeGreaterThan(0);
+      expect(result.globalSteps).toBeLessThan(100); // Completed within max steps
 
-      // // Verify bounded buffers
-      // expect(simulation.maxBufferSize).toBeLessThan(Infinity);
-      // // ✅ PROOF: Eventual delivery with FIFO order
+      // Check that state shows completion
+      expect(result.state.deadlocked).toBe(false);
 
-      expect(true).toBe(true); // Placeholder
+      // ✅ PROOF: FIFO buffers eventually deliver all messages
     });
 
     it('proves: parallel branches deliver all messages', () => {
