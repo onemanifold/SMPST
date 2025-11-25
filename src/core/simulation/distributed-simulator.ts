@@ -65,6 +65,9 @@ export class DistributedSimulator {
   // Completion tracking
   private completedRoles: Set<string> = new Set();
 
+  // Pause/resume: run-specific closure (null when no run() active)
+  private currentRunPause: (() => void) | null = null;
+
   constructor(cfsms: Map<string, CFSM>, config: DistributedSimulatorConfig = {}) {
     this.cfsms = cfsms;
     this.config = {
@@ -349,69 +352,101 @@ export class DistributedSimulator {
 
 
   /**
-   * Run to completion (or deadlock/maxSteps)
+   * Run to completion (or deadlock/maxSteps/pause)
+   *
+   * Pause/Resume:
+   * - Uses run-specific closure variable for pause signal
+   * - Calling pause() sets signal for current run() only
+   * - Signal auto-cleared when run() exits
+   * - Internal state (globalSteps, simulator positions) preserved between runs
    */
   async run(): Promise<DistributedRunResult> {
-    while (!this.deadlocked && !this.reachedMaxSteps) {
-      const enabled = this.getEnabledRoles();
+    // Run-specific pause signal (closure variable)
+    let pauseRequested = false;
 
-      // Check if all done
-      if (enabled.length === 0) {
-        const allComplete = Array.from(this.simulators.values()).every(sim => sim.isComplete());
-        if (allComplete) {
-          // Success - all roles completed
-          break;
-        } else {
-          // Deadlock
-          this.deadlocked = true;
+    // Expose pause setter for this specific run() invocation
+    this.currentRunPause = () => { pauseRequested = true; };
+
+    try {
+      while (!this.deadlocked && !this.reachedMaxSteps && !pauseRequested) {
+        const enabled = this.getEnabledRoles();
+
+        // Check if all done
+        if (enabled.length === 0) {
+          const allComplete = Array.from(this.simulators.values()).every(sim => sim.isComplete());
+          if (allComplete) {
+            // Success - all roles completed
+            break;
+          } else {
+            // Deadlock
+            this.deadlocked = true;
+            const traces = this.getTraces();
+            return {
+              success: false,
+              globalSteps: this.globalSteps,
+              state: this.getState(),
+              traces,
+              error: {
+                type: 'deadlock',
+                message: 'Distributed deadlock - no role can progress',
+                roles: Array.from(this.simulators.keys()).filter(r => !this.simulators.get(r)!.isComplete()),
+              },
+            };
+          }
+        }
+
+        const result = await this.step();
+
+        if (!result.success && result.error?.type !== 'deadlock') {
+          return {
+            success: false,
+            globalSteps: this.globalSteps,
+            state: this.getState(),
+            traces: this.getTraces(),
+            error: result.error,
+          };
+        }
+
+        if (result.error?.type === 'deadlock') {
           const traces = this.getTraces();
           return {
             success: false,
             globalSteps: this.globalSteps,
             state: this.getState(),
             traces,
-            error: {
-              type: 'deadlock',
-              message: 'Distributed deadlock - no role can progress',
-              roles: Array.from(this.simulators.keys()).filter(r => !this.simulators.get(r)!.isComplete()),
-            },
+            error: result.error,
           };
         }
+
+        // Yield to event loop to allow pause() and other async operations
+        // Use setTimeout to yield to macrotask queue (compatible with browser and Node)
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
 
-      const result = await this.step();
+      const allComplete = Array.from(this.simulators.values()).every(sim => sim.isComplete());
+      const traces = this.getTraces();
 
-      if (!result.success && result.error?.type !== 'deadlock') {
-        return {
-          success: false,
-          globalSteps: this.globalSteps,
-          state: this.getState(),
-          traces: this.getTraces(),
-          error: result.error,
-        };
-      }
-
-      if (result.error?.type === 'deadlock') {
-        const traces = this.getTraces();
-        return {
-          success: false,
-          globalSteps: this.globalSteps,
-          state: this.getState(),
-          traces,
-          error: result.error,
-        };
-      }
+      return {
+        success: allComplete && !this.deadlocked,
+        globalSteps: this.globalSteps,
+        state: this.getState(),
+        traces,
+      };
+    } finally {
+      // Clear pause signal when run() exits
+      this.currentRunPause = null;
     }
+  }
 
-    const allComplete = Array.from(this.simulators.values()).every(sim => sim.isComplete());
-    const traces = this.getTraces();
-
-    return {
-      success: allComplete && !this.deadlocked,
-      globalSteps: this.globalSteps,
-      state: this.getState(),
-      traces,
-    };
+  /**
+   * Pause current run() execution
+   * Only affects the currently running run() invocation
+   * No-op if run() not active
+   */
+  pause(): void {
+    if (this.currentRunPause) {
+      this.currentRunPause();  // Set current run's pause signal
+    }
   }
 
   /**
