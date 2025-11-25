@@ -177,8 +177,8 @@ export class CFSMDebugger {
    * Execute one step forward
    */
   async stepForward(): Promise<void> {
-    await this.executor.step();
     this.currentStepNumber++;
+    await this.executor.step();
     this.recordSnapshot();
     this.emit('step-forward', { stepNumber: this.currentStepNumber });
   }
@@ -253,5 +253,19 @@ export class CFSMDebugger {
    */
   getTotalSnapshots(): number {
     return this.snapshots.length;
+  }
+
+  /**
+   * Get all snapshots (alias for testing)
+   */
+  getSnapshots(): Snapshot[] {
+    return this.snapshots;
+  }
+
+  /**
+   * Get event trace (alias for testing)
+   */
+  getEventTrace(): DebugEvent[] {
+    return this.getEvents();
   }
 }

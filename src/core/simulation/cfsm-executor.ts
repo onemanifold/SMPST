@@ -193,6 +193,11 @@ export class CFSMExecutor {
 
     await this.executeTransition(transitions[0]);
     this.stepCount++;
+
+    // Check if reached terminal state after execution
+    if (this.currentCFSM.terminalStates.includes(this.currentState)) {
+      await this.handleTerminal();
+    }
   }
 
   /**

@@ -468,19 +468,74 @@ export class DistributedSimulator {
    * Note: For deterministic testing, use run() (sequential stepping) instead
    */
   async runConcurrent(): Promise<DistributedRunResult> {
+    // For concurrent execution, we need CFSMExecutor (with blocking receive)
+    // not CFSMSimulator (which uses sequential stepping with hasMessage())
+    const { CFSMExecutor } = await import('./cfsm-executor');
+
+    // Create executors with channels
+    const executors = new Map<string, any>();
+    for (const [role, cfsm] of this.cfsms) {
+      const roleChannels = new Map();
+      // Get this role's channels from the channel registry
+      for (const [channelKey, [endA, endB]] of this.channels) {
+        const [roleA, roleB] = channelKey.split(':');
+        if (roleA === role) {
+          roleChannels.set(roleB, endA);
+        } else if (roleB === role) {
+          roleChannels.set(roleA, endB);
+        }
+      }
+
+      const executor = new CFSMExecutor(cfsm, {
+        channels: roleChannels,
+        cfsmRegistry: this.config.cfsmRegistry,
+        maxSteps: this.config.maxSteps,
+      });
+      executors.set(role, executor);
+    }
+
     // Launch all CFSMs concurrently
-    const runPromises = Array.from(this.simulators.entries()).map(async ([role, simulator]) => {
+    const runPromises = Array.from(executors.entries()).map(async ([role, executor]) => {
       try {
-        // Each simulator runs autonomously
-        await simulator.run();
+        // Each executor runs autonomously with blocking receives
+        await executor.run();
         return { role, success: true };
       } catch (error) {
         return { role, success: false, error };
       }
     });
 
-    // Wait for all to complete
-    const results = await Promise.all(runPromises);
+    // Deadlock detection via timeout (5 seconds)
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('DEADLOCK_TIMEOUT')), 5000)
+    );
+
+    let results: Array<{ role: string; success: boolean; error?: any }>;
+    try {
+      // Race between completion and timeout
+      results = await Promise.race([
+        Promise.all(runPromises),
+        timeoutPromise as Promise<any>,
+      ]);
+    } catch (error) {
+      // Timeout = deadlock
+      this.deadlocked = true;
+      const blockedRoles = Array.from(executors.entries())
+        .filter(([_, exec]) => !exec.isComplete())
+        .map(([role, _]) => role);
+
+      return {
+        success: false,
+        globalSteps: this.globalSteps,
+        state: this.getState(),
+        traces: this.getTraces(),
+        error: {
+          type: 'deadlock',
+          message: 'Distributed deadlock - roles blocked on receives',
+          roles: blockedRoles,
+        },
+      };
+    }
 
     // Check if any failed
     const failures = results.filter(r => !r.success);
@@ -499,7 +554,7 @@ export class DistributedSimulator {
     }
 
     // All completed successfully
-    const allComplete = Array.from(this.simulators.values()).every(sim => sim.isComplete());
+    const allComplete = Array.from(executors.values()).every(exec => exec.isComplete());
     const traces = this.getTraces();
 
     return {
