@@ -266,6 +266,72 @@ describe('Theorem 23: Deadlock-Freedom for DMst (Castro-Perez & Yoshida 2023)', 
   });
 
   /**
+   * PROOF OBLIGATION 2.5: Parallel composition preserves deadlock-freedom
+   *
+   * FORMAL PROPERTY:
+   *   If G₁ and G₂ are deadlock-free protocols, then
+   *   par { G₁ } and { G₂ } is deadlock-free when:
+   *   1. Channels(G₁) ∩ Channels(G₂) = ∅ (no races)
+   *   2. Both branches can progress independently
+   *
+   * PARALLEL SAFETY:
+   *   Parallel branches execute concurrently without blocking each other.
+   */
+  describe('Proof Obligation 2.5: Parallel Composition', () => {
+    it('proves: independent parallel branches are deadlock-free', () => {
+      const protocol = `
+        protocol ParallelIndependent(role A, role B, role C, role D) {
+          par {
+            A -> B: Task1();
+            B -> A: Result1();
+          } and {
+            C -> D: Task2();
+            D -> C: Result2();
+          }
+        }
+      `;
+
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false); // Independent channels
+
+      // Theorem 23: Well-formed parallel → Deadlock-free
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Independent parallel branches are deadlock-free
+    });
+
+    it('proves: parallel branches with shared sender are deadlock-free', () => {
+      const protocol = `
+        protocol ParallelSharedSender(role Coordinator, role Worker1, role Worker2) {
+          par {
+            Coordinator -> Worker1: Task1();
+          } and {
+            Coordinator -> Worker2: Task2();
+          }
+        }
+      `;
+
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+
+      // Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false); // Different channels
+
+      // Parallel sends to different receivers don't deadlock
+      const deadlock = detectDeadlock(cfg);
+      expect(deadlock.hasDeadlock).toBe(false);
+      // ✅ PROOF: Parallel sends from same role are deadlock-free
+    });
+  });
+
+  /**
    * PROOF OBLIGATION 3: Protocol calls preserve deadlock-freedom
    *
    * FORMAL PROPERTY:

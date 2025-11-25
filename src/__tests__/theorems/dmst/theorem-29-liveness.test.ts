@@ -381,18 +381,51 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       expect(true).toBe(true); // Placeholder
     });
 
-    it.skip('proves: parallel branches deliver all messages', () => {
-      // TODO: Test parallel branches with independent message flows
+    it('proves: parallel branches deliver all messages', () => {
+      // Test parallel branches with independent message flows
+      const protocol = `
+        protocol ParallelMessages(role A, role B, role C, role D) {
+          par {
+            A -> B: M1();
+          } and {
+            C -> D: M2();
+          }
+        }
+      `;
 
-      // par {
-      //   A -> B: M1();
-      // } and {
-      //   C -> D: M2();
-      // }
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // Both branches should deliver messages independently
+      // Check well-formedness (no races between parallel branches)
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+      expect(wf.raceConditions.hasRaces).toBe(false);
 
-      expect(true).toBe(true); // Placeholder
+      // Project to check all roles have their actions
+      const projectionResult = projectAll(cfg);
+
+      // All four roles should have CFSMs
+      expect(projectionResult.cfsms.has('A')).toBe(true);
+      expect(projectionResult.cfsms.has('B')).toBe(true);
+      expect(projectionResult.cfsms.has('C')).toBe(true);
+      expect(projectionResult.cfsms.has('D')).toBe(true);
+
+      // Check send/receive actions exist
+      const cfsmA = projectionResult.cfsms.get('A')!;
+      const cfsmB = projectionResult.cfsms.get('B')!;
+      const cfsmC = projectionResult.cfsms.get('C')!;
+      const cfsmD = projectionResult.cfsms.get('D')!;
+
+      const aSends = cfsmA.transitions.filter(t => t.action.type === 'send');
+      const bReceives = cfsmB.transitions.filter(t => t.action.type === 'receive');
+      const cSends = cfsmC.transitions.filter(t => t.action.type === 'send');
+      const dReceives = cfsmD.transitions.filter(t => t.action.type === 'receive');
+
+      expect(aSends.length).toBeGreaterThan(0);
+      expect(bReceives.length).toBeGreaterThan(0);
+      expect(cSends.length).toBeGreaterThan(0);
+      expect(dReceives.length).toBeGreaterThan(0);
+      // ✅ PROOF: Parallel branches have independent send/receive actions
     });
 
     it.skip('proves: dynamic participants deliver all messages', () => {
