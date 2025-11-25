@@ -25,6 +25,12 @@ export interface ChannelEnd {
    * Receive a message - BLOCKS until message available
    */
   receive(): Promise<Message>;
+
+  /**
+   * Check if a message is available without consuming it
+   * Returns true if receive() would return immediately (not block)
+   */
+  hasMessage(): boolean;
 }
 
 /**
@@ -72,6 +78,11 @@ export function createChannel(): [ChannelEnd, ChannelEnd] {
       return new Promise(resolve => {
         myInbox.waiters.push(resolve);
       });
+    },
+
+    hasMessage(): boolean {
+      // Return true if a message is available (receive would not block)
+      return myInbox.queue.length > 0;
     }
   });
 

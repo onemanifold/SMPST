@@ -19,6 +19,23 @@ import type { CFGDebugger } from './cfg-debugger';
 import type { DistributedDebugger } from './distributed-debugger';
 import type { DebugEvent } from './cfg-debugger';
 import type { DistributedDebugEvent } from './distributed-debugger';
+import type { SendAction, ReceiveAction } from '../projection/types';
+
+/**
+ * Backward compatibility helper for accessing action label
+ * Supports both new (action.message.label) and deprecated (action.label) formats
+ */
+function getActionLabel(action: any): string {
+  // Try new format first
+  if (action.message?.label) {
+    return action.message.label;
+  }
+  // Fall back to deprecated format
+  if (action.label) {
+    return action.label;
+  }
+  throw new Error('Action missing both message.label and deprecated label property');
+}
 
 /**
  * Bisimulation comparison result
@@ -239,7 +256,7 @@ export class BisimulationValidator {
       // Compare sender, receiver, and message label
       const senderMatch = cfgAction.from === distEvent.role;
       const receiverMatch = cfgAction.to === distAction.to;
-      const labelMatch = cfgAction.message.label === distAction.message.label;
+      const labelMatch = getActionLabel(cfgAction) === getActionLabel(distAction);
 
       return senderMatch && receiverMatch && labelMatch;
     }

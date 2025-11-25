@@ -48,6 +48,32 @@ import type {
   CallStackFrame,
 } from './cfsm-simulator-types';
 import { CFSMExecutionHistory } from './execution-history';
+import type { SendAction, ReceiveAction } from '../projection/types';
+
+/**
+ * Backward compatibility helpers for accessing action properties
+ * Supports both new (action.message.label) and deprecated (action.label) formats
+ */
+function getActionLabel(action: SendAction | ReceiveAction): string {
+  // Try new format first
+  if (action.message?.label) {
+    return action.message.label;
+  }
+  // Fall back to deprecated format
+  if (action.label) {
+    return action.label;
+  }
+  throw new Error('Action missing both message.label and deprecated label property');
+}
+
+function getActionPayloadType(action: SendAction | ReceiveAction): string | undefined {
+  // Try new format first
+  if (action.message?.payload?.payloadType?.name) {
+    return action.message.payload.payloadType.name;
+  }
+  // Fall back to deprecated format
+  return action.payloadType;
+}
 
 export class CFSMSimulator {
   private rootCFSM: CFSM;  // Root CFSM (never changes)
@@ -195,9 +221,18 @@ export class CFSMSimulator {
   getEnabledTransitions(): CFSMTransition[] {
     const transitions = this.currentCFSM.transitions.filter(t => t.from === this.currentState);
 
-    // With async channels, all transitions from current state are enabled
+    // With async channels, check message availability for receives
     if (this.channels) {
-      return transitions;
+      return transitions.filter(t => {
+        if (t.action.type === 'receive') {
+          const channel = this.channels!.get(t.action.from);
+          if (!channel) return false;
+          // Only enable receive if message is available (to avoid blocking in sequential stepping)
+          return channel.hasMessage();
+        }
+        // Send, tau, choice always enabled
+        return true;
+      });
     }
 
     // Legacy mode: check buffer for receive transitions
@@ -208,7 +243,7 @@ export class CFSMSimulator {
 
         // Check if first message matches (FIFO)
         const firstMsg = queue[0];
-        return firstMsg.label === t.action.message.label;
+        return firstMsg.label === getActionLabel(t.action);
       }
 
       // Send, tau, choice always enabled
@@ -380,8 +415,8 @@ export class CFSMSimulator {
       id: `${this.rootCFSM.role}-msg-${this.messageIdCounter++}`,
       from: this.rootCFSM.role,
       to,
-      label: action.message.label,
-      payloadType: action.message.payload?.payloadType.name,
+      label: getActionLabel(action),
+      payloadType: getActionPayloadType(action),
       timestamp: Date.now(),
     }));
 
@@ -466,9 +501,10 @@ export class CFSMSimulator {
       msg = await channel.receive();
 
       // Verify message label matches expected
-      if (msg.label !== action.message.label) {
+      const expectedLabel = getActionLabel(action);
+      if (msg.label !== expectedLabel) {
         throw new Error(
-          `Protocol violation: expected ${action.message.label} from ${action.from}, got ${msg.label}`
+          `Protocol violation: expected ${expectedLabel} from ${action.from}, got ${msg.label}`
         );
       }
 
@@ -526,8 +562,8 @@ export class CFSMSimulator {
         type: 'receive',
         timestamp: Date.now(),
         from: action.from,
-        label: action.message.label,
-        payloadType: action.message.payload?.payloadType.name,
+        label: getActionLabel(action),
+        payloadType: getActionPayloadType(action),
         messageId: msg.id,
         stateId: this.currentState,
       });
