@@ -696,7 +696,7 @@ export class CFSMSimulator {
     // Record in trace
     if (this.config.recordTrace) {
       this.trace.events.push({
-        type: 'subprotocol-call',
+        type: 'subprotocol',
         timestamp: Date.now(),
         protocol: action.protocol,
         stateId: this.currentState,

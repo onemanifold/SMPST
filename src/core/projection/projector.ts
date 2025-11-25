@@ -602,7 +602,7 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
           // ================================================================
           // DMst: Protocol Call Action (ECOOP 2023, Definition 1)
           // [[p calls Proto(q)]]_p = !call(Proto, q) (caller initiates)
-          // [[p calls Proto(q)]]_r where r ∈ q = subprotocol-call
+          // [[p calls Proto(q)]]_r where r ∈ q = subprotocol
           // [[p calls Proto(q)]]_r where r ∉ {p} ∪ q = ε (not involved)
           // ================================================================
           const callAction = action as ProtocolCallAction;

@@ -534,7 +534,7 @@ describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)',
       // Manager should have protocol call and message send
       const cfsmManager = result.cfsms.get('Manager')!;
       const managerCalls = cfsmManager.transitions.filter(
-        t => t.action.type === 'subprotocol-call'
+        t => t.action.type === 'subprotocol'
       );
       expect(managerCalls.length).toBeGreaterThan(0);
 
@@ -713,7 +713,7 @@ describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)',
       // Manager should have protocol call in update body
       const cfsmManager = result.cfsms.get('Manager')!;
       const calls = cfsmManager.transitions.filter(
-        t => t.action.type === 'subprotocol-call'
+        t => t.action.type === 'subprotocol'
       );
       expect(calls.length).toBeGreaterThan(0);
 

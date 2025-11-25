@@ -186,21 +186,25 @@ export function projectProtocolCall(
   // Caller initiates the call
   if (caller === role) {
     return {
-      type: 'subprotocol-call',
+      type: 'subprotocol',
       protocol,
+      roleMapping: {}, // TODO: Map formal parameters to actual roles
+      returnState: '', // TODO: Determine return state
+      caller,
       participants,
-      caller, // Preserve who initiated the call
-    };
+    } as any;
   }
 
   // Participants receive the call
   if (participants.includes(role)) {
     return {
-      type: 'subprotocol-call',
+      type: 'subprotocol',
       protocol,
+      roleMapping: {},
+      returnState: '',
+      caller,
       participants,
-      caller, // Preserve who initiated the call
-    };
+    } as any;
   }
 
   // Not involved

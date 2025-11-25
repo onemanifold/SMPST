@@ -62,7 +62,7 @@ describe('Protocol Call Test', () => {
     // Should have protocol-call transitions
     const cfsmA = projections.cfsms.get('A')!;
     const calls = cfsmA.transitions.filter(t =>
-      t.action.type === 'subprotocol-call'
+      t.action.type === 'subprotocol'
     );
     expect(calls.length).toBeGreaterThan(0);
   });
