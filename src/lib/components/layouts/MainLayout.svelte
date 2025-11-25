@@ -10,8 +10,7 @@
    */
   import Header from '$lib/components/Header.svelte';
   import Sidebar from '$lib/components/sidebar/Sidebar.svelte';
-  import { appStore, sidebarCollapsed, notifications } from '$lib/stores/app.store';
-  import { location } from 'svelte-spa-router';
+  import { appStore, sidebarCollapsed, currentRoute, notifications } from '$lib/stores/app.store';
 
   // Bind sidebar collapsed state to app store
   let collapsed: boolean;
@@ -22,7 +21,7 @@
   }
 
   // Determine if we should show the sidebar based on route
-  $: showSidebar = $location === '/' || $location === '';
+  $: showSidebar = $currentRoute === '/' || $currentRoute === '';
 </script>
 
 <div class="layout">
@@ -32,14 +31,14 @@
     <a
       href="#/"
       class="tab"
-      class:active={$location === '/' || $location === ''}
+      class:active={$currentRoute === '/' || $currentRoute === ''}
     >
       CODE
     </a>
     <a
       href="#/simulation"
       class="tab"
-      class:active={$location?.startsWith('/simulation')}
+      class:active={$currentRoute?.startsWith('/simulation')}
     >
       SIMULATION
     </a>
@@ -47,7 +46,7 @@
     <a
       href="#/settings"
       class="tab tab-icon"
-      class:active={$location === '/settings'}
+      class:active={$currentRoute === '/settings'}
       title="Settings"
     >
       ⚙

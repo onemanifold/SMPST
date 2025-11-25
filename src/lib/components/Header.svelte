@@ -38,58 +38,58 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 24px;
-    background: #1e1e1e;
-    border-bottom: 1px solid #333;
-    color: #fff;
+    padding: var(--spacing-3) var(--spacing-6);
+    background: var(--color-bg-primary);
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-primary);
   }
 
   .logo {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 18px;
-    font-weight: 600;
+    gap: var(--spacing-2);
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
   }
 
   .logo-icon {
-    font-size: 24px;
+    font-size: var(--font-size-3xl);
   }
 
   .status {
     display: flex;
-    gap: 16px;
+    gap: var(--spacing-4);
     align-items: center;
   }
 
   .status-indicator {
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 14px;
-    background: #333;
+    padding: var(--spacing-1) var(--spacing-3);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-md);
+    background: var(--color-bg-tertiary);
   }
 
   .status-indicator.success {
-    background: #2d5f2d;
-    color: #90ee90;
+    background: var(--color-success-bg);
+    color: var(--color-success);
   }
 
   .status-indicator.error {
-    background: #5f2d2d;
-    color: #ff6b6b;
+    background: var(--color-error-bg);
+    color: var(--color-error);
   }
 
   .verification-status {
     display: flex;
-    gap: 12px;
-    font-size: 13px;
+    gap: var(--spacing-3);
+    font-size: var(--font-size-base);
   }
 
   .verification-status span {
-    color: #ff6b6b;
+    color: var(--color-error);
   }
 
   .verification-status span.success {
-    color: #90ee90;
+    color: var(--color-success);
   }
 </style>

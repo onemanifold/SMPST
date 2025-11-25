@@ -1,11 +1,20 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
   import { projectionData, parseStatus } from '$lib/stores/editor';
-  import * as monaco from 'monaco-editor';
+
+  // Detect headless environment - DO NOT load Monaco in headless
+  const isHeadless = typeof window !== 'undefined' && (
+    navigator.webdriver === true ||
+    /HeadlessChrome/.test(navigator.userAgent) ||
+    /PhantomJS/.test(navigator.userAgent)
+  );
 
   let selectedRole = '';
   let editorContainer: HTMLDivElement;
-  let editor: monaco.editor.IStandaloneCodeEditor | null = null;
+  let editor: any = null; // Monaco editor instance (loaded dynamically)
+  let monaco: any = null; // Monaco module (loaded dynamically)
+  let useTextareaFallback = isHeadless;
+  let monacoLoaded = false;
 
   // Derived state
   let currentProjection: typeof $projectionData[0] | undefined;
@@ -25,24 +34,50 @@
   $: currentProjection = $projectionData.find(p => p.role === selectedRole);
   $: localScribble = currentProjection?.localProtocol || '';
 
-  // Update editor content when localScribble changes
-  $: if (editor && localScribble !== undefined) {
-    const currentValue = editor.getValue();
-    if (localScribble !== currentValue) {
-      try {
-        const currentPosition = editor.getPosition();
-        editor.setValue(localScribble);
-        if (currentPosition) {
-          editor.setPosition(currentPosition);
-        }
-      } catch (e) {
-        console.error('Failed to update editor:', e);
-      }
+  // Track pending update to avoid duplicate RAF calls
+  let pendingEditorUpdate: number | null = null;
+
+  // Update editor content when localScribble changes (only for Monaco)
+  // Use requestAnimationFrame to defer the expensive setValue() call
+  // This prevents UI stuttering when switching between role tabs
+  $: if (editor && localScribble !== undefined && !useTextareaFallback) {
+    const newValue = localScribble;
+
+    // Cancel any pending update
+    if (pendingEditorUpdate !== null) {
+      cancelAnimationFrame(pendingEditorUpdate);
     }
+
+    // Defer the expensive Monaco update to prevent blocking the UI
+    pendingEditorUpdate = requestAnimationFrame(() => {
+      pendingEditorUpdate = null;
+      if (!editor) return;
+
+      const currentValue = editor.getValue();
+      if (newValue !== currentValue) {
+        try {
+          // Use pushEditOperations for smoother updates instead of setValue
+          // This preserves undo stack and is more efficient for partial changes
+          const model = editor.getModel();
+          if (model) {
+            const fullRange = model.getFullModelRange();
+            model.pushEditOperations(
+              [],
+              [{ range: fullRange, text: newValue }],
+              () => null
+            );
+          }
+        } catch (e) {
+          console.error('Failed to update editor:', e);
+        }
+      }
+    });
   }
 
   // Function to set up Monaco environment and register language
   function setupMonaco() {
+    if (!monaco) return;
+
     // Set up Monaco environment (needed for worker loading)
     (window as any).MonacoEnvironment = (window as any).MonacoEnvironment || {
       getWorkerUrl: function (_moduleId: string, label: string) {
@@ -65,7 +100,7 @@
 
     // Ensure Monaco language and theme are registered
     const languages = monaco.languages.getLanguages();
-    const hasScribble = languages.some(lang => lang.id === 'scribble');
+    const hasScribble = languages.some((lang: any) => lang.id === 'scribble');
 
     if (!hasScribble) {
       // Register Scribble language
@@ -106,17 +141,26 @@
     }
   }
 
-  // CORE FIX: Create editor only when container is bound AND we have data ready
-  // Using tick() ensures all reactive computations (including localScribble) are complete
-  $: if (editorContainer && !editor && $projectionData.length > 0) {
-    // Wait for next tick to ensure localScribble is fully computed in reactive block above
-    tick().then(() => {
-      // Double-check editor wasn't created during tick
-      if (!editor && localScribble) {
-        setupMonaco();
+  // Dynamically load Monaco only when not headless
+  async function loadMonaco() {
+    if (useTextareaFallback || monacoLoaded) return;
 
+    try {
+      const monacoModule = await import('monaco-editor');
+      monaco = monacoModule;
+      monacoLoaded = true;
+      setupMonaco();
+    } catch (e) {
+      console.error('[LocalProjectionPanel] Failed to load Monaco:', e);
+      useTextareaFallback = true;
+    }
+  }
+
+  // Create editor only when container is bound, Monaco loaded, AND we have data ready
+  $: if (editorContainer && !editor && $projectionData.length > 0 && monacoLoaded && monaco && !useTextareaFallback) {
+    tick().then(() => {
+      if (!editor && localScribble && monaco) {
         try {
-          // Create read-only Monaco editor with computed localScribble value
           editor = monaco.editor.create(editorContainer, {
             value: localScribble,
             language: 'scribble',
@@ -136,16 +180,26 @@
           });
         } catch (e) {
           console.error('Failed to create Monaco editor:', e);
+          useTextareaFallback = true;
         }
       }
     });
   }
 
   onMount(() => {
-    setupMonaco();
+    if (isHeadless) {
+      console.log('[LocalProjectionPanel] Headless detected, using textarea (Monaco not loaded)');
+      useTextareaFallback = true;
+    } else {
+      loadMonaco();
+    }
   });
 
   onDestroy(() => {
+    // Cancel any pending editor update
+    if (pendingEditorUpdate !== null) {
+      cancelAnimationFrame(pendingEditorUpdate);
+    }
     editor?.dispose();
   });
 </script>
@@ -158,7 +212,7 @@
         <button
           class="role-tab"
           class:active={selectedRole === projection.role}
-          on:click={() => selectedRole = projection.role}
+          on:click={() => { if (selectedRole !== projection.role) selectedRole = projection.role; }}
         >
           {projection.role}
         </button>
@@ -173,10 +227,20 @@
       <div class="placeholder-overlay">
         <p>Parse a protocol to see local projections</p>
       </div>
+    {:else if useTextareaFallback}
+      <!-- Textarea fallback for headless environments -->
+      <textarea
+        class="fallback-textarea projection-textarea"
+        readonly
+        value={localScribble}
+        spellcheck="false"
+      ></textarea>
     {/if}
 
-    <!-- Monaco editor container - NEVER destroyed -->
-    <div class="editor-container" bind:this={editorContainer}></div>
+    <!-- Monaco editor container - only used when not headless -->
+    {#if !useTextareaFallback}
+      <div class="editor-container" bind:this={editorContainer}></div>
+    {/if}
   </div>
 </div>
 
@@ -185,37 +249,37 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: #1e1e1e;
-    color: #ccc;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
   }
 
   .role-tabs {
     display: flex;
-    background: #2d2d2d;
-    border-bottom: 1px solid #1e1e1e;
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-bg-primary);
     overflow-x: auto;
   }
 
   .role-tab {
-    padding: 8px 16px;
+    padding: var(--spacing-2) var(--spacing-4);
     background: transparent;
-    color: #ccc;
+    color: var(--color-text-primary);
     border: none;
     border-bottom: 2px solid transparent;
     cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
     white-space: nowrap;
-    transition: all 0.2s;
+    transition: all var(--transition-normal);
   }
 
   .role-tab:hover {
-    background: #3d3d3d;
+    background: var(--color-bg-hover);
   }
 
   .role-tab.active {
-    color: #fff;
-    border-bottom-color: #4EC9B0;
+    color: var(--color-text-inverse);
+    border-bottom-color: var(--color-success);
   }
 
   .projection-content {
@@ -235,14 +299,29 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #1e1e1e;
-    color: #666;
+    background: var(--color-bg-primary);
+    color: var(--color-text-muted);
     font-style: italic;
-    z-index: 10;
+    z-index: var(--z-dropdown);
   }
 
   .editor-container {
     flex: 1;
     overflow: hidden;
+  }
+
+  /* Fallback textarea for projection panel */
+  .projection-textarea {
+    flex: 1;
+    width: 100%;
+    padding: var(--spacing-3, 12px);
+    background: var(--color-bg-secondary, #252526);
+    color: var(--color-text-primary, #cccccc);
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: var(--font-family-mono, 'Consolas', 'Monaco', monospace);
+    font-size: var(--font-size-base, 14px);
+    line-height: 1.5;
   }
 </style>

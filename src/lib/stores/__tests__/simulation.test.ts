@@ -31,6 +31,16 @@ import {
   stepBack,
   stepForward,
   jumpToStep,
+  // Phase 4: Execution State Details
+  recursionStack,
+  isInParallel,
+  activeBranches,
+  hasReachedMaxSteps,
+  // Configuration
+  choiceStrategy,
+  maxStepsConfig,
+  lastError,
+  lastEvent,
 } from '../simulation';
 
 describe('Simulation Store - Backend Contract Enforcement', () => {
@@ -52,64 +62,12 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
       expect(events).toEqual([]);
     });
 
-    it.todo('should capture message events during execution', async () => {
-      // TODO: When simulator emits MessageEvent, it should be added to executionEvents
-      // Backend provides: { type: 'message', timestamp, from, to, label, payloadType, nodeId }
-      // Expected: Events captured in executionEvents array
-      // Current: Events ignored
-
-      // await initializeSimulation(cfg);
-      // await stepSimulation();
-      // const events = get(executionEvents);
-      // const messageEvents = events.filter(e => e.type === 'message');
-      // expect(messageEvents.length).toBeGreaterThan(0);
-      // expect(messageEvents[0]).toHaveProperty('from');
-      // expect(messageEvents[0]).toHaveProperty('to');
-      // expect(messageEvents[0]).toHaveProperty('label');
-    });
-
-    it.todo('should capture choice events when choice made', async () => {
-      // TODO: When user makes choice, ChoiceEvent should be captured
-      // Backend provides: { type: 'choice', timestamp, decidingRole, choiceIndex, choiceLabel, nodeId }
-      // Expected: Choice events in executionEvents
-      // Current: Not captured
-
-      // await initializeSimulation(cfgWithChoice);
-      // await stepSimulation(); // Reach choice point
-      // await makeChoice(0);
-      // const events = get(executionEvents);
-      // const choiceEvents = events.filter(e => e.type === 'choice');
-      // expect(choiceEvents.length).toBe(1);
-      // expect(choiceEvents[0].choiceIndex).toBe(0);
-    });
-
-    it.todo('should capture recursion events', async () => {
-      // TODO: rec enter/continue/exit events should be captured
-      // Backend provides: { type: 'recursion', timestamp, action: 'enter' | 'continue' | 'exit', label, iteration?, nodeId }
-      // Expected: Recursion events tracked
-      // Current: Not captured
-
-      // await initializeSimulation(cfgWithRecursion);
-      // await stepSimulation(); // Enter rec
-      // const events = get(executionEvents);
-      // const recEvents = events.filter(e => e.type === 'recursion');
-      // expect(recEvents.length).toBeGreaterThan(0);
-      // expect(recEvents[0].action).toBe('enter');
-    });
-
-    it.todo('should capture parallel events', async () => {
-      // TODO: fork/join events should be captured
-      // Backend provides: { type: 'parallel', timestamp, action: 'fork' | 'join', branches?, nodeId }
-      // Expected: Parallel events tracked
-      // Current: Not captured
-
-      // await initializeSimulation(cfgWithParallel);
-      // await stepSimulation(); // Hit fork
-      // const events = get(executionEvents);
-      // const parallelEvents = events.filter(e => e.type === 'parallel');
-      // expect(parallelEvents.length).toBeGreaterThan(0);
-      // expect(parallelEvents[0].action).toBe('fork');
-    });
+    // NOTE: Message/choice/recursion/parallel event capture is fully tested in integration tests
+    // See: simulation.integration.test.ts
+    // - "should capture message events" (lines 65-86)
+    // - "should capture choice events" (lines 206-211)
+    // - "should capture recursion events" (lines 239-244)
+    // - "should capture parallel events" (lines 278-283)
 
     it('should provide derived stores for filtering events by type', () => {
       // Derived stores for filtering events by type
@@ -142,31 +100,13 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
       // Integration tests cover this functionality
     });
 
-    it.todo('should clear events on reset', () => {
-      // TODO: Requires simulation to be initialized with CFG
-      // Events should reset with simulation when resetSimulation() called
-      // Test will be implemented when integration tests added
-    });
+    // NOTE: Event lifecycle (reset/stop) is fully tested in integration tests
+    // Events are cleared via resetSimulation() / stopSimulation()
+    // See: simulation.integration.test.ts
 
-    it.todo('should clear events on stop', () => {
-      // TODO: Requires simulation to be initialized
-      // Events should clear when stopSimulation() called
-      // Test will be implemented when integration tests added
-    });
-
-    it.todo('should preserve event order (chronological)', async () => {
-      // TODO: Events should be in timestamp order
-      // Expected: events[i].timestamp <= events[i+1].timestamp
-      // Current: No events
-
-      // await initializeSimulation(cfg);
-      // await stepSimulation();
-      // await stepSimulation();
-      // const events = get(executionEvents);
-      // for (let i = 0; i < events.length - 1; i++) {
-      //   expect(events[i].timestamp).toBeLessThanOrEqual(events[i + 1].timestamp);
-      // }
-    });
+    // NOTE: Event ordering is maintained by the debugger
+    // Events are added chronologically during execution
+    // Integration tests verify event capture and ordering
   });
 
   describe('Phase 2: Backward Stepping - HIGH PRIORITY', () => {
@@ -198,47 +138,11 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
       expect(totalSteps).toBe(0);
     });
 
-    it.todo('should enable stepBack() action', async () => {
-      // TODO: Requires simulator initialized with CFG
-      // Expected: stepBack() restores previous snapshot from history
-      // Current: Need integration test with real CFG
-
-      // await initializeSimulation(cfg);
-      // await stepSimulation();
-      // const step1State = get(executionState);
-      // await stepSimulation();
-      // await stepBack();
-      // const restoredState = get(executionState);
-      // expect(restoredState).toEqual(step1State);
-    });
-
-    it.todo('should enable stepForward() action', async () => {
-      // TODO: Requires simulator initialized with CFG
-      // Expected: stepForward() after stepBack() restores forward state
-      // Current: Need integration test with real CFG
-
-      // await initializeSimulation(cfg);
-      // await stepSimulation();
-      // await stepSimulation();
-      // await stepBack();
-      // await stepForward();
-      // const state = get(executionState);
-      // expect(state.stepCount).toBe(2);
-    });
-
-    it.todo('should enable jumpToStep() action', async () => {
-      // TODO: Requires simulator initialized with CFG
-      // Expected: jumpToStep(n) restores state at step n
-      // Current: Need integration test with real CFG
-
-      // await initializeSimulation(cfg);
-      // await stepSimulation(); // step 1
-      // await stepSimulation(); // step 2
-      // await stepSimulation(); // step 3
-      // await jumpToStep(1);
-      // const state = get(executionState);
-      // expect(state.stepCount).toBe(1);
-    });
+    // NOTE: stepBack/stepForward/jumpToStep functionality is fully tested in integration tests
+    // See: simulation.integration.test.ts
+    // - "should support stepping backward" (lines 419, 452, 572-573)
+    // - "should support stepping forward after stepping back" (line 456)
+    // - "should support jumpToStep to arbitrary position" (lines 497-534)
   });
 
   describe('Phase 3: Enhanced Choice Previews - MEDIUM PRIORITY', () => {
@@ -257,73 +161,92 @@ describe('Simulation Store - Backend Contract Enforcement', () => {
     });
   });
 
-  describe('Phase 4: Recursion Stack - MEDIUM PRIORITY', () => {
-    it.todo('should expose recursionStack from execution state', async () => {
-      // TODO: executionState.recursionStack not exposed
-      // Expected: recursionStack derived store
-      // Current: Not exposed
-
-      // await initializeSimulation(cfgWithRecursion);
-      // await stepSimulation(); // Enter rec
-      // const stack = get(recursionStack);
-      // expect(Array.isArray(stack)).toBe(true);
-      // expect(stack.length).toBeGreaterThan(0);
-      // expect(stack[0]).toHaveProperty('label');
-      // expect(stack[0]).toHaveProperty('iterations');
+  describe('Phase 4: Contract Enforcement - Error & Event Stores', () => {
+    it('should expose lastError store for contract-enforced error handling', () => {
+      // lastError stores the most recent error from contract handlers
+      const error = get(lastError);
+      // Initially no error
+      expect(error).toBe(null);
     });
+
+    it('should expose lastEvent store for contract-enforced event capture', () => {
+      // lastEvent stores the most recent event from contract handlers
+      const event = get(lastEvent);
+      // Initially no event
+      expect(event).toBe(null);
+    });
+
+    // NOTE: Error/event capture during execution is fully tested in integration tests
+    // See: simulation.integration.test.ts
   });
 
-  describe('Phase 5: Parallel Execution State - MEDIUM PRIORITY', () => {
-    it.todo('should expose inParallel flag', async () => {
-      // TODO: executionState.inParallel not exposed
-      // Expected: isInParallel derived store
-      // Current: Not exposed
-
-      // await initializeSimulation(cfgWithParallel);
-      // await stepSimulation(); // Hit fork
-      // expect(get(isInParallel)).toBe(true);
+  describe('Phase 4: Recursion Stack', () => {
+    it('should expose recursionStack derived store', () => {
+      // recursionStack is derived from cfgExecutionState
+      const stack = get(recursionStack);
+      expect(Array.isArray(stack)).toBe(true);
+      // When no simulation active, should be empty
+      expect(stack).toEqual([]);
     });
 
-    it.todo('should expose active parallel branches', async () => {
-      // TODO: executionState.activeBranches not exposed
-      // Expected: activeBranches derived store
-      // Current: Not exposed
+    // NOTE: recursionStack contents during execution is fully tested in integration tests
+    // See: simulation.integration.test.ts - "should capture recursion events"
+  });
 
-      // await initializeSimulation(cfgWithParallel);
-      // await stepSimulation(); // Hit fork
-      // const branches = get(activeBranches);
-      // expect(Array.isArray(branches)).toBe(true);
-      // expect(branches.length).toBeGreaterThan(1);
+  describe('Phase 5: Parallel Execution State', () => {
+    it('should expose isInParallel derived store', () => {
+      // isInParallel is derived from cfgExecutionState
+      const inParallel = get(isInParallel);
+      expect(typeof inParallel).toBe('boolean');
+      // When no simulation active, should be false
+      expect(inParallel).toBe(false);
     });
+
+    it('should expose activeBranches derived store', () => {
+      // activeBranches is derived from cfgExecutionState
+      const branches = get(activeBranches);
+      expect(Array.isArray(branches)).toBe(true);
+      // When no simulation active, should be empty
+      expect(branches).toEqual([]);
+    });
+
+    // NOTE: Parallel state during execution is fully tested in integration tests
+    // See: simulation.integration.test.ts - "should capture parallel events"
   });
 
   describe('Configuration Options', () => {
-    it.todo('should support configurable choice strategy', () => {
-      // TODO: choiceStrategy always 'manual', hardcoded
-      // Expected: User can select 'manual' | 'random' | 'first'
-      // Current: Hardcoded to 'manual'
+    it('should expose configurable choiceStrategy store', () => {
+      // choiceStrategy is a writable store
+      const strategy = get(choiceStrategy);
+      expect(strategy).toBe('manual'); // Default value
 
-      // await initializeSimulation(cfg, { choiceStrategy: 'random' });
-      // const config = simulator.getConfig();
-      // expect(config.choiceStrategy).toBe('random');
+      // Can be updated
+      choiceStrategy.set('random');
+      expect(get(choiceStrategy)).toBe('random');
+
+      // Reset
+      choiceStrategy.set('manual');
     });
 
-    it.todo('should support configurable max steps', () => {
-      // TODO: maxSteps hardcoded to 1000
-      // Expected: User can configure
-      // Current: Hardcoded
+    it('should expose configurable maxStepsConfig store', () => {
+      // maxStepsConfig is a writable store
+      const maxSteps = get(maxStepsConfig);
+      expect(maxSteps).toBe(1000); // Default value
 
-      // await initializeSimulation(cfg, { maxSteps: 500 });
-      // await stepSimulation();
-      // expect(get(hasReachedMaxSteps)).toBeDefined();
+      // Can be updated
+      maxStepsConfig.set(500);
+      expect(get(maxStepsConfig)).toBe(500);
+
+      // Reset
+      maxStepsConfig.set(1000);
     });
 
-    it.todo('should expose hasReachedMaxSteps flag', () => {
-      // TODO: executionState.reachedMaxSteps not exposed
-      // Expected: hasReachedMaxSteps derived store
-      // Current: Not exposed
-
-      // expect(get(hasReachedMaxSteps)).toBe(false);
+    it('should expose hasReachedMaxSteps derived store', () => {
+      // hasReachedMaxSteps is derived from cfgExecutionState
+      const reachedMax = get(hasReachedMaxSteps);
+      expect(typeof reachedMax).toBe('boolean');
+      // When no simulation active, should be false
+      expect(reachedMax).toBe(false);
     });
   });
 });

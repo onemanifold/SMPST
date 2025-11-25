@@ -1,5 +1,6 @@
 <script lang="ts">
   import { verificationResult, parseError, outputPanelCollapsed } from '$lib/stores/editor';
+  import { Button } from '$lib/components/atoms';
 
   function togglePanel() {
     outputPanelCollapsed.update(v => !v);
@@ -9,9 +10,9 @@
 <div class="verification-panel">
   <div class="panel-header">
     <h3>Verification Results</h3>
-    <button class="btn-collapse" on:click={togglePanel}>
+    <Button variant="ghost" size="sm" on:click={togglePanel}>
       {$outputPanelCollapsed ? '▲' : '▼'}
-    </button>
+    </Button>
   </div>
 
   {#if !$outputPanelCollapsed}
@@ -66,101 +67,93 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    background: #1e1e1e;
-    color: #ccc;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
   }
 
   .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 16px;
-    background: #2d2d2d;
-    border-bottom: 1px solid #333;
+    padding: var(--spacing-2) var(--spacing-4);
+    background: var(--color-bg-tertiary);
+    border-bottom: 1px solid var(--color-border);
   }
 
   .panel-header h3 {
     margin: 0;
-    font-size: 14px;
-    font-weight: 500;
-  }
-
-  .btn-collapse {
-    background: transparent;
-    border: none;
-    color: #ccc;
-    cursor: pointer;
-    padding: 4px;
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
   }
 
   .panel-content {
     flex: 1;
     overflow-y: auto;
-    padding: 16px;
+    padding: var(--spacing-4);
   }
 
   .result-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin-bottom: 16px;
+    gap: var(--spacing-2);
+    margin-bottom: var(--spacing-4);
   }
 
   .result-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    color: #ff6b6b;
+    gap: var(--spacing-2);
+    color: var(--color-error);
   }
 
   .result-item.success {
-    color: #90ee90;
+    color: var(--color-success);
   }
 
   .icon {
-    font-weight: bold;
+    font-weight: var(--font-weight-bold);
   }
 
   .error-list, .warning-list {
-    margin-top: 16px;
+    margin-top: var(--spacing-4);
   }
 
   .error-list h4, .warning-list h4 {
-    margin: 0 0 8px 0;
-    font-size: 13px;
-    font-weight: 500;
+    margin: 0 0 var(--spacing-2) 0;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
   }
 
   .error-item {
-    padding: 6px 12px;
-    margin-bottom: 4px;
-    background: #5f2d2d;
-    color: #ff6b6b;
-    border-radius: 4px;
-    font-size: 13px;
+    padding: var(--spacing-1) var(--spacing-3);
+    margin-bottom: var(--spacing-1);
+    background: var(--color-error-bg);
+    color: var(--color-error);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
   }
 
   .warning-item {
-    padding: 6px 12px;
-    margin-bottom: 4px;
-    background: #5f5f2d;
-    color: #ffeb3b;
-    border-radius: 4px;
-    font-size: 13px;
+    padding: var(--spacing-1) var(--spacing-3);
+    margin-bottom: var(--spacing-1);
+    background: var(--color-warning-bg);
+    color: var(--color-warning);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-base);
   }
 
   .placeholder {
-    color: #666;
+    color: var(--color-text-muted);
     font-style: italic;
   }
 
   .error-message {
-    color: #ff6b6b;
-    background: #2d1e1e;
-    padding: 12px;
-    border-radius: 4px;
+    color: var(--color-error);
+    background: var(--color-error-bg);
+    padding: var(--spacing-3);
+    border-radius: var(--radius-md);
     overflow-x: auto;
-    font-size: 13px;
-    line-height: 1.5;
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-normal);
   }
 </style>

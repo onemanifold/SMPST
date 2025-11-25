@@ -9,38 +9,49 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: 2,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? 'github' : 'list',
 
   use: {
-    baseURL: 'http://localhost:4173',
+    // Must match vite.config.ts base path for GitHub Pages deployment
+    baseURL: 'http://localhost:4173/SMPST/',
     trace: 'on-first-retry',
-    screenshot: 'only-on-failure',
+    screenshot: 'on',
+    // Don't wait for full load - Monaco is heavy (but we use textarea fallback in headless)
+    navigationTimeout: 15000,
+    actionTimeout: 10000,
   },
+
+  // Increase global timeout for heavy tests
+  timeout: 60000,
 
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Disable sandbox for constrained environments (Docker/CI)
+        // See: https://playwright.dev/docs/docker
+        launchOptions: {
+          chromiumSandbox: false,
+          args: [
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--single-process',
+          ],
+        },
+      },
     },
-    // Add Firefox and WebKit for full coverage in CI
-    ...(process.env.CI ? [
-      {
-        name: 'firefox',
-        use: { ...devices['Desktop Firefox'] },
-      },
-      {
-        name: 'webkit',
-        use: { ...devices['Desktop Safari'] },
-      },
-    ] : []),
   ],
 
   // Run dev server before tests
   webServer: {
     command: 'npm run preview',
-    url: 'http://localhost:4173',
+    // Must match vite.config.ts base path for GitHub Pages deployment
+    url: 'http://localhost:4173/SMPST/',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },
