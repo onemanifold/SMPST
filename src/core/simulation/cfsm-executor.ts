@@ -115,13 +115,21 @@ export class CFSMExecutor {
 
   /**
    * Get enabled transitions from current state
-   * In concurrent mode: all transitions structurally enabled (blocking handled by receive())
-   * This method is mainly for coordinator inspection
+   *
+   * Returns transitions that can be executed from the current state.
+   * For sequential stepping, this checks message availability to avoid blocking.
+   *
+   * Context on hasMessage() usage:
+   * - Sequential mode: Coordinator needs to know which CFSMs won't block
+   * - Concurrent mode: Not used (natural blocking on receive())
+   * - hasMessage() is a necessary compromise for sequential stepping
+   * - Long-term: Replace with event-driven readiness via MediatedChannel
    */
   getEnabledTransitions(): CFSMTransition[] {
     const transitions = this.currentCFSM.transitions.filter(t => t.from === this.currentState);
 
-    // In channel mode with sequential stepping, filter by message availability
+    // In channel mode, filter by message availability for receive transitions
+    // This is necessary for sequential stepping to avoid blocking
     if (this.channels) {
       return transitions.filter(t => {
         if (t.action.type === 'receive') {

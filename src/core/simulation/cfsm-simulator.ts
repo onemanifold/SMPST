@@ -222,6 +222,7 @@ export class CFSMSimulator {
     const transitions = this.currentCFSM.transitions.filter(t => t.from === this.currentState);
 
     // With async channels, check message availability for receives
+    // This is necessary for sequential stepping mode (coordinator needs to avoid blocking)
     if (this.channels) {
       return transitions.filter(t => {
         if (t.action.type === 'receive') {

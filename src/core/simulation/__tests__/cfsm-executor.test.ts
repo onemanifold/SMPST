@@ -433,7 +433,7 @@ describe('CFSMExecutor - Sequential Mode', () => {
     const channels = new Map([['A', channelB]]);
     const executor = new CFSMExecutor(cfsm, { channels });
 
-    // No message → no enabled transitions (hasMessage() check)
+    // No message → no enabled transitions (hasMessage() check for sequential stepping)
     let enabled = executor.getEnabledTransitions();
     expect(enabled).toHaveLength(0);
 

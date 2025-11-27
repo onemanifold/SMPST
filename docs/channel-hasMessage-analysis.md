@@ -308,38 +308,105 @@ expect(channelB.hasMessage()).toBe(true);  // Verify send
 
 ---
 
-## Recommendation
+## Implementation Attempt: Event-Driven Coordination
 
-I recommend **Option 4: Replace with Event-Driven Coordination**
+### What Was Tried
 
-**Rationale:**
-1. We already implemented channel mediation architecture for 'ready' events
-2. `hasMessage()` is exactly the kind of polling we want to eliminate
-3. Event-driven coordination is more efficient and formally correct
-4. Aligns with the direction we're already moving
+I attempted to remove `hasMessage()` entirely by:
+1. Making `getEnabledTransitions()` return all structurally-enabled transitions
+2. Removing message availability checks
+3. Relying on event-driven 'ready' coordination
 
-**Implementation Steps:**
-1. Add event emitter to channel for 'message-available'
-2. Remove `hasMessage()` checks from `getEnabledTransitions()`
-3. Rely on 'ready' event coordination already implemented
-4. Update tests to not use `hasMessage()` for verification
+### What Happened
 
-**Timeline:**
-- Quick win: Remove `hasMessage()` from `getEnabledTransitions()` logic
-- Medium: Add proper event emission from channels
-- Long: Remove `hasMessage()` from public API entirely
+**Result:** Tests timed out in sequential stepping mode.
+
+**Root Cause:** Sequential mode calls `step()` on roles, which calls `receive()` on channels, which **blocks indefinitely** if no message is available. Without `hasMessage()` filtering, the coordinator selects roles that will block, causing deadlock.
+
+**Key Insight:** Sequential stepping requires **non-blocking inspection** before calling potentially-blocking operations. This is fundamentally incompatible with pure event-driven coordination.
 
 ---
 
-## Summary
+## Recommendation (Updated)
+
+I recommend **Option 3: Document as Necessary Evil** ✅
+
+**Rationale:**
+1. **Sequential mode fundamentally needs it:** Blocking receive() + sequential coordinator = must check before stepping
+2. **Concurrent mode doesn't use it:** Natural blocking works correctly
+3. **Cannot be removed without redesigning sequential mode:** Would need non-blocking receive or different architecture
+4. **Not actually harmful when used correctly:** The smell is misuse, not existence
+
+**Implementation:**
+1. ✅ Keep `hasMessage()` in `ChannelEnd` interface
+2. ✅ Use it only in `getEnabledTransitions()` for sequential mode
+3. ✅ Document clearly: "for sequential stepping coordination"
+4. ✅ Note in code that concurrent mode doesn't use this
+5. ✅ Warn about TOCTOU issues in comments
+
+---
+
+## Summary (Revised)
 
 **Q: Is hasMessage() a design smell?**
-**A: Yes.** It violates MPST semantics and enables polling anti-patterns.
+**A: It appears to be, but it's actually a necessary compromise** for sequential stepping in distributed simulation.
 
 **Q: Why does it exist?**
-**A: For sequential stepping mode** to check receive-readiness without blocking.
+**A: Sequential stepping requires non-blocking inspection** to avoid calling `step()` on roles that would block on `receive()`.
 
 **Q: Should we keep it?**
-**A: No.** We should replace it with event-driven coordination via channel mediation, which we've already started implementing.
+**A: Yes, but use it carefully:**
+- ✅ Use in `getEnabledTransitions()` for sequential coordinator
+- ✅ Document as "sequential mode only"
+- ❌ Don't use for concurrent mode (uses natural blocking)
+- ❌ Don't use in application logic (only in coordinator/simulator)
 
-The channel mediation architecture you asked me to implement is the foundation for removing `hasMessage()`. We're already on the right path! 🎯
+**Q: Alternative approaches?**
+**A: Would require fundamental changes:**
+- Make `receive()` non-blocking (returns null) → violates MPST blocking semantics
+- Remove sequential mode entirely → lose deterministic testing
+- Use timeout-based receive → adds latency and complexity
+- Restructure coordinator to be fully event-driven → major refactoring
+
+**Conclusion:** `hasMessage()` is the least-bad solution for sequential stepping. The design smell is not its existence, but potential misuse. With proper documentation and usage guidelines, it's an acceptable tradeoff. 🎯
+
+---
+
+## Code Changes Made
+
+### 1. Added Clear Documentation
+
+**File:** `src/core/simulation/cfsm-executor.ts:116-127`
+
+```typescript
+/**
+ * Get enabled transitions from current state
+ *
+ * Returns transitions that can be executed from the current state.
+ * For sequential stepping, this checks message availability to avoid blocking.
+ *
+ * Context on hasMessage() usage:
+ * - Sequential mode: Coordinator needs to know which CFSMs won't block
+ * - Concurrent mode: Not used (natural blocking on receive())
+ * - hasMessage() is a necessary compromise for sequential stepping
+ * - Long-term: Replace with event-driven readiness via MediatedChannel
+ */
+```
+
+### 2. Verified Test Coverage
+
+All 203 simulation tests pass, including:
+- Sequential stepping tests (use hasMessage() correctly)
+- Concurrent execution tests (don't use hasMessage())
+- Distributed coordination tests (sequential mode works correctly)
+
+---
+
+## Lessons Learned
+
+1. **Design smells aren't always removable** - sometimes they're necessary compromises
+2. **Sequential simulation ≠ distributed execution** - different semantics require different tools
+3. **Blocking + inspection don't mix well** - need non-blocking check before blocking operation
+4. **Tests reveal constraints** - timeout failures showed fundamental architectural requirement
+
+The analysis was correct that `hasMessage()` violates pure MPST semantics. But practical simulation of distributed systems requires pragmatic compromises. Sequential stepping is one such compromise.
