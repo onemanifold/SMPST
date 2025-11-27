@@ -14,7 +14,7 @@ import { GlobalProtocolDeclaration } from '../../core/ast/types';
 import { DistributedSimulator } from '../../core/simulation/distributed-simulator';
 
 describe('DistributedSimulator DMst Compatibility', () => {
-  it.skip('should handle DMst protocol with dynamic participants', async () => {
+  it('should handle DMst protocol with dynamic participants', async () => {
     // KNOWN LIMITATION: DistributedSimulator doesn't handle create/invite actions
     // Error: "Distributed deadlock - no role can progress"
     // Reason: create and invite actions aren't executable by the simulator
@@ -45,6 +45,11 @@ describe('DistributedSimulator DMst Compatibility', () => {
     // Run distributed simulation
     const sim = new DistributedSimulator(projections.cfsms, { maxSteps: 100 });
     const result = await sim.run();
+
+    // Debug
+    if (!result.success) {
+      console.log('Dynamic participant test failed:', result.error);
+    }
 
     // Should complete successfully once create/invite handlers are added
     expect(result.success).toBe(true);
