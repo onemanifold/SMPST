@@ -229,6 +229,8 @@ export class CFSMSimulator {
           const channel = this.channels!.get(t.action.from);
           if (!channel) return false;
           // Only enable receive if message is available (to avoid blocking in sequential stepping)
+          // Note: With BisimulationCoordinator, this check is less relevant since
+          // event-driven coordination via onIncoming handlers is used instead.
           return channel.hasMessage();
         }
         // Send, tau, choice always enabled

@@ -30,9 +30,10 @@ export interface ChannelEnd {
    * Check if a message is available without consuming it
    * Returns true if receive() would return immediately (not block)
    *
-   * NOTE: This exists for backward compatibility with current sequential
-   * coordinator implementation. Will be removed once bisimulation
-   * coordinator uses 'incoming' events for CFG validation.
+   * @deprecated With bisimulation coordinator, use event-driven coordination
+   * via `onIncoming` handlers instead of polling with `hasMessage()`.
+   * This method is kept for backward compatibility with DistributedSimulator
+   * and sequential stepping patterns.
    */
   hasMessage(): boolean;
 }

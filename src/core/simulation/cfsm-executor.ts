@@ -119,11 +119,10 @@ export class CFSMExecutor {
    * Returns transitions that can be executed from the current state.
    * For sequential stepping, this checks message availability to avoid blocking.
    *
-   * Context on hasMessage() usage:
-   * - Sequential mode: Coordinator needs to know which CFSMs won't block
-   * - Concurrent mode: Not used (natural blocking on receive())
-   * - hasMessage() is a necessary compromise for sequential stepping
-   * - Long-term: Replace with event-driven readiness via MediatedChannel
+   * Note: With BisimulationCoordinator, this method's hasMessage() check is
+   * less relevant because the coordinator uses event-driven coordination
+   * via onIncoming handlers. The hasMessage() check remains for backward
+   * compatibility with DistributedSimulator's sequential stepping pattern.
    */
   getEnabledTransitions(): CFSMTransition[] {
     const transitions = this.currentCFSM.transitions.filter(t => t.from === this.currentState);
