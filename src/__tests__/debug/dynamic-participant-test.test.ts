@@ -121,6 +121,20 @@ describe('Dynamic Participant Projection Verification', () => {
 
     const ast = parse(protocol);
     const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+
+    console.log('\n=== CFG Nodes ===');
+    for (const node of cfg.nodes) {
+      console.log(`Node ${node.id} (${node.type}):`);
+      if (node.type === 'action') {
+        const action = (node as any).action;
+        console.log(`  kind: ${action.kind}`);
+        console.log(`  full action:`, JSON.stringify(action, null, 2));
+      }
+      if (node.type === 'split') {
+        console.log(`  branches: ${node.branches?.length || 0}`);
+      }
+    }
+
     const projections = projectAll(cfg);
 
     console.log('\n=== Simple Protocol ===');
@@ -131,6 +145,9 @@ describe('Dynamic Participant Projection Verification', () => {
       console.log('  States:', cfsm.states.length);
       console.log('  Transitions:', cfsm.transitions.length);
       console.log('  Action types:', cfsm.transitions.map(t => t.action.type));
+      for (const t of cfsm.transitions) {
+        console.log(`    ${t.from} --[${t.action.type}]--> ${t.to}`);
+      }
     }
   });
 });

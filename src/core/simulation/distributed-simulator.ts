@@ -254,14 +254,10 @@ export class DistributedSimulator {
     // The transport uses per-pair FIFO queues: "sender->receiver"
     const queues = (this.transport as any).queues as Map<string, Message[]>;
 
-    console.log(`[DMst] Checking for dynamic roles, queues: ${queues.size}`);
     for (const [queueKey, messages] of queues.entries()) {
-      console.log(`[DMst]   Queue ${queueKey}: ${messages.length} messages`);
       for (const msg of messages) {
-        console.log(`[DMst]     Message: ${msg.from} -> ${msg.to}, label: ${msg.label}`);
         // If it's a create message to a recipient we don't have a simulator for
         if (msg.label === 'create' && !this.simulators.has(msg.to)) {
-          console.log(`[DMst] Found create message: ${queueKey}, to: ${msg.to}`);
 
           // Map instance name to role type
           // Instance name 'w' should map to role type 'Worker'
@@ -273,7 +269,6 @@ export class DistributedSimulator {
             for (const [roleName, cfsm] of this.cfsms) {
               if (!this.simulators.has(roleName)) {
                 targetRole = roleName;
-                console.log(`[DMst] Mapping instance '${msg.to}' to role type '${targetRole}'`);
                 break;
               }
             }
@@ -282,7 +277,6 @@ export class DistributedSimulator {
           if (this.cfsms.has(targetRole) && !this.simulators.has(msg.to)) {
             // Instantiate this dynamic role
             // Use instance name (msg.to) as the simulator key and transport name
-            console.log(`[DMst] Instantiating dynamic role: ${targetRole} as instance '${msg.to}'`);
             const cfsm = this.cfsms.get(targetRole)!;
             const simulator = new CFSMSimulator(cfsm, {
               maxSteps: this.config.maxSteps,
@@ -301,7 +295,6 @@ export class DistributedSimulator {
             // Store simulator by instance name (e.g., 'w'), not role type
             this.simulators.set(msg.to, simulator);
             this.roleScheduleCount.set(msg.to, 0);
-            console.log(`[DMst] Dynamic role ${targetRole} instantiated as '${msg.to}' successfully`);
           }
         }
       }

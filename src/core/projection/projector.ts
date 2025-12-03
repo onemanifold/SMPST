@@ -92,6 +92,23 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
   let stateCounter = 0;
   let transitionCounter = 0;
 
+  // DMst: Track instance-to-role mappings
+  // Maps instance name (e.g., 'w') → role type (e.g., 'Worker')
+  const instanceToRole = new Map<string, string>();
+
+  // Scan CFG for create-participants actions to build instance mappings
+  for (const node of cfg.nodes) {
+    if (node.type === 'action') {
+      const actionNode = node as ActionNode;
+      if (actionNode.action.kind === 'create-participants') {
+        const createAction = actionNode.action as any;
+        if (createAction.instanceName && createAction.roleName) {
+          instanceToRole.set(createAction.instanceName, createAction.roleName);
+        }
+      }
+    }
+  }
+
   // ============================================================================
   // Helper Functions
   // ============================================================================
@@ -134,12 +151,26 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
   /**
    * Check if role is involved in a message action
    */
+  /**
+   * Check if a role is involved in a message action
+   * DMst: Also checks if sender/receiver is an instance of the role
+   */
   const isRoleInvolved = (action: MessageAction): boolean => {
+    // Check sender
     if (action.from === role) return true;
+    // DMst: Check if sender is an instance of this role
+    if (instanceToRole.get(action.from) === role) return true;
+
+    // Check receiver(s)
     if (typeof action.to === 'string') {
-      return action.to === role;
+      if (action.to === role) return true;
+      // DMst: Check if receiver is an instance of this role
+      if (instanceToRole.get(action.to) === role) return true;
+      return false;
     }
-    return action.to.includes(role);
+
+    // Multiple receivers
+    return action.to.includes(role) || action.to.some(r => instanceToRole.get(r) === role);
   };
 
   /**
@@ -218,7 +249,10 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
         const action = node.action;
         if (isRoleInvolved(action)) {
           // Convert to CFSM action
-          if (action.from === role) {
+          // DMst: Check if sender is this role or an instance of this role
+          const isSender = action.from === role || instanceToRole.get(action.from) === role;
+
+          if (isSender) {
             actions.push({
               type: 'send',
               to: action.to,
@@ -419,8 +453,10 @@ export function project(cfg: CFG, role: string, protocolRegistry?: IProtocolRegi
           // WHY: TypeScript codegen needs full Type AST (e.g., List<Int>, Map<String, User>)
           //      Scribble serialization needs to reconstruct exact syntax
           //      Future features (refinements, security annotations) attach to types
+          // DMst: Check if sender is this role or an instance of this role
+          const isSender = action.from === role || instanceToRole.get(action.from) === role;
           const cfsmAction: CFSMAction =
-            action.from === role
+            isSender
               ? ({
                   type: 'send',
                   to: action.to,

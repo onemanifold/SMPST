@@ -1,9 +1,8 @@
 /**
  * Test DistributedSimulator compatibility with DMst protocols
  *
- * Status: DistributedSimulator has partial DMst support
- * ✅ Works: Basic messages, updatable recursion, FIFO delivery, protocol calls (with registry)
- * ❌ Needs work: Dynamic participants (create/invite actions)
+ * Status: DistributedSimulator has full DMst support
+ * ✅ Works: Basic messages, updatable recursion, FIFO delivery, protocol calls (with registry), dynamic participants
  */
 
 import { describe, it, expect } from 'vitest';
@@ -15,15 +14,8 @@ import { DistributedSimulator } from '../../core/simulation/distributed-simulato
 
 describe('DistributedSimulator DMst Compatibility', () => {
   it('should handle DMst protocol with dynamic participants', async () => {
-    // KNOWN LIMITATION: DistributedSimulator doesn't handle create/invite actions
-    // Error: "Distributed deadlock - no role can progress"
-    // Reason: create and invite actions aren't executable by the simulator
-    //
-    // To fix: Add execution handlers for:
-    // - projectParticipantCreation (create action)
-    // - projectInvitation (invite action)
-    //
-    // DMst protocol with dynamic participant (projected to static CFSMs)
+    // DMst protocol with dynamic participant
+    // Manager creates Worker dynamically, sends Task, receives Result
     const protocol = `
       protocol DynamicTest(role Manager) {
         new role Worker;
@@ -44,65 +36,14 @@ describe('DistributedSimulator DMst Compatibility', () => {
     expect(projections.staticRoles).toEqual(['Manager']);
     expect(projections.dynamicRoles).toEqual(['Worker']);
 
-    // Debug Manager CFSM structure
-    const managerCFSM = projections.cfsms.get('Manager')!;
-    console.log('\n=== Manager CFSM ===');
-    console.log('Transitions:');
-    for (const t of managerCFSM.transitions) {
-      console.log(`  ${t.from} --[${t.action.type}]--> ${t.to}`);
-    }
-
-    // Debug Worker CFSM structure
-    const workerCFSM = projections.cfsms.get('Worker')!;
-    console.log('\n=== Worker CFSM ===');
-    console.log('Initial:', workerCFSM.initialState);
-    console.log('Final:', workerCFSM.finalStates);
-    console.log('Transitions:');
-    for (const t of workerCFSM.transitions) {
-      console.log(`  ${t.from} --[${t.action.type}]--> ${t.to}`);
-    }
-
     // Run distributed simulation with only static roles starting
     const sim = new DistributedSimulator(projections.cfsms, {
       maxSteps: 100,
       staticRoles: projections.staticRoles,
-      recordTrace: true,
     });
-
-    // Step through to see what happens
-    console.log('\n=== Stepping through execution ===');
-    for (let i = 0; i < 10; i++) {
-      const state = sim.getState();
-      console.log(`\nStep ${i}:`);
-      console.log('  Active simulators:', Array.from(state.roleStates.keys()));
-      console.log('  Enabled roles:', state.enabledRoles);
-
-      if (state.enabledRoles.length === 0) {
-        console.log('  No enabled roles - stopping');
-        break;
-      }
-
-      const stepResult = await sim.step();
-      console.log('  Step result:', stepResult.success ? 'success' : 'failed');
-      if (stepResult.role) {
-        console.log('  Role executed:', stepResult.role);
-        console.log('  Action:', JSON.stringify(stepResult.action, null, 2));
-      }
-      if (stepResult.error) {
-        console.log('  Error:', stepResult.error);
-        break;
-      }
-    }
-
     const result = await sim.run();
 
-    // Debug
-    if (!result.success) {
-      console.log('\nDynamic participant test failed:', result.error);
-      console.log('Final state:', result.state);
-    }
-
-    // Should complete successfully once create/invite handlers are added
+    // Should complete successfully - dynamic participants working!
     expect(result.success).toBe(true);
     expect(result.state.deadlocked).toBe(false);
   });
