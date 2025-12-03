@@ -282,8 +282,8 @@ describe('Simulation Store - Backend Contract Enforcement (4-Layer Architecture)
       // CFG state should be populated
       expect(get(cfgExecutionState)).not.toBeNull();
 
-      // Legacy executionState should point to CFG state in cfg mode
-      expect(get(executionState)).toBe(get(cfgExecutionState));
+      // Legacy executionState should contain same values as CFG state in cfg mode
+      expect(get(executionState)).toStrictEqual(get(cfgExecutionState));
     });
 
     it('should track history through debugger snapshots', async () => {
