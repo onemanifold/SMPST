@@ -29,15 +29,45 @@ export interface ChannelEnd {
   /**
    * Check if a message is available without consuming it
    * Returns true if receive() would return immediately (not block)
+   *
+   * NOTE: This exists for backward compatibility with current sequential
+   * coordinator implementation. Will be removed once bisimulation
+   * coordinator uses 'incoming' events for CFG validation.
    */
   hasMessage(): boolean;
 }
 
 /**
+ * Callback for incoming message interception (bisimulation coordination)
+ * Called when a message is about to be received, before atomic processing.
+ * This provides the pause point for CFG validation.
+ */
+export type IncomingMessageHandler = (message: Message) => Promise<void>;
+
+/**
+ * Options for channel creation
+ */
+export interface ChannelOptions {
+  /**
+   * Handler called when endA is about to receive a message
+   * Provides pause point for bisimulation coordination
+   */
+  onIncomingA?: IncomingMessageHandler;
+
+  /**
+   * Handler called when endB is about to receive a message
+   * Provides pause point for bisimulation coordination
+   */
+  onIncomingB?: IncomingMessageHandler;
+}
+
+/**
  * Create a bidirectional async channel with MPST semantics
  * Returns two ends - what you send on one end is received on the other
+ *
+ * @param options Optional handlers for incoming message interception
  */
-export function createChannel(): [ChannelEnd, ChannelEnd] {
+export function createChannel(options?: ChannelOptions): [ChannelEnd, ChannelEnd] {
   // Each end has its own inbox (queue + waiters)
   const inboxA = {
     queue: [] as Message[],
@@ -52,7 +82,8 @@ export function createChannel(): [ChannelEnd, ChannelEnd] {
   // Factory: creates an end that receives from myInbox, sends to peerInbox
   const makeEnd = (
     myInbox: typeof inboxA,
-    peerInbox: typeof inboxB
+    peerInbox: typeof inboxB,
+    onIncoming?: IncomingMessageHandler
   ): ChannelEnd => ({
     async send(message: Message): Promise<void> {
       // Check if peer is waiting
@@ -69,15 +100,22 @@ export function createChannel(): [ChannelEnd, ChannelEnd] {
 
     async receive(): Promise<Message> {
       // Check if message already queued
-      const msg = myInbox.queue.shift();
-      if (msg) {
-        return msg;
+      let msg = myInbox.queue.shift();
+      if (!msg) {
+        // Wait for sender to deliver
+        msg = await new Promise<Message>(resolve => {
+          myInbox.waiters.push(resolve);
+        });
       }
 
-      // Wait for sender to deliver
-      return new Promise(resolve => {
-        myInbox.waiters.push(resolve);
-      });
+      // Interception point for bisimulation coordination
+      // If handler exists, call it with the message BEFORE returning
+      // This provides the pause point for CFG validation
+      if (onIncoming) {
+        await onIncoming(msg);
+      }
+
+      return msg;
     },
 
     hasMessage(): boolean {
@@ -86,11 +124,11 @@ export function createChannel(): [ChannelEnd, ChannelEnd] {
     }
   });
 
-  // Create both ends - cross-wired
+  // Create both ends - cross-wired with optional interception handlers
   // endA receives from inboxA, sends to inboxB
   // endB receives from inboxB, sends to inboxA
-  const endA = makeEnd(inboxA, inboxB);
-  const endB = makeEnd(inboxB, inboxA);
+  const endA = makeEnd(inboxA, inboxB, options?.onIncomingA);
+  const endB = makeEnd(inboxB, inboxA, options?.onIncomingB);
 
   return [endA, endB];
 }
