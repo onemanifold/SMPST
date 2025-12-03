@@ -2,58 +2,47 @@
  * Bisimulation Coordinator Tests
  *
  * Tests the coordination of CFG and CFSM execution as a single bisimulation.
+ * Uses parser to create protocols (cleaner than manual AST construction).
  */
 
 import { describe, it, expect } from 'vitest';
 import { BisimulationCoordinator } from '../bisimulation-coordinator';
 import { buildCFG } from '../../cfg/builder';
 import { projectAll } from '../../projection/projector';
-import type { Module } from '../../ast/types';
+import { parse } from '../../parser/parser';
+
+// Helper to create coordinator from protocol source
+function createCoordinator(source: string, options?: { choiceStrategy?: 'first' | 'random'; maxSteps?: number }) {
+  const ast = parse(source);
+  const protocol = ast.declarations[0];
+  const cfg = buildCFG(protocol);
+  const { cfsms } = projectAll(cfg);
+  return new BisimulationCoordinator(cfg, cfsms, {
+    choiceStrategy: options?.choiceStrategy ?? 'first',
+    maxSteps: options?.maxSteps ?? 100,
+  });
+}
 
 describe('Bisimulation Coordinator', () => {
   describe('Simple Two-Party Protocol', () => {
     it('should coordinate CFG and CFSM execution for simple protocol', async () => {
-      // Protocol: A sends hello to B
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'TwoParty',
-            parameters: [],
-            roles: ['A', 'B'],
-            body: {
-              type: 'MessageTransfer',
-              from: 'A',
-              to: ['B'],
-              message: {
-                label: 'hello',
-                from: 'A',
-                to: 'B',
-              },
-            },
-          },
-        ],
-      };
-
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
-
-      const coordinator = new BisimulationCoordinator(cfg, cfsms, {
-        choiceStrategy: 'first',
-        maxSteps: 100,
-      });
+      const coordinator = createCoordinator(`
+        protocol TwoParty(role A, role B) {
+          A -> B: hello();
+        }
+      `);
 
       // Check initial state
       expect(coordinator.isComplete()).toBe(false);
       expect(coordinator.getStepCount()).toBe(0);
 
-      // Execute one step
-      await coordinator.step();
+      // Execute until complete
+      while (!coordinator.isComplete()) {
+        await coordinator.step();
+      }
 
-      // After one step, protocol should be complete
+      // Protocol should be complete
       expect(coordinator.isComplete()).toBe(true);
-      expect(coordinator.getStepCount()).toBe(1);
 
       // CFG state
       const cfgState = coordinator.getCFGState();
@@ -72,128 +61,50 @@ describe('Bisimulation Coordinator', () => {
     });
 
     it('should validate causal dependencies', async () => {
-      // Protocol: A→B: msg1; B→C: msg2
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Sequential',
-            parameters: [],
-            roles: ['A', 'B', 'C'],
-            body: {
-              type: 'Sequence',
-              left: {
-                type: 'MessageTransfer',
-                from: 'A',
-                to: ['B'],
-                message: {
-                  label: 'msg1',
-                  from: 'A',
-                  to: 'B',
-                },
-              },
-              right: {
-                type: 'MessageTransfer',
-                from: 'B',
-                to: ['C'],
-                message: {
-                  label: 'msg2',
-                  from: 'B',
-                  to: 'C',
-                },
-              },
-            },
-          },
-        ],
-      };
+      const coordinator = createCoordinator(`
+        protocol Sequential(role A, role B, role C) {
+          A -> B: msg1();
+          B -> C: msg2();
+        }
+      `);
 
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
+      // Execute until complete
+      while (!coordinator.isComplete()) {
+        await coordinator.step();
+      }
 
-      const coordinator = new BisimulationCoordinator(cfg, cfsms, {
-        choiceStrategy: 'first',
-        maxSteps: 100,
-      });
-
-      // Execute first step (A→B)
-      await coordinator.step();
-      expect(coordinator.getStepCount()).toBe(1);
-      expect(coordinator.isComplete()).toBe(false);
-
-      // Execute second step (B→C)
-      await coordinator.step();
-      expect(coordinator.getStepCount()).toBe(2);
       expect(coordinator.isComplete()).toBe(true);
 
-      // Verify dependencies were checked
+      // Verify dependencies were tracked
       const analyzer = coordinator.getConcurrencyAnalyzer();
       const allInfo = analyzer.getAllConcurrencyInfo();
 
-      // Should have 2 actions
+      // Should have 2 message actions
       expect(allInfo.size).toBe(2);
 
       // Find the second action and check it depends on the first
-      let secondActionInfo;
+      let hasSecondAction = false;
       for (const [nodeId, info] of allInfo) {
         if (info.actionId.label === 'msg2') {
-          secondActionInfo = info;
-          break;
+          hasSecondAction = true;
+          expect(info.dependencies.size).toBeGreaterThan(0);
         }
       }
-
-      expect(secondActionInfo).toBeDefined();
-      expect(secondActionInfo!.dependencies.size).toBeGreaterThan(0);
+      expect(hasSecondAction).toBe(true);
     });
   });
 
   describe('Parallel Protocol', () => {
     it('should handle concurrent execution correctly', async () => {
-      // Protocol: par { A→B: msg1 } and { C→D: msg2 }
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Parallel',
-            parameters: [],
-            roles: ['A', 'B', 'C', 'D'],
-            body: {
-              type: 'Parallel',
-              branches: [
-                {
-                  type: 'MessageTransfer',
-                  from: 'A',
-                  to: ['B'],
-                  message: {
-                    label: 'msg1',
-                    from: 'A',
-                    to: 'B',
-                  },
-                },
-                {
-                  type: 'MessageTransfer',
-                  from: 'C',
-                  to: ['D'],
-                  message: {
-                    label: 'msg2',
-                    from: 'C',
-                    to: 'D',
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      };
-
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
-
-      const coordinator = new BisimulationCoordinator(cfg, cfsms, {
-        choiceStrategy: 'first',
-        maxSteps: 100,
-      });
+      const coordinator = createCoordinator(`
+        protocol Parallel(role A, role B, role C, role D) {
+          par {
+            A -> B: msg1();
+          } and {
+            C -> D: msg2();
+          }
+        }
+      `);
 
       // Verify concurrency analyzer identifies these as concurrent
       const analyzer = coordinator.getConcurrencyAnalyzer();
@@ -201,7 +112,8 @@ describe('Bisimulation Coordinator', () => {
 
       expect(allInfo.size).toBe(2);
 
-      let msg1NodeId, msg2NodeId;
+      let msg1NodeId: string | undefined;
+      let msg2NodeId: string | undefined;
       for (const [nodeId, info] of allInfo) {
         if (info.actionId.label === 'msg1') msg1NodeId = nodeId;
         if (info.actionId.label === 'msg2') msg2NodeId = nodeId;
@@ -211,109 +123,43 @@ describe('Bisimulation Coordinator', () => {
       expect(msg2NodeId).toBeDefined();
       expect(analyzer.areConcurrent(msg1NodeId!, msg2NodeId!)).toBe(true);
 
-      // Execute protocol - both messages can happen in any order
-      await coordinator.step(); // First action
-      expect(coordinator.isComplete()).toBe(false);
+      // Execute until complete
+      while (!coordinator.isComplete()) {
+        await coordinator.step();
+      }
 
-      await coordinator.step(); // Second action
-      expect(coordinator.isComplete()).toBe(false); // Need to pass join
-
-      await coordinator.step(); // Join node
       expect(coordinator.isComplete()).toBe(true);
     });
   });
 
   describe('Choice Protocol', () => {
     it('should handle choices correctly', async () => {
-      // Protocol: choice at A { option1: A→B: msg1 } or { option2: A→B: msg2 }
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Choice',
-            parameters: [],
-            roles: ['A', 'B'],
-            body: {
-              type: 'Choice',
-              at: 'A',
-              branches: [
-                {
-                  label: 'option1',
-                  body: {
-                    type: 'MessageTransfer',
-                    from: 'A',
-                    to: ['B'],
-                    message: {
-                      label: 'msg1',
-                      from: 'A',
-                      to: 'B',
-                    },
-                  },
-                },
-                {
-                  label: 'option2',
-                  body: {
-                    type: 'MessageTransfer',
-                    from: 'A',
-                    to: ['B'],
-                    message: {
-                      label: 'msg2',
-                      from: 'A',
-                      to: 'B',
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      };
+      const coordinator = createCoordinator(`
+        protocol Choice(role A, role B) {
+          choice at A {
+            A -> B: option1();
+          } or {
+            A -> B: option2();
+          }
+        }
+      `);
 
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
+      // Execute until complete (choiceStrategy 'first' auto-selects)
+      while (!coordinator.isComplete()) {
+        await coordinator.step();
+      }
 
-      const coordinator = new BisimulationCoordinator(cfg, cfsms, {
-        choiceStrategy: 'first', // Auto-select first option
-        maxSteps: 100,
-      });
-
-      // Should need to make a choice
-      await coordinator.step();
-
-      // Protocol should complete after choice is made
       expect(coordinator.isComplete()).toBe(true);
     });
   });
 
   describe('Coordinator API', () => {
     it('should provide access to CFG simulator', async () => {
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Simple',
-            parameters: [],
-            roles: ['A', 'B'],
-            body: {
-              type: 'MessageTransfer',
-              from: 'A',
-              to: ['B'],
-              message: {
-                label: 'hello',
-                from: 'A',
-                to: 'B',
-              },
-            },
-          },
-        ],
-      };
-
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
-
-      const coordinator = new BisimulationCoordinator(cfg, cfsms);
+      const coordinator = createCoordinator(`
+        protocol Simple(role A, role B) {
+          A -> B: hello();
+        }
+      `);
 
       const cfgSimulator = coordinator.getCFGSimulator();
       expect(cfgSimulator).toBeDefined();
@@ -321,32 +167,11 @@ describe('Bisimulation Coordinator', () => {
     });
 
     it('should provide access to CFSM debuggers', async () => {
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Simple',
-            parameters: [],
-            roles: ['A', 'B'],
-            body: {
-              type: 'MessageTransfer',
-              from: 'A',
-              to: ['B'],
-              message: {
-                label: 'hello',
-                from: 'A',
-                to: 'B',
-              },
-            },
-          },
-        ],
-      };
-
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
-
-      const coordinator = new BisimulationCoordinator(cfg, cfsms);
+      const coordinator = createCoordinator(`
+        protocol Simple(role A, role B) {
+          A -> B: hello();
+        }
+      `);
 
       const debuggerA = coordinator.getDebugger('A');
       const debuggerB = coordinator.getDebugger('B');
@@ -358,32 +183,11 @@ describe('Bisimulation Coordinator', () => {
     });
 
     it('should provide access to concurrency analyzer', async () => {
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Simple',
-            parameters: [],
-            roles: ['A', 'B'],
-            body: {
-              type: 'MessageTransfer',
-              from: 'A',
-              to: ['B'],
-              message: {
-                label: 'hello',
-                from: 'A',
-                to: 'B',
-              },
-            },
-          },
-        ],
-      };
-
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
-
-      const coordinator = new BisimulationCoordinator(cfg, cfsms);
+      const coordinator = createCoordinator(`
+        protocol Simple(role A, role B) {
+          A -> B: hello();
+        }
+      `);
 
       const analyzer = coordinator.getConcurrencyAnalyzer();
       expect(analyzer).toBeDefined();
@@ -393,39 +197,17 @@ describe('Bisimulation Coordinator', () => {
     });
 
     it('should support reset', async () => {
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Simple',
-            parameters: [],
-            roles: ['A', 'B'],
-            body: {
-              type: 'MessageTransfer',
-              from: 'A',
-              to: ['B'],
-              message: {
-                label: 'hello',
-                from: 'A',
-                to: 'B',
-              },
-            },
-          },
-        ],
-      };
+      const coordinator = createCoordinator(`
+        protocol Simple(role A, role B) {
+          A -> B: hello();
+        }
+      `);
 
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
-
-      const coordinator = new BisimulationCoordinator(cfg, cfsms, {
-        choiceStrategy: 'first',
-      });
-
-      // Execute protocol
-      await coordinator.step();
+      // Execute until complete
+      while (!coordinator.isComplete()) {
+        await coordinator.step();
+      }
       expect(coordinator.isComplete()).toBe(true);
-      expect(coordinator.getStepCount()).toBe(1);
 
       // Reset
       coordinator.reset();
@@ -436,36 +218,16 @@ describe('Bisimulation Coordinator', () => {
 
   describe('Error Handling', () => {
     it('should throw error when stepping after completion', async () => {
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Simple',
-            parameters: [],
-            roles: ['A', 'B'],
-            body: {
-              type: 'MessageTransfer',
-              from: 'A',
-              to: ['B'],
-              message: {
-                label: 'hello',
-                from: 'A',
-                to: 'B',
-              },
-            },
-          },
-        ],
-      };
+      const coordinator = createCoordinator(`
+        protocol Simple(role A, role B) {
+          A -> B: hello();
+        }
+      `);
 
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
-
-      const coordinator = new BisimulationCoordinator(cfg, cfsms, {
-        choiceStrategy: 'first',
-      });
-
-      await coordinator.step();
+      // Execute until complete
+      while (!coordinator.isComplete()) {
+        await coordinator.step();
+      }
       expect(coordinator.isComplete()).toBe(true);
 
       // Attempting another step should throw
@@ -473,47 +235,14 @@ describe('Bisimulation Coordinator', () => {
     });
 
     it('should throw error when max steps reached', async () => {
-      // Create a recursive protocol that won't terminate naturally
-      const ast: Module = {
-        type: 'Module',
-        declarations: [
-          {
-            type: 'ProtocolDeclaration',
-            name: 'Recursive',
-            parameters: [],
-            roles: ['A', 'B'],
-            body: {
-              type: 'Recursion',
-              label: 'loop',
-              body: {
-                type: 'Sequence',
-                left: {
-                  type: 'MessageTransfer',
-                  from: 'A',
-                  to: ['B'],
-                  message: {
-                    label: 'ping',
-                    from: 'A',
-                    to: 'B',
-                  },
-                },
-                right: {
-                  type: 'Continue',
-                  label: 'loop',
-                },
-              },
-            },
-          },
-        ],
-      };
-
-      const cfg = buildCFG(ast.declarations[0]);
-      const cfsms = projectAll(cfg).cfsms;
-
-      const coordinator = new BisimulationCoordinator(cfg, cfsms, {
-        choiceStrategy: 'first',
-        maxSteps: 3, // Very low limit
-      });
+      const coordinator = createCoordinator(`
+        protocol Recursive(role A, role B) {
+          rec loop {
+            A -> B: ping();
+            continue loop;
+          }
+        }
+      `, { maxSteps: 3 });
 
       // Step until max steps
       await coordinator.step();

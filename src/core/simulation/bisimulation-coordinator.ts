@@ -253,7 +253,13 @@ export class BisimulationCoordinator {
         await Promise.all(
           incompleteCFSMs.map(([_, cfsmDebugger]) => cfsmDebugger.stepForward())
         );
-      } else {
+      }
+      
+      // Check if all CFSMs are now complete after stepping
+      const allComplete = Array.from(this.cfsmDebuggers.values())
+        .every(cfsmDebugger => cfsmDebugger.isComplete());
+      
+      if (allComplete) {
         this.completed = true;
       }
     }
