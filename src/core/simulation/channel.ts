@@ -49,16 +49,11 @@ export type IncomingMessageHandler = (message: Message) => Promise<void>;
  */
 export interface ChannelOptions {
   /**
-   * Handler called when endA is about to receive a message
+   * Handler called when a message is about to be received on either end
    * Provides pause point for bisimulation coordination
+   * The handler can determine which role is receiving from message.to
    */
-  onIncomingA?: IncomingMessageHandler;
-
-  /**
-   * Handler called when endB is about to receive a message
-   * Provides pause point for bisimulation coordination
-   */
-  onIncomingB?: IncomingMessageHandler;
+  onIncoming?: IncomingMessageHandler;
 }
 
 /**
@@ -124,11 +119,11 @@ export function createChannel(options?: ChannelOptions): [ChannelEnd, ChannelEnd
     }
   });
 
-  // Create both ends - cross-wired with optional interception handlers
+  // Create both ends - symmetric with same handler
   // endA receives from inboxA, sends to inboxB
   // endB receives from inboxB, sends to inboxA
-  const endA = makeEnd(inboxA, inboxB, options?.onIncomingA);
-  const endB = makeEnd(inboxB, inboxA, options?.onIncomingB);
+  const endA = makeEnd(inboxA, inboxB, options?.onIncoming);
+  const endB = makeEnd(inboxB, inboxA, options?.onIncoming);
 
   return [endA, endB];
 }

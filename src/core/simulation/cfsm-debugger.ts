@@ -61,6 +61,10 @@ export class CFSMDebugger {
   // Event listeners
   private listeners: Map<string, Set<(...args: any[]) => void>> = new Map();
 
+  // Pause/resume mechanism for bisimulation coordination
+  private paused: boolean = false;
+  private resumeResolve: (() => void) | null = null;
+
   constructor(cfsm: CFSM, config: CFSMDebuggerConfig = {}) {
     this.config = {
       maxSteps: config.maxSteps ?? 1000,
@@ -160,12 +164,48 @@ export class CFSMDebugger {
     this.listeners.get(event)!.add(callback);
   }
 
-  private emit(event: string, data?: any): void {
+  /**
+   * Emit event to all subscribers
+   * Made public for coordinator to emit 'incoming' events
+   */
+  emit(event: string, data?: any): void {
     const callbacks = this.listeners.get(event);
     if (callbacks) {
       for (const callback of callbacks) {
         callback(data);
       }
+    }
+  }
+
+  /**
+   * Pause execution (called when 'incoming' event received)
+   * Debugger will wait for resume() before proceeding with next step
+   */
+  pause(): void {
+    this.paused = true;
+  }
+
+  /**
+   * Resume execution (called after CFG validation)
+   * Allows paused execution to proceed
+   */
+  resume(): void {
+    this.paused = false;
+    if (this.resumeResolve) {
+      this.resumeResolve();
+      this.resumeResolve = null;
+    }
+  }
+
+  /**
+   * Check if paused, wait for resume if so
+   * Used internally before executing steps
+   */
+  private async waitIfPaused(): Promise<void> {
+    if (this.paused) {
+      await new Promise<void>(resolve => {
+        this.resumeResolve = resolve;
+      });
     }
   }
 
@@ -196,8 +236,10 @@ export class CFSMDebugger {
 
   /**
    * Execute one step forward
+   * Waits if paused (for bisimulation coordination)
    */
   async stepForward(): Promise<void> {
+    await this.waitIfPaused();
     this.currentStepNumber++;
     await this.executor.step();
     this.recordSnapshot();
