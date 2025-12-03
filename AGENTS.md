@@ -109,3 +109,17 @@ npm run test:golden  # Run golden snapshot tests
 - Bisimulation: Being fixed on active branches
 
 See `docs/STATUS.md` for details.
+
+---
+
+## Task Estimation
+
+**Do NOT provide time estimates.** Instead, rate task difficulty from 1 to 5:
+
+| Difficulty | Description |
+|------------|-------------|
+| 1 | Trivial - Single file change, straightforward |
+| 2 | Easy - Few files, well-understood scope |
+| 3 | Medium - Multiple files, some complexity |
+| 4 | Hard - Significant changes, requires careful design |
+| 5 | Very Hard - Architectural changes, high risk |
