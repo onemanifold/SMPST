@@ -97,14 +97,14 @@ export class BisimulationCoordinator {
 
     this.cfsmDebuggers = new Map();
     for (const [role, cfsm] of cfsms) {
-      const debugger = new CFSMDebugger(cfsm, {
+      const cfsmDebugger = new CFSMDebugger(cfsm, {
         maxSteps: this.config.maxSteps,
         channels: this.channels.get(role),
         cfsmRegistry: cfsms,
         recordTrace: true,
       });
 
-      this.cfsmDebuggers.set(role, debugger);
+      this.cfsmDebuggers.set(role, cfsmDebugger);
     }
 
     this.cfgSimulator.on('message', async (data) => {
@@ -246,8 +246,8 @@ export class BisimulationCoordinator {
 
   getCFSMStates(): Map<string, any> {
     const states = new Map();
-    for (const [role, debugger] of this.cfsmDebuggers) {
-      states.set(role, debugger.getState());
+    for (const [role, cfsmDebugger] of this.cfsmDebuggers) {
+      states.set(role, cfsmDebugger.getState());
     }
     return states;
   }
