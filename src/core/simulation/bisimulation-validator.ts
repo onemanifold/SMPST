@@ -1,5 +1,18 @@
 /**
- * Bisimulation Validator - Verifies Behavioral Equivalence
+ * @deprecated Use BisimulationCoordinator instead.
+ * 
+ * This class is part of the old dual-debugger architecture that has been
+ * replaced by the unified BisimulationCoordinator which:
+ * - Coordinates CFG and CFSM execution as a single bisimulation
+ * - Uses event-driven coordination via channel interception
+ * - Supports concurrent event reordering with causal dependency enforcement
+ * 
+ * See: src/core/simulation/bisimulation-coordinator.ts
+ * See: docs/CORRECT_BISIMULATION_ARCHITECTURE.md
+ * 
+ * ---
+ * 
+ * Bisimulation Validator - Verifies Behavioral Equivalence (LEGACY)
  *
  * Coordinates CFGDebugger and DistributedDebugger to verify that:
  * - Global orchestration (CFG) and choreography (Distributed) are behaviorally equivalent
@@ -73,7 +86,8 @@ export interface BisimulationTrace {
 }
 
 /**
- * BisimulationValidator - Coordinates dual debuggers for equivalence checking
+ * @deprecated Use BisimulationCoordinator instead.
+ * BisimulationValidator - Coordinates dual debuggers for equivalence checking (LEGACY)
  */
 export class BisimulationValidator {
   private cfgDebugger: CFGDebugger;

@@ -78,7 +78,7 @@ test.describe('Editor Content Persistence', () => {
     const oldTimestamp = Date.now() - (25 * 60 * 60 * 1000);
     const oldState = {
       ui: { theme: 'dark', sidebarCollapsed: false, sidebarWidth: 280, editorFontSize: 13, editorWordWrap: false, editorMinimap: true, outputPanelCollapsed: false, visualizerPanelSize: 400 },
-      simulation: { executionMode: 'cfg', choiceStrategy: 'manual', schedulingStrategy: 'manual', deliveryModel: 'FIFO', playbackSpeed: 300, maxSteps: 1000 },
+      simulation: { choiceStrategy: 'manual', playbackSpeed: 300, maxSteps: 1000 },
       editor: { lastContent: 'global protocol OldProtocol { }', lastContentTimestamp: oldTimestamp, recentExamples: [] },
       version: 1
     };
