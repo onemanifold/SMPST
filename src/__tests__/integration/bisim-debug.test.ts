@@ -43,33 +43,14 @@ describe('Bisimulation Debug', () => {
       console.log(`${role}:`, state);
     }
 
-    console.log('\n=== Stepping... ===');
-    try {
+    console.log('\n=== Stepping until complete... ===');
+    let steps = 0;
+    while (!coordinator.isComplete() && steps < 10) {
       await coordinator.step();
-      console.log('Step completed successfully');
-    } catch (err: any) {
-      console.error('Step failed:', err.message);
-      console.error(err.stack);
+      steps++;
     }
 
-    console.log('\n=== After Step 1 ===');
-    console.log('Coordinator complete:', coordinator.isComplete());
-    console.log('Step count:', coordinator.getStepCount());
-
-    const states1 = coordinator.getCFSMStates();
-    for (const [role, state] of states1) {
-      console.log(`${role}:`, state);
-    }
-
-    // Get CFG state
-    console.log('\nCFG state:', coordinator.getCFGState());
-
-    // Check debuggers directly
-    const debuggerA = coordinator.getDebugger('A');
-    const debuggerB = coordinator.getDebugger('B');
-    console.log('\nDebugger A complete:', debuggerA?.isComplete());
-    console.log('Debugger B complete:', debuggerB?.isComplete());
-
+    console.log(`Completed in ${steps} steps`);
     expect(coordinator.isComplete()).toBe(true);
   });
 });
