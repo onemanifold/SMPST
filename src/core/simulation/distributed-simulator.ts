@@ -226,6 +226,10 @@ export class DistributedSimulator {
 
     this.globalSteps++;
 
+    // DMst: Check for dynamic participant creation
+    // If this step sent a 'create' message, instantiate the target role
+    this.checkAndInstantiateDynamicRoles();
+
     // Messages are now automatically delivered via transport
     // No need to collect and deliver manually
 
@@ -236,6 +240,72 @@ export class DistributedSimulator {
       action: result.action,
       state: this.getState(),
     };
+  }
+
+  /**
+   * Check for 'create' messages in transport and instantiate dynamic roles
+   * DMst: When a role sends 'create' to a dynamic role, instantiate that role
+   *
+   * Note: create messages are sent to instance names (e.g., 'w')
+   * We need to map instance names to role types for instantiation
+   */
+  private checkAndInstantiateDynamicRoles(): void {
+    // Access internal queues to scan ALL messages, not just for known roles
+    // The transport uses per-pair FIFO queues: "sender->receiver"
+    const queues = (this.transport as any).queues as Map<string, Message[]>;
+
+    console.log(`[DMst] Checking for dynamic roles, queues: ${queues.size}`);
+    for (const [queueKey, messages] of queues.entries()) {
+      console.log(`[DMst]   Queue ${queueKey}: ${messages.length} messages`);
+      for (const msg of messages) {
+        console.log(`[DMst]     Message: ${msg.from} -> ${msg.to}, label: ${msg.label}`);
+        // If it's a create message to a recipient we don't have a simulator for
+        if (msg.label === 'create' && !this.simulators.has(msg.to)) {
+          console.log(`[DMst] Found create message: ${queueKey}, to: ${msg.to}`);
+
+          // Map instance name to role type
+          // Instance name 'w' should map to role type 'Worker'
+          let targetRole = msg.to;
+
+          if (!this.cfsms.has(targetRole)) {
+            // Instance name doesn't match any CFSM
+            // Find the first uninstantiated CFSM (dynamic role)
+            for (const [roleName, cfsm] of this.cfsms) {
+              if (!this.simulators.has(roleName)) {
+                targetRole = roleName;
+                console.log(`[DMst] Mapping instance '${msg.to}' to role type '${targetRole}'`);
+                break;
+              }
+            }
+          }
+
+          if (this.cfsms.has(targetRole) && !this.simulators.has(msg.to)) {
+            // Instantiate this dynamic role
+            // Use instance name (msg.to) as the simulator key and transport name
+            console.log(`[DMst] Instantiating dynamic role: ${targetRole} as instance '${msg.to}'`);
+            const cfsm = this.cfsms.get(targetRole)!;
+            const simulator = new CFSMSimulator(cfsm, {
+              maxSteps: this.config.maxSteps,
+              maxBufferSize: this.config.maxBufferSize,
+              recordTrace: this.config.recordTrace,
+              transitionStrategy: 'first',
+              transport: this.transport,
+              cfsmRegistry: this.config.cfsmRegistry,
+              instanceName: msg.to, // Use instance name for transport addressing
+            });
+
+            simulator.on('complete', () => {
+              this.completedRoles.add(msg.to);
+            });
+
+            // Store simulator by instance name (e.g., 'w'), not role type
+            this.simulators.set(msg.to, simulator);
+            this.roleScheduleCount.set(msg.to, 0);
+            console.log(`[DMst] Dynamic role ${targetRole} instantiated as '${msg.to}' successfully`);
+          }
+        }
+      }
+    }
   }
 
   /**

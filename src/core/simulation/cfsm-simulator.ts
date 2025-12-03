@@ -51,7 +51,7 @@ import { CFSMExecutionHistory } from './execution-history';
 
 export class CFSMSimulator {
   private rootCFSM: CFSM;  // Root CFSM (never changes)
-  private config: Required<Omit<CFSMSimulatorConfig, 'executionHistory' | 'transport' | 'cfsmRegistry'>>;
+  private config: Required<Omit<CFSMSimulatorConfig, 'executionHistory' | 'transport' | 'cfsmRegistry' | 'instanceName'>>;
 
   // Execution history (for backward stepping)
   private executionHistory: ICFSMExecutionHistory;
@@ -62,6 +62,10 @@ export class CFSMSimulator {
   // CFSM registry for sub-protocol execution
   // Maps protocol name → (role → CFSM)
   private cfsmRegistry: Map<string, Map<string, CFSM>>;
+
+  // Instance name for DMst dynamic participants
+  // When provided, overrides role name for transport addressing
+  private instanceName?: string;
 
   // Call stack for sub-protocol execution
   // Empty = executing root protocol
@@ -105,6 +109,14 @@ export class CFSMSimulator {
   private steppingMode: 'into' | 'over' | 'out' | null = null;
   private stepOverDepth: number = 0;
 
+  /**
+   * Get the effective name for transport operations
+   * Returns instanceName if provided (DMst), otherwise role name
+   */
+  private getTransportName(): string {
+    return this.instanceName || this.rootCFSM.role;
+  }
+
   constructor(cfsm: CFSM, config: CFSMSimulatorConfig = {}) {
     // Store root CFSM
     this.rootCFSM = cfsm;
@@ -132,6 +144,9 @@ export class CFSMSimulator {
 
     // Initialize CFSM registry for sub-protocol support
     this.cfsmRegistry = config.cfsmRegistry || new Map();
+
+    // Store instance name for DMst dynamic participants
+    this.instanceName = config.instanceName;
 
     // Initialize call stack (empty = root protocol)
     this.callStack = [];
@@ -200,7 +215,7 @@ export class CFSMSimulator {
           // Note: We can't peek at message label without consuming it,
           // so we just check if ANY message is available
           // The actual label matching happens during execution
-          return this.transport.hasMessage(this.rootCFSM.role);
+          return this.transport.hasMessage(this.getTransportName());
         } else {
           // Legacy mode: check buffer
           const queue = this.buffer.channels.get(from);
@@ -377,12 +392,19 @@ export class CFSMSimulator {
 
     // Create message(s)
     const recipients = typeof action.to === 'string' ? [action.to] : action.to;
+
+    // Get label from action - handle both normal sends and DMst create/invite
+    // Normal sends: action.label
+    // DMst sends: action.message.label
+    const label = action.label || (action as any).message?.label || '';
+    const payloadType = action.payloadType || (action as any).message?.payloadType;
+
     const messages: Message[] = recipients.map(to => ({
-      id: `${this.rootCFSM.role}-msg-${this.messageIdCounter++}`,
-      from: this.rootCFSM.role,
+      id: `${this.getTransportName()}-msg-${this.messageIdCounter++}`,
+      from: this.getTransportName(),
       to,
-      label: action.label,
-      payloadType: action.payloadType,
+      label,
+      payloadType,
       timestamp: Date.now(),
     }));
 
@@ -453,10 +475,10 @@ export class CFSMSimulator {
 
     if (this.transport) {
       // Transport mode: receive from transport asynchronously
-      const receivedMsg = await this.transport.receive(this.rootCFSM.role);
+      const receivedMsg = await this.transport.receive(this.getTransportName());
 
       if (!receivedMsg) {
-        throw new Error(`No message available from transport for ${this.rootCFSM.role}`);
+        throw new Error(`No message available from transport for ${this.getTransportName()}`);
       }
 
       msg = receivedMsg;

@@ -98,6 +98,15 @@ export interface CFSMSimulatorConfig {
    * }
    */
   cfsmRegistry?: Map<string, Map<string, CFSM>>;
+
+  /**
+   * Instance name for DMst dynamic participants
+   * When provided, this overrides the role name for transport addressing
+   * Example: CFSM role='Worker', instanceName='w'
+   * - Simulator receives messages addressed to 'w'
+   * - Multiple instances can exist: w, w2, etc.
+   */
+  instanceName?: string;
 }
 
 /**
