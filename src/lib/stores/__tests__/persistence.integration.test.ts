@@ -73,7 +73,7 @@ describe('Persistence Integration', () => {
       // Pre-populate localStorage
       const savedState = {
         ui: { theme: 'dark', sidebarCollapsed: false, sidebarWidth: 280, editorFontSize: 13, editorWordWrap: false, editorMinimap: true, outputPanelCollapsed: false, visualizerPanelSize: 400 },
-        simulation: { executionMode: 'cfg', choiceStrategy: 'manual', schedulingStrategy: 'manual', deliveryModel: 'FIFO', playbackSpeed: 300, maxSteps: 1000 },
+        simulation: { choiceStrategy: 'manual', playbackSpeed: 300, maxSteps: 1000 },
         editor: { lastContent: 'global protocol Restored {}', lastContentTimestamp: Date.now(), recentExamples: [] },
         version: 1
       };
@@ -92,7 +92,7 @@ describe('Persistence Integration', () => {
       const oldTimestamp = Date.now() - (25 * 60 * 60 * 1000); // 25 hours ago
       const savedState = {
         ui: { theme: 'dark', sidebarCollapsed: false, sidebarWidth: 280, editorFontSize: 13, editorWordWrap: false, editorMinimap: true, outputPanelCollapsed: false, visualizerPanelSize: 400 },
-        simulation: { executionMode: 'cfg', choiceStrategy: 'manual', schedulingStrategy: 'manual', deliveryModel: 'FIFO', playbackSpeed: 300, maxSteps: 1000 },
+        simulation: { choiceStrategy: 'manual', playbackSpeed: 300, maxSteps: 1000 },
         editor: { lastContent: 'global protocol Old {}', lastContentTimestamp: oldTimestamp, recentExamples: [] },
         version: 1
       };
@@ -108,7 +108,7 @@ describe('Persistence Integration', () => {
       const recentTimestamp = Date.now() - (1 * 60 * 60 * 1000); // 1 hour ago
       const savedState = {
         ui: { theme: 'dark', sidebarCollapsed: false, sidebarWidth: 280, editorFontSize: 13, editorWordWrap: false, editorMinimap: true, outputPanelCollapsed: false, visualizerPanelSize: 400 },
-        simulation: { executionMode: 'cfg', choiceStrategy: 'manual', schedulingStrategy: 'manual', deliveryModel: 'FIFO', playbackSpeed: 300, maxSteps: 1000 },
+        simulation: { choiceStrategy: 'manual', playbackSpeed: 300, maxSteps: 1000 },
         editor: { lastContent: 'global protocol Recent {}', lastContentTimestamp: recentTimestamp, recentExamples: [] },
         version: 1
       };
@@ -138,7 +138,7 @@ describe('Persistence Integration', () => {
       // Pre-populate with light theme
       const savedState = {
         ui: { theme: 'light', sidebarCollapsed: true, sidebarWidth: 300, editorFontSize: 14, editorWordWrap: true, editorMinimap: false, outputPanelCollapsed: true, visualizerPanelSize: 500 },
-        simulation: { executionMode: 'distributed', choiceStrategy: 'random', schedulingStrategy: 'round-robin', deliveryModel: 'unordered', playbackSpeed: 500, maxSteps: 2000 },
+        simulation: { choiceStrategy: 'random', playbackSpeed: 500, maxSteps: 2000 },
         editor: { lastContent: '', lastContentTimestamp: 0, recentExamples: ['example1'] },
         version: 1
       };
@@ -175,7 +175,7 @@ describe('Persistence Integration', () => {
     it('should restore simulation settings on hydration', async () => {
       const savedState = {
         ui: { theme: 'dark', sidebarCollapsed: false, sidebarWidth: 280, editorFontSize: 13, editorWordWrap: false, editorMinimap: true, outputPanelCollapsed: false, visualizerPanelSize: 400 },
-        simulation: { executionMode: 'bisimulation', choiceStrategy: 'first', schedulingStrategy: 'fair', deliveryModel: 'lossy', playbackSpeed: 100, maxSteps: 500 },
+        simulation: { choiceStrategy: 'first', playbackSpeed: 100, maxSteps: 500 },
         editor: { lastContent: '', lastContentTimestamp: 0, recentExamples: [] },
         version: 1
       };
@@ -185,7 +185,6 @@ describe('Persistence Integration', () => {
       persistenceStore.hydrate();
 
       const state = persistenceStore.getState();
-      expect(state.simulation.executionMode).toBe('bisimulation');
       expect(state.simulation.choiceStrategy).toBe('first');
       expect(state.simulation.playbackSpeed).toBe(100);
     });

@@ -1,24 +1,22 @@
 <script lang="ts">
   import {
     bisimulationResult,
-    bisimulationTrace,
-    executionMode,
-    jumpToStep,
+    isSimulationActive,
   } from '$lib/stores/simulation';
 </script>
 
-{#if $executionMode === 'bisimulation' && $bisimulationResult}
+{#if $isSimulationActive && $bisimulationResult}
   <div class="bisim-results-panel">
-    <h4 class="panel-title">Bisimulation Verification</h4>
+    <h4 class="panel-title">Bisimulation Status</h4>
 
-    {#if $bisimulationResult.equivalent}
+    {#if $bisimulationResult.valid}
       <div class="result success">
         <div class="result-icon">✓</div>
         <div class="result-content">
-          <div class="result-header">Behaviorally Equivalent</div>
+          <div class="result-header">Valid Bisimulation</div>
           <div class="result-description">
-            CFG (orchestration) and Distributed (choreography) executions are bisimilar.
-            All observable behaviors match.
+            CFG (choreography) and CFSM (distributed) executions are coordinated correctly.
+            All causal dependencies are satisfied.
           </div>
         </div>
       </div>
@@ -26,45 +24,18 @@
       <div class="result error">
         <div class="result-icon">✗</div>
         <div class="result-content">
-          <div class="result-header">Divergence Detected</div>
+          <div class="result-header">Bisimulation Error</div>
           <div class="result-description">
-            The two execution models produced different observable behaviors.
+            The coordination detected an issue with the execution.
           </div>
 
-          {#if $bisimulationResult.divergenceStep !== undefined}
-            <div class="divergence-details">
-              <div class="detail-item">
-                <span class="detail-label">Divergence Step:</span>
-                <span class="detail-value">{$bisimulationResult.divergenceStep}</span>
-              </div>
-
-              {#if $bisimulationResult.reason}
-                <div class="detail-item">
-                  <span class="detail-label">Reason:</span>
-                  <span class="detail-value">{$bisimulationResult.reason}</span>
-                </div>
-              {/if}
-
-              {#if $bisimulationTrace}
-                <button
-                  class="jump-btn"
-                  on:click={() => jumpToStep($bisimulationResult.divergenceStep)}
-                  title="Navigate to the step where divergence occurred"
-                >
-                  Jump to Divergence Point
-                </button>
-              {/if}
+          {#if $bisimulationResult.errors && $bisimulationResult.errors.length > 0}
+            <div class="error-details">
+              {#each $bisimulationResult.errors as error}
+                <div class="error-item">{error}</div>
+              {/each}
             </div>
           {/if}
-        </div>
-      </div>
-    {/if}
-
-    {#if $bisimulationTrace && $bisimulationTrace.length > 0}
-      <div class="trace-summary">
-        <div class="trace-header">Trace Comparison</div>
-        <div class="trace-info">
-          {$bisimulationTrace.length} step(s) compared
         </div>
       </div>
     {/if}
@@ -143,71 +114,23 @@
     font-size: 12px;
     color: #ccc;
     line-height: 1.5;
-    margin-bottom: 12px;
   }
 
-  .divergence-details {
+  .error-details {
     background: rgba(0, 0, 0, 0.2);
     border-radius: 4px;
     padding: 10px;
     margin-top: 8px;
   }
 
-  .detail-item {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 6px;
+  .error-item {
     font-size: 12px;
-  }
-
-  .detail-item:last-of-type {
-    margin-bottom: 0;
-  }
-
-  .detail-label {
-    color: #888;
-    font-weight: 500;
-    min-width: 120px;
-  }
-
-  .detail-value {
-    color: #fff;
+    color: #ff6b6b;
     font-family: monospace;
-  }
-
-  .jump-btn {
-    margin-top: 12px;
-    padding: 6px 12px;
-    background: #007acc;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .jump-btn:hover {
-    background: #0098ff;
-  }
-
-  .trace-summary {
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #3d3d3d;
-  }
-
-  .trace-header {
-    font-size: 12px;
-    font-weight: 600;
-    color: #888;
     margin-bottom: 4px;
   }
 
-  .trace-info {
-    font-size: 12px;
-    color: #ccc;
-    font-family: monospace;
+  .error-item:last-child {
+    margin-bottom: 0;
   }
 </style>

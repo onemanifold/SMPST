@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     simulationMode,
-    executionMode,
     executionState,
     isSimulationActive,
     isPlaying,
@@ -14,11 +13,8 @@
     resetSimulation,
     makeChoice,
     playbackSpeed,
-    switchExecutionMode,
     currentCFG,
-    currentCFSMs,
     choiceStrategy,
-    type ExecutionMode,
     type ChoiceStrategy,
   } from '$lib/stores/simulation';
   import { IconButton } from '$lib/components/atoms';
@@ -27,21 +23,10 @@
 
   let selectedChoice: number | null = null;
 
-  async function handleModeChange(event: Event) {
-    const target = event.target as HTMLSelectElement;
-    const newMode = target.value as ExecutionMode;
-    await switchExecutionMode(newMode);
-    selectedChoice = null;
-  }
-
   async function handleStrategyChange(event: Event) {
     const target = event.target as HTMLSelectElement;
     const newStrategy = target.value as ChoiceStrategy;
     choiceStrategy.set(newStrategy);
-    // Re-initialize to apply new strategy
-    if ($currentCFG) {
-      await switchExecutionMode($executionMode);
-    }
   }
 
   function handleChoiceSelect(index: number) {
@@ -58,7 +43,7 @@
 
   async function handleStep() {
     if ($isAtChoice && selectedChoice !== null) {
-      makeChoice(selectedChoice);
+      await makeChoice(selectedChoice);
       selectedChoice = null;
     } else {
       await stepSimulation();
@@ -94,51 +79,28 @@
 
 {#if $isSimulationActive}
   <div class="simulation-controls">
-    <div class="mode-selector-group">
-      <label for="execution-mode">Mode:</label>
+    <div class="strategy-selector-group">
+      <label for="choice-strategy">Strategy:</label>
       <select
-        id="execution-mode"
-        class="mode-select"
-        value={$executionMode}
-        on:change={handleModeChange}
+        id="choice-strategy"
+        class="strategy-select"
+        value={$choiceStrategy}
+        on:change={handleStrategyChange}
         disabled={$isPlaying}
-        title="Execution mode"
+        title="Choice selection strategy"
       >
-        <option value="cfg">CFG (Orchestration)</option>
-        <option value="distributed" disabled={!$currentCFSMs || $currentCFSMs.size === 0}>
-          Distributed (Choreography)
-        </option>
-        <option value="bisimulation" disabled={!$currentCFG || !$currentCFSMs || $currentCFSMs.size === 0}>
-          Bisimulation (Verify)
-        </option>
+        <option value="manual">Manual</option>
+        <option value="random">Random</option>
+        <option value="first">First Branch</option>
       </select>
     </div>
-
-    {#if $executionMode === 'cfg' || $executionMode === 'bisimulation'}
-      <div class="strategy-selector-group">
-        <label for="choice-strategy">Strategy:</label>
-        <select
-          id="choice-strategy"
-          class="strategy-select"
-          value={$choiceStrategy}
-          on:change={handleStrategyChange}
-          disabled={$isPlaying}
-          title="Choice selection strategy"
-        >
-          <option value="manual">Manual</option>
-          <option value="random">Random</option>
-          <option value="first">First Branch</option>
-          <option value="explore-all">Explore All</option>
-        </select>
-      </div>
-    {/if}
 
     <div class="control-group">
       <IconButton
         active={$isPlaying}
         on:click={$isPlaying ? handlePause : handlePlay}
         disabled={$executionState?.completed}
-        title={$isPlaying ? 'Pause (auto-random mode)' : 'Play (auto-random mode)'}
+        title={$isPlaying ? 'Pause' : 'Play (auto-step)'}
       >
         {$isPlaying ? '⏸' : '▶'}
       </IconButton>
@@ -161,15 +123,7 @@
 
     <div class="status-group">
       <div class="status-item">
-        <span class="label">
-          {#if $executionMode === 'distributed'}
-            Action:
-          {:else if $executionMode === 'bisimulation'}
-            Both:
-          {:else}
-            Step:
-          {/if}
-        </span>
+        <span class="label">Step:</span>
         <span class="value">{$executionState?.stepCount ?? 0}</span>
       </div>
 
@@ -200,7 +154,7 @@
 
     <TimelineControls />
 
-    <!-- Phase 3: Compact choice display for auto-play mode -->
+    <!-- Compact choice display for auto-play mode -->
     {#if $isAtChoice && $isPlaying}
       <div class="choice-group-compact" class:auto-selecting={$isPlaying}>
         <span>⚡ Auto-selecting:</span>
@@ -218,7 +172,7 @@
     {/if}
   </div>
 
-  <!-- Phase 3: Enhanced Choice Previews (outside controls bar for more space) -->
+  <!-- Enhanced Choice Previews (outside controls bar for more space) -->
   {#if $isAtChoice && !$isPlaying}
     <ChoicePreview
       choices={$availableChoices}
@@ -254,45 +208,6 @@
     font-style: italic;
     font-size: var(--font-size-base);
     margin: 0;
-  }
-
-  .mode-selector-group {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-1);
-    padding-right: var(--spacing-2);
-    border-right: 1px solid var(--color-border-strong);
-  }
-
-  .mode-selector-group label {
-    color: var(--color-text-secondary);
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
-  }
-
-  .mode-select {
-    background: var(--color-bg-hover);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    padding: var(--spacing-1) var(--spacing-2);
-    font-size: var(--font-size-sm);
-    cursor: pointer;
-    transition: all var(--transition-normal);
-  }
-
-  .mode-select:hover:not(:disabled) {
-    background: var(--color-bg-active);
-    border-color: var(--color-accent);
-  }
-
-  .mode-select:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .mode-select option:disabled {
-    color: var(--color-text-muted);
   }
 
   .strategy-selector-group {

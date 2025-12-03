@@ -13,9 +13,6 @@ import {
   playbackSpeed,
   maxStepsConfig,
   choiceStrategy,
-  schedulingStrategy,
-  deliveryModel,
-  executionMode,
 } from './simulation';
 
 // Debounce timer for content auto-save
@@ -48,9 +45,6 @@ export async function initializePersistence(): Promise<void> {
     playbackSpeed.set(state.simulation.playbackSpeed);
     maxStepsConfig.set(state.simulation.maxSteps);
     choiceStrategy.set(state.simulation.choiceStrategy);
-    schedulingStrategy.set(state.simulation.schedulingStrategy);
-    deliveryModel.set(state.simulation.deliveryModel);
-    executionMode.set(state.simulation.executionMode);
 
     // Restore last editor content if it exists and is recent (within 24 hours)
     const lastContentAge = Date.now() - state.editor.lastContentTimestamp;
@@ -119,21 +113,6 @@ function setupAutoSave(): void {
   choiceStrategy.subscribe((strategy) => {
     if (isHydrating) return;
     persistenceStore.updateSimulation({ choiceStrategy: strategy });
-  });
-
-  schedulingStrategy.subscribe((strategy) => {
-    if (isHydrating) return;
-    persistenceStore.updateSimulation({ schedulingStrategy: strategy });
-  });
-
-  deliveryModel.subscribe((model) => {
-    if (isHydrating) return;
-    persistenceStore.updateSimulation({ deliveryModel: model });
-  });
-
-  executionMode.subscribe((mode) => {
-    if (isHydrating) return;
-    persistenceStore.updateSimulation({ executionMode: mode });
   });
 }
 

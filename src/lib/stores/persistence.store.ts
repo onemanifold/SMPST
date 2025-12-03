@@ -13,7 +13,7 @@
 
 import { writable, get } from 'svelte/store';
 import type { Theme } from './app.store';
-import type { ChoiceStrategy, SchedulingStrategy, DeliveryModel, ExecutionMode } from './simulation';
+import type { ChoiceStrategy } from './simulation';
 import { protocolDB, type SavedProtocol } from './protocol-db';
 
 // ============================================================================
@@ -37,10 +37,7 @@ export interface PersistedUIState {
 }
 
 export interface PersistedSimulationSettings {
-  executionMode: ExecutionMode;
   choiceStrategy: ChoiceStrategy;
-  schedulingStrategy: SchedulingStrategy;
-  deliveryModel: DeliveryModel;
   playbackSpeed: number;
   maxSteps: number;
 }
@@ -85,10 +82,7 @@ const defaultState: PersistedState = {
     visualizerPanelSize: 400,
   },
   simulation: {
-    executionMode: 'cfg',
     choiceStrategy: 'manual',
-    schedulingStrategy: 'manual',
-    deliveryModel: 'FIFO',
     playbackSpeed: 300,
     maxSteps: 1000,
   },
