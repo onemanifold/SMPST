@@ -38,12 +38,17 @@ describe('DistributedSimulator DMst Compatibility', () => {
     const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
     const projections = projectAll(cfg);
 
-    // Projection creates static CFSMs for role types (Manager, Worker)
+    // Projection creates CFSMs for both static and dynamic roles
     expect(projections.cfsms.has('Manager')).toBe(true);
     expect(projections.cfsms.has('Worker')).toBe(true);
+    expect(projections.staticRoles).toEqual(['Manager']);
+    expect(projections.dynamicRoles).toEqual(['Worker']);
 
-    // Run distributed simulation
-    const sim = new DistributedSimulator(projections.cfsms, { maxSteps: 100 });
+    // Run distributed simulation with only static roles starting
+    const sim = new DistributedSimulator(projections.cfsms, {
+      maxSteps: 100,
+      staticRoles: projections.staticRoles,
+    });
     const result = await sim.run();
 
     // Debug

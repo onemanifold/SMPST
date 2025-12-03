@@ -225,8 +225,10 @@ export interface CFSM {
  * Result of projecting a CFG to all roles
  */
 export interface ProjectionResult {
-  cfsms: Map<string, CFSM>;  // Role name → CFSM
-  roles: string[];           // All roles in protocol
+  cfsms: Map<string, CFSM>;   // Role name → CFSM (both static and dynamic)
+  roles: string[];            // All roles in protocol (static + dynamic)
+  staticRoles: string[];      // Roles in protocol signature (exist from start)
+  dynamicRoles: string[];     // Roles declared with 'new role' (created at runtime)
   errors: ProjectionError[];
 }
 

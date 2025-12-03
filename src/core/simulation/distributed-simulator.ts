@@ -78,9 +78,19 @@ export class DistributedSimulator {
     // Create shared message transport (FIFO channels between all roles)
     this.transport = new InMemoryTransport();
 
-    // Create simulators with shared transport
+    // Determine which roles to start
+    // If staticRoles provided, only start those (DMst dynamic participant support)
+    // Otherwise start all roles (backwards compatible)
+    const rolesToStart = config.staticRoles ?? Array.from(cfsms.keys());
+
+    // Create simulators with shared transport (only for static roles)
     this.simulators = new Map();
-    for (const [role, cfsm] of cfsms) {
+    for (const role of rolesToStart) {
+      const cfsm = cfsms.get(role);
+      if (!cfsm) {
+        throw new Error(`CFSM not found for role ${role}`);
+      }
+
       const simulator = new CFSMSimulator(cfsm, {
         maxSteps: config.maxSteps,
         maxBufferSize: config.maxBufferSize,

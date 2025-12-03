@@ -920,7 +920,9 @@ export function projectAll(cfg: CFG): ProjectionResult {
 
   return {
     cfsms,
-    roles: allRoles, // Include dynamic roles in result
+    roles: allRoles,           // All roles (static + dynamic)
+    staticRoles: cfg.roles,    // Only roles in protocol signature
+    dynamicRoles,              // Only roles declared with 'new role'
     errors,
   };
 }

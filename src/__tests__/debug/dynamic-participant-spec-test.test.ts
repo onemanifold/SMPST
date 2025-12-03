@@ -43,21 +43,19 @@ describe('Dynamic Participant Specification', () => {
     console.log('result.dynamicRoles should be:', ['Worker']);
     console.log('Both should have CFSMs in result.cfsms');
 
-    // CURRENT: This information is NOT available
+    // SPECIFICATION: Result should identify which roles are static vs dynamic
     const hasStaticRoles = 'staticRoles' in result;
     const hasDynamicRoles = 'dynamicRoles' in result;
 
-    console.log('\n=== SPEC VIOLATION ===');
+    console.log('\n=== SPEC COMPLIANCE ===');
     console.log('Has staticRoles field:', hasStaticRoles);
     console.log('Has dynamicRoles field:', hasDynamicRoles);
+    console.log('staticRoles:', result.staticRoles);
+    console.log('dynamicRoles:', result.dynamicRoles);
 
-    // THIS SHOULD PASS (but currently fails):
-    // expect(result.staticRoles).toEqual(['Manager']);
-    // expect(result.dynamicRoles).toEqual(['Worker']);
-
-    // Mark test as documenting missing feature
-    expect(hasStaticRoles).toBe(false); // Documents current limitation
-    expect(hasDynamicRoles).toBe(false); // Documents current limitation
+    // SPEC REQUIREMENT: Must distinguish static from dynamic
+    expect(result.staticRoles).toEqual(['Manager']);
+    expect(result.dynamicRoles).toEqual(['Worker']);
   });
 
   it('SPEC: DistributedSimulator should only start static roles', async () => {
@@ -78,20 +76,24 @@ describe('Dynamic Participant Specification', () => {
     console.log('Static roles in signature:', ['Manager']);
     console.log('Dynamic roles (new role):', ['Worker']);
 
-    console.log('\n=== CURRENT BEHAVIOR ===');
+    console.log('\n=== PROJECTION RESULT ===');
+    console.log('Static roles:', projections.staticRoles);
+    console.log('Dynamic roles:', projections.dynamicRoles);
     console.log('All CFSMs created:', Array.from(projections.cfsms.keys()));
-    console.log('Problem: No way to know which are static!');
 
-    console.log('\n=== CORRECT EXECUTION FLOW ===');
-    console.log('1. Start simulator with ONLY static roles: [Manager]');
-    console.log('2. Manager executes: send create to Worker');
-    console.log('3. Simulator instantiates Worker CFSM on-demand');
-    console.log('4. Worker starts from initial state, receives create');
-    console.log('5. Continue execution with both roles');
+    // SPEC: Can now distinguish static from dynamic
+    expect(projections.staticRoles).toEqual(['Manager']);
+    expect(projections.dynamicRoles).toEqual(['Worker']);
 
-    // CURRENT: Can't distinguish, so can't implement correct behavior
-    const canDistinguishRoles = 'staticRoles' in projections;
-    expect(canDistinguishRoles).toBe(false); // Documents the gap
+    console.log('\n=== CORRECT EXECUTION FLOW (now possible) ===');
+    console.log('1. DistributedSimulator receives staticRoles + dynamicRoles');
+    console.log('2. Start simulators ONLY for staticRoles: [Manager]');
+    console.log('3. Keep dynamicRoles CFSMs as templates: [Worker]');
+    console.log('4. When Manager executes create → instantiate Worker');
+    console.log('5. Worker starts from initial state, receives create');
+    console.log('6. Continue execution with both roles');
+
+    // NOTE: DistributedSimulator still needs to be updated to USE this info
   });
 
   it('SPEC: Multiple instances of dynamic role should be supported', () => {

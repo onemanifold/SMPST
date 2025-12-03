@@ -463,6 +463,13 @@ export interface DistributedSimulatorConfig {
    * Maps protocol name → (role → CFSM)
    */
   cfsmRegistry?: Map<string, Map<string, CFSM>>;
+
+  /**
+   * Static roles to start immediately
+   * If not provided, all roles in cfsms are started (backwards compatible)
+   * For DMst protocols, only static roles should be started
+   */
+  staticRoles?: string[];
 }
 
 /**
