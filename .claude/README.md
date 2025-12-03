@@ -22,6 +22,23 @@ This directory contains critical development protocols for the SMPST project.
 
 ## Critical Rules (NEVER VIOLATE)
 
+### 0. 🚨 FORMAL SPECIFICATION IS AUTHORITATIVE 🚨
+
+**Authority hierarchy: SPECIFICATION → TESTS → IMPLEMENTATION**
+
+- Specification (papers, theory) defines correctness
+- Tests encode the specification
+- Implementation must pass the tests
+
+**When tests fail:**
+1. First verify: Does the TEST match the SPEC?
+2. If test is wrong → fix the test
+3. If test is correct → fix the implementation
+
+**NEVER change specification/tests to match buggy implementation.**
+
+**See:** `development-philosophy.md` (read the cardinal rule section FIRST)
+
 ### 1. Formal Correctness Over Everything
 - Every feature MUST have formal basis (theorem from literature)
 - Tests MUST verify theorems, not just "it works"

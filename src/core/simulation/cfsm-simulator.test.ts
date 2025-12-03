@@ -2,12 +2,43 @@
  * CFSM Simulator Tests
  *
  * Tests single-role CFSM execution with formal correctness properties
+ * 
+ * NOTE: Actions must use the enriched CFSM schema with message: Message objects.
+ * See: src/core/projection/types.ts for SendAction and ReceiveAction specifications.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { CFSMSimulator } from './cfsm-simulator';
 import type { CFSM, CFSMTransition, SendAction, ReceiveAction } from '../projection/types';
 import type { Message } from './cfsm-simulator-types';
+
+// ============================================================================
+// Test Helpers - Build actions conforming to enriched CFSM schema
+// ============================================================================
+
+/**
+ * Create a SendAction with proper message object per specification.
+ * SendAction.message is REQUIRED per projection/types.ts
+ */
+function sendAction(to: string, label: string): SendAction {
+  return {
+    type: 'send',
+    to,
+    message: { type: 'Message', label },
+  };
+}
+
+/**
+ * Create a ReceiveAction with proper message object per specification.
+ * ReceiveAction.message is REQUIRED per projection/types.ts
+ */
+function receiveAction(from: string, label: string): ReceiveAction {
+  return {
+    type: 'receive',
+    from,
+    message: { type: 'Message', label },
+  };
+}
 
 describe('CFSM Simulator - Basic Operations', () => {
   it('should initialize at initial state', () => {
@@ -22,7 +53,7 @@ describe('CFSM Simulator - Basic Operations', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          action: sendAction('B', 'M1'),
         },
       ],
       initialState: 's0',
@@ -50,7 +81,7 @@ describe('CFSM Simulator - Basic Operations', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+          action: sendAction('B', 'Hello'),
         },
       ],
       initialState: 's0',
@@ -92,7 +123,7 @@ describe('CFSM Simulator - Basic Operations', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'Hello' } as ReceiveAction,
+          action: receiveAction('A', 'Hello'),
         },
       ],
       initialState: 's0',
@@ -148,13 +179,13 @@ describe('CFSM Simulator - Basic Operations', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'First' } as ReceiveAction,
+          action: receiveAction('A', 'First'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'receive', from: 'A', label: 'Second' } as ReceiveAction,
+          action: receiveAction('A', 'Second'),
         },
       ],
       initialState: 's0',
@@ -210,7 +241,7 @@ describe('CFSM Simulator - Transition Enabling', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'M1' } as ReceiveAction,
+          action: receiveAction('A', 'M1'),
         },
       ],
       initialState: 's0',
@@ -264,7 +295,7 @@ describe('CFSM Simulator - Transition Enabling', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          action: sendAction('B', 'M1'),
         },
         {
           id: 't1',
@@ -303,7 +334,7 @@ describe('CFSM Simulator - Deadlock Detection', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'M1' } as ReceiveAction,
+          action: receiveAction('A', 'M1'),
         },
       ],
       initialState: 's0',
@@ -329,7 +360,7 @@ describe('CFSM Simulator - Deadlock Detection', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+          action: sendAction('B', 'Done'),
         },
       ],
       initialState: 's0',
@@ -359,7 +390,7 @@ describe('CFSM Simulator - Event Emission', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'Test' } as SendAction,
+          action: sendAction('B', 'Test'),
         },
       ],
       initialState: 's0',
@@ -386,7 +417,7 @@ describe('CFSM Simulator - Event Emission', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'M' } as ReceiveAction,
+          action: receiveAction('A', 'M'),
         },
       ],
       initialState: 's0',
@@ -429,7 +460,7 @@ describe('CFSM Simulator - Trace Recording', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          action: sendAction('B', 'M1'),
         },
         {
           id: 't1',
@@ -468,13 +499,13 @@ describe('CFSM Simulator - Run to Completion', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          action: sendAction('B', 'M1'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'send', to: 'B', label: 'M2' } as SendAction,
+          action: sendAction('B', 'M2'),
         },
       ],
       initialState: 's0',
@@ -525,13 +556,13 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+            action: sendAction('B', 'M1'),
           },
           {
             id: 't1',
             from: 's1',
             to: 's2',
-            action: { type: 'send', to: 'B', label: 'M2' } as SendAction,
+            action: sendAction('B', 'M2'),
           },
         ],
         initialState: 's0',
@@ -568,13 +599,13 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+            action: sendAction('B', 'M1'),
           },
           {
             id: 't1',
             from: 's1',
             to: 's2',
-            action: { type: 'send', to: 'B', label: 'M2' } as SendAction,
+            action: sendAction('B', 'M2'),
           },
         ],
         initialState: 's0',
@@ -606,7 +637,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+            action: sendAction('B', 'M1'),
           },
         ],
         initialState: 's0',
@@ -632,7 +663,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+            action: sendAction('B', 'Hello'),
           },
         ],
         initialState: 's0',
@@ -658,7 +689,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+            action: sendAction('B', 'Done'),
           },
         ],
         initialState: 's0',
@@ -684,7 +715,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+            action: sendAction('B', 'Hello'),
           },
         ],
         initialState: 's0',
@@ -716,7 +747,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+            action: sendAction('B', 'Done'),
           },
         ],
         initialState: 's0',
@@ -746,7 +777,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+            action: sendAction('B', 'Hello'),
           },
         ],
         initialState: 's0',
@@ -771,7 +802,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+            action: sendAction('B', 'Done'),
           },
         ],
         initialState: 's0',
@@ -796,7 +827,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+            action: sendAction('B', 'Hello'),
           },
         ],
         initialState: 's0',
@@ -828,7 +859,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+            action: sendAction('B', 'Done'),
           },
         ],
         initialState: 's0',
@@ -858,7 +889,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+            action: sendAction('B', 'Hello'),
           },
         ],
         initialState: 's0',
@@ -883,7 +914,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Done' } as SendAction,
+            action: sendAction('B', 'Done'),
           },
         ],
         initialState: 's0',
@@ -910,7 +941,7 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+            action: sendAction('B', 'Hello'),
           },
         ],
         initialState: 's0',
@@ -932,13 +963,13 @@ describe('CFSM Simulator - Stepping Debugger', () => {
             id: 't0',
             from: 's0',
             to: 's1',
-            action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+            action: sendAction('B', 'M1'),
           },
           {
             id: 't1',
             from: 's1',
             to: 's2',
-            action: { type: 'send', to: 'B', label: 'M2' } as SendAction,
+            action: sendAction('B', 'M2'),
           },
         ],
         initialState: 's0',
