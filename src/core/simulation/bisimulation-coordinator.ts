@@ -59,6 +59,9 @@ export class BisimulationCoordinator {
 
     this.concurrencyAnalyzer = new CFGConcurrencyAnalyzer(cfg);
 
+    // Initialize debuggers map FIRST (needed by channel onIncoming handler)
+    this.cfsmDebuggers = new Map();
+
     const communicatingPairs = this.analyzeCommunicationPairs(cfsms);
     this.channels = new Map();
     const channelRegistry = new Map<string, [ChannelEnd, ChannelEnd]>();
@@ -94,8 +97,6 @@ export class BisimulationCoordinator {
       this.channels.get(roleA)!.set(roleB, endA);
       this.channels.get(roleB)!.set(roleA, endB);
     }
-
-    this.cfsmDebuggers = new Map();
     for (const [role, cfsm] of cfsms) {
       const cfsmDebugger = new CFSMDebugger(cfsm, {
         maxSteps: this.config.maxSteps,
@@ -151,9 +152,19 @@ export class BisimulationCoordinator {
   }): Promise<void> {
     this.completedActions.add(data.nodeId);
 
+    // Step sender to execute send
     const senderDebugger = this.cfsmDebuggers.get(data.from);
     if (senderDebugger) {
       await senderDebugger.stepForward();
+    }
+
+    // Step receiver to execute receive
+    const receivers = Array.isArray(data.to) ? data.to : [data.to];
+    for (const receiver of receivers) {
+      const receiverDebugger = this.cfsmDebuggers.get(receiver);
+      if (receiverDebugger) {
+        await receiverDebugger.stepForward();
+      }
     }
   }
 

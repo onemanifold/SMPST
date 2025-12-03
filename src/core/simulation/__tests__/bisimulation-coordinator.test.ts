@@ -67,8 +67,8 @@ describe('Bisimulation Coordinator', () => {
       const stateB = cfsmStates.get('B');
 
       // Both should have completed
-      expect(stateA.complete).toBe(true);
-      expect(stateB.complete).toBe(true);
+      expect(stateA?.completed).toBe(true);
+      expect(stateB?.completed).toBe(true);
     });
 
     it('should validate causal dependencies', async () => {
