@@ -2,11 +2,42 @@
  * Distributed Simulator Tests
  *
  * Tests multi-role coordination and distributed execution
+ * 
+ * NOTE: Actions must use the enriched CFSM schema with message: Message objects.
+ * See: src/core/projection/types.ts for SendAction and ReceiveAction specifications.
  */
 
 import { describe, it, expect } from 'vitest';
 import { DistributedSimulator } from './distributed-simulator';
 import type { CFSM, SendAction, ReceiveAction } from '../projection/types';
+
+// ============================================================================
+// Test Helpers - Build actions conforming to enriched CFSM schema
+// ============================================================================
+
+/**
+ * Create a SendAction with proper message object per specification.
+ * SendAction.message is REQUIRED per projection/types.ts
+ */
+function sendAction(to: string, label: string): SendAction {
+  return {
+    type: 'send',
+    to,
+    message: { type: 'Message', label },
+  };
+}
+
+/**
+ * Create a ReceiveAction with proper message object per specification.
+ * ReceiveAction.message is REQUIRED per projection/types.ts
+ */
+function receiveAction(from: string, label: string): ReceiveAction {
+  return {
+    type: 'receive',
+    from,
+    message: { type: 'Message', label },
+  };
+}
 
 describe('Distributed Simulator - Basic Coordination', () => {
   it('should coordinate two roles with message passing', async () => {
@@ -19,7 +50,7 @@ describe('Distributed Simulator - Basic Coordination', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'Hello' } as SendAction,
+          action: sendAction('B', 'Hello'),
         },
       ],
       initialState: 's0',
@@ -34,7 +65,7 @@ describe('Distributed Simulator - Basic Coordination', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'Hello' } as ReceiveAction,
+          action: receiveAction('A', 'Hello'),
         },
       ],
       initialState: 's0',
@@ -71,13 +102,13 @@ describe('Distributed Simulator - Basic Coordination', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'Ping' } as SendAction,
+          action: sendAction('B', 'Ping'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'receive', from: 'B', label: 'Pong' } as ReceiveAction,
+          action: receiveAction('B', 'Pong'),
         },
       ],
       initialState: 's0',
@@ -92,13 +123,13 @@ describe('Distributed Simulator - Basic Coordination', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'Ping' } as ReceiveAction,
+          action: receiveAction('A', 'Ping'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'send', to: 'A', label: 'Pong' } as SendAction,
+          action: sendAction('A', 'Pong'),
         },
       ],
       initialState: 's0',
@@ -130,13 +161,13 @@ describe('Distributed Simulator - Basic Coordination', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          action: sendAction('B', 'M1'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'receive', from: 'C', label: 'M3' } as ReceiveAction,
+          action: receiveAction('C', 'M3'),
         },
       ],
       initialState: 's0',
@@ -151,13 +182,13 @@ describe('Distributed Simulator - Basic Coordination', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'M1' } as ReceiveAction,
+          action: receiveAction('A', 'M1'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'send', to: 'C', label: 'M2' } as SendAction,
+          action: sendAction('C', 'M2'),
         },
       ],
       initialState: 's0',
@@ -172,13 +203,13 @@ describe('Distributed Simulator - Basic Coordination', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'B', label: 'M2' } as ReceiveAction,
+          action: receiveAction('B', 'M2'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'send', to: 'A', label: 'M3' } as SendAction,
+          action: sendAction('A', 'M3'),
         },
       ],
       initialState: 's0',
@@ -212,7 +243,7 @@ describe('Distributed Simulator - Deadlock Detection', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'B', label: 'MsgFromB' } as ReceiveAction,
+          action: receiveAction('B', 'MsgFromB'),
         },
       ],
       initialState: 's0',
@@ -227,7 +258,7 @@ describe('Distributed Simulator - Deadlock Detection', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'MsgFromA' } as ReceiveAction,
+          action: receiveAction('A', 'MsgFromA'),
         },
       ],
       initialState: 's0',
@@ -257,13 +288,13 @@ describe('Distributed Simulator - Deadlock Detection', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'Start' } as SendAction,
+          action: sendAction('B', 'Start'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'receive', from: 'B', label: 'Reply' } as ReceiveAction,
+          action: receiveAction('B', 'Reply'),
         },
       ],
       initialState: 's0',
@@ -278,13 +309,13 @@ describe('Distributed Simulator - Deadlock Detection', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'Start' } as ReceiveAction,
+          action: receiveAction('A', 'Start'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'send', to: 'A', label: 'Reply' } as SendAction,
+          action: sendAction('A', 'Reply'),
         },
       ],
       initialState: 's0',
@@ -315,7 +346,7 @@ describe('Distributed Simulator - Scheduling Strategies', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'FromA' } as SendAction,
+          action: sendAction('B', 'FromA'),
         },
       ],
       initialState: 's0',
@@ -330,7 +361,7 @@ describe('Distributed Simulator - Scheduling Strategies', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'A', label: 'FromB' } as SendAction,
+          action: sendAction('A', 'FromB'),
         },
       ],
       initialState: 's0',
@@ -359,7 +390,7 @@ describe('Distributed Simulator - Scheduling Strategies', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'FromA' } as SendAction,
+          action: sendAction('B', 'FromA'),
         },
       ],
       initialState: 's0',
@@ -374,7 +405,7 @@ describe('Distributed Simulator - Scheduling Strategies', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'A', label: 'FromB' } as SendAction,
+          action: sendAction('A', 'FromB'),
         },
       ],
       initialState: 's0',
@@ -410,13 +441,13 @@ describe('Distributed Simulator - Message Buffering', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'M1' } as SendAction,
+          action: sendAction('B', 'M1'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'send', to: 'B', label: 'M2' } as SendAction,
+          action: sendAction('B', 'M2'),
         },
       ],
       initialState: 's0',
@@ -431,13 +462,13 @@ describe('Distributed Simulator - Message Buffering', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'M1' } as ReceiveAction,
+          action: receiveAction('A', 'M1'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'receive', from: 'A', label: 'M2' } as ReceiveAction,
+          action: receiveAction('A', 'M2'),
         },
       ],
       initialState: 's0',
@@ -473,13 +504,13 @@ describe('Distributed Simulator - Message Buffering', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'First' } as SendAction,
+          action: sendAction('B', 'First'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'send', to: 'B', label: 'Second' } as SendAction,
+          action: sendAction('B', 'Second'),
         },
       ],
       initialState: 's0',
@@ -494,13 +525,13 @@ describe('Distributed Simulator - Message Buffering', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'First' } as ReceiveAction,
+          action: receiveAction('A', 'First'),
         },
         {
           id: 't1',
           from: 's1',
           to: 's2',
-          action: { type: 'receive', from: 'A', label: 'Second' } as ReceiveAction,
+          action: receiveAction('A', 'Second'),
         },
       ],
       initialState: 's0',
@@ -532,7 +563,7 @@ describe('Distributed Simulator - Reset and State', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'M' } as SendAction,
+          action: sendAction('B', 'M'),
         },
       ],
       initialState: 's0',
@@ -547,7 +578,7 @@ describe('Distributed Simulator - Reset and State', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'M' } as ReceiveAction,
+          action: receiveAction('A', 'M'),
         },
       ],
       initialState: 's0',
@@ -587,7 +618,7 @@ describe('Distributed Simulator - Reset and State', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'send', to: 'B', label: 'M' } as SendAction,
+          action: sendAction('B', 'M'),
         },
       ],
       initialState: 's0',
@@ -602,7 +633,7 @@ describe('Distributed Simulator - Reset and State', () => {
           id: 't0',
           from: 's0',
           to: 's1',
-          action: { type: 'receive', from: 'A', label: 'M' } as ReceiveAction,
+          action: receiveAction('A', 'M'),
         },
       ],
       initialState: 's0',

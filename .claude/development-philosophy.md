@@ -6,6 +6,102 @@ This file contains the core principles that guide all development on this projec
 
 ---
 
+## 🚨 CARDINAL RULE: FORMAL SPECIFICATION IS ALWAYS AUTHORITATIVE 🚨
+
+**THIS IS THE MOST IMPORTANT RULE IN THIS ENTIRE PROJECT.**
+
+### The Authority Hierarchy
+
+```
+1. FORMAL SPECIFICATION (papers, theory docs)  ← AUTHORITATIVE SOURCE OF TRUTH
+         ↓
+2. TESTS (encode specification as proof obligations)
+         ↓  
+3. IMPLEMENTATION (must pass the tests)
+```
+
+### The Workflow
+
+1. **Verify the specification** - What do the papers/theory say?
+2. **Write/fix tests** - Tests MUST match the formal specification
+3. **Fix implementation** - Implementation MUST pass the (correct) tests
+
+### When Tests Fail
+
+**FIRST**: Determine if the test matches the formal specification.
+
+| If TEST is WRONG (doesn't match spec) | If TEST is CORRECT (matches spec) |
+|---------------------------------------|-----------------------------------|
+| Fix the TEST to match specification | Fix the IMPLEMENTATION to pass test |
+| Test was encoding incorrect behavior | Implementation has a bug |
+| This is a test bug, not impl bug | This is an impl bug, not test bug |
+
+### The Deadly Anti-Pattern: Changing Spec to Match Implementation
+
+**NEVER DO THIS:**
+```
+Implementation behaves X way
+  → Tests fail because they expect Y (per spec)
+  → Change tests to expect X
+  → Change documentation to say X is correct
+  → RESULT: Specification corrupted to match buggy implementation
+```
+
+**ALWAYS DO THIS:**
+```
+Formal specification says Y
+  → Write tests that verify Y
+  → Tests fail because implementation does X
+  → Fix implementation to do Y
+  → RESULT: Implementation matches specification
+```
+
+### Real Example: The Current CFSM Bug
+
+```typescript
+// SPECIFICATION (projection/types.ts):
+interface SendAction {
+  type: 'send';
+  to: string;
+  message: Message;  // ← SPEC SAYS: message object required
+}
+
+// TEST (WRONG - doesn't match spec):
+const action = { type: 'send', to: 'B', label: 'Hello' }; // ❌ No message object
+
+// IMPLEMENTATION (CORRECT - follows spec):
+label: action.message.label  // ✅ Expects message object per spec
+
+// WRONG FIX: Change implementation to accept flat label
+label: action.message?.label || action.label  // ❌ CORRUPTS THE SPEC
+
+// CORRECT FIX: Change test to match spec
+const action = { 
+  type: 'send', 
+  to: 'B', 
+  message: { type: 'Message', label: 'Hello' }  // ✅ Matches spec
+};
+```
+
+### Before Making ANY Change
+
+1. **FIND the formal specification** (paper, theory doc, type definition)
+2. **VERIFY what the spec says** - don't assume
+3. **DETERMINE which is wrong** - test or implementation?
+4. **FIX the wrong one** - to match the spec
+
+### Why This Matters
+
+This project implements **formally verified session types**. The formal specification IS the product. If we corrupt the specification to match buggy code:
+- The formal guarantees become lies
+- The research value is destroyed  
+- Technical debt compounds exponentially
+- Every "fix" makes things worse
+
+**The specification is sacred. Tests encode it. Implementation realizes it. Never invert this hierarchy.**
+
+---
+
 ## Core Principle: Formal Correctness Over Convenience
 
 **This is NOT a typical web app**. This is a **formally verified implementation** of multiparty session types.
