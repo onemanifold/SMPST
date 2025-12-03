@@ -230,17 +230,35 @@ export class BisimulationCoordinator {
       throw new Error('Maximum steps reached');
     }
 
-    const result = this.cfgSimulator.step();
+    // Step CFG if not complete
+    if (!this.cfgSimulator.isComplete()) {
+      const result = this.cfgSimulator.step();
 
-    if (!result.success) {
-      throw new Error(`CFG step failed: ${result.error?.message}`);
+      if (!result.success) {
+        throw new Error(`CFG step failed: ${result.error?.message}`);
+      }
+
+      // Wait for async event handlers (CFSM stepping) to complete
+      await this.cfgSimulator.awaitPendingHandlers();
+    }
+
+    // After CFG completes, continue stepping CFSMs through tau transitions
+    // until all reach terminal states
+    if (this.cfgSimulator.isComplete()) {
+      const incompleteCFSMs = Array.from(this.cfsmDebuggers.entries())
+        .filter(([_, cfsmDebugger]) => !cfsmDebugger.isComplete());
+
+      if (incompleteCFSMs.length > 0) {
+        // Step all incomplete CFSMs in parallel
+        await Promise.all(
+          incompleteCFSMs.map(([_, cfsmDebugger]) => cfsmDebugger.stepForward())
+        );
+      } else {
+        this.completed = true;
+      }
     }
 
     this.stepCount++;
-
-    if (this.cfgSimulator.isComplete()) {
-      this.completed = true;
-    }
   }
 
   isComplete(): boolean {

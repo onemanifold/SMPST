@@ -1419,20 +1419,41 @@ export class CFGSimulator {
   }
 
   /**
+   * Pending promises from async event handlers
+   * These are populated by emit() and can be awaited by coordinators
+   */
+  private pendingEventPromises: Promise<any>[] = [];
+
+  /**
    * Emit event to all subscribers
+   * Collects promises from async callbacks so they can be awaited
    */
   private emit(event: SimulatorEventType, data?: any): void {
     const callbacks = this.listeners.get(event);
     if (callbacks) {
       for (const callback of callbacks) {
         try {
-          callback(data);
+          const result = callback(data);
+          // If callback returns a Promise, collect it
+          if (result instanceof Promise) {
+            this.pendingEventPromises.push(result);
+          }
         } catch (error) {
           // Swallow callback errors to prevent simulation disruption
           console.error(`Error in event callback for '${event}':`, error);
         }
       }
     }
+  }
+
+  /**
+   * Wait for all pending async event handlers to complete
+   * Should be called after step() by coordinators using async handlers
+   */
+  async awaitPendingHandlers(): Promise<void> {
+    const promises = [...this.pendingEventPromises];
+    this.pendingEventPromises = [];
+    await Promise.all(promises);
   }
 
   /**
