@@ -678,24 +678,68 @@ describe('Definition 14: Safe Protocol Update (Castro-Perez & Yoshida 2023)', ()
       // ✅ PROOF: Example shows why careful analysis of parallel composition is needed
     });
 
-    it.skip('counterexample: update violates progress', () => {
-      // TODO: Protocol update that creates stuck state
+    it('counterexample: update violates progress', () => {
+      // Protocol update that creates stuck state
+      const protocol = `
+        protocol ViolatesProgress(role A, role B) {
+          rec Loop {
+            A -> B: Work();
+            choice at A {
+              continue Loop with {
+                A -> B: Extra();
+                // Missing: No continuation after Extra!
+                // This creates a stuck state
+              };
+            } or {
+              A -> B: Done();
+            }
+          }
+        }
+      `;
 
-      // Update adds action with no continuation
-      // Or creates branch that can't reach terminal
-      // → UNSAFE ✗
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Check if update is safe
+      const updateCheck = checkSafeProtocolUpdate(cfg);
+
+      // Should fail - update creates non-terminal state without continuation
+      expect(updateCheck.isSafe).toBe(false);
+
+      // ✅ PROOF: Update violates progress property (creates stuck state)
     });
 
-    it.skip('counterexample: non-deterministic update', () => {
-      // TODO: Protocol update that creates ambiguous choice
+    it('counterexample: non-deterministic update', () => {
+      // Protocol update that creates ambiguous choice
+      const protocol = `
+        protocol NonDeterministicUpdate(role A, role B) {
+          rec Loop {
+            choice at A {
+              A -> B: Option1();
+            } or {
+              A -> B: Option2();
+            }
+            choice at A {
+              continue Loop with {
+                A -> B: Option1();  // Duplicate label!
+              };
+            } or {
+              A -> B: Done();
+            }
+          }
+        }
+      `;
 
-      // Update adds choice with same label as existing choice
-      // Creates non-deterministic branching
-      // → UNSAFE ✗
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Check for determinism
+      const wf = verifyProtocol(cfg);
+
+      // Should fail - choice labels are not unique
+      expect(wf.choiceDeterminism.isDeterministic).toBe(false);
+
+      // ✅ PROOF: Update creates non-deterministic branching (duplicate labels)
     });
   });
 

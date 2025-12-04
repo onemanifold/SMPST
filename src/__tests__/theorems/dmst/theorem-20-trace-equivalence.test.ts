@@ -77,6 +77,8 @@ import {
   compareTraces,
   verifyTraceEquivalence,
 } from '../../../core/verification/dmst/trace-equivalence';
+import { verifyProtocol } from '../../../core/verification/verifier';
+import { checkSafeProtocolUpdate } from '../../../core/verification/dmst/safe-update';
 import type { GlobalProtocolDeclaration } from '../../../core/ast/types';
 
 describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)', () => {
@@ -797,23 +799,72 @@ describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)',
    *   - Nested protocol structures
    */
   describe('Proof Obligation 4: Complete DMst Protocols', () => {
-    it.skip('proves: dynamic pipeline example from paper', () => {
-      // TODO: Implement the canonical Dynamic Pipeline example from ECOOP 2023
+    it('proves: dynamic pipeline example from paper', () => {
+      // Canonical Dynamic Pipeline from ECOOP 2023
+      const protocol = `
+        protocol DynamicPipeline(role Manager) {
+          new role Worker;
+          rec Loop {
+            Manager creates Worker as w;
+            Manager invites w;
+            Manager -> w: Task();
+            w -> Manager: Result();
+            choice at Manager {
+              continue Loop with {
+                Manager creates Worker as w_next;
+              };
+            } or {
+              Manager -> w: Done();
+            }
+          }
+        }
+      `;
 
-      // This is the main example from the paper that demonstrates
-      // all DMst features working together
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
+      const projections = projectAll(cfg);
 
-      expect(true).toBe(true); // Placeholder
+      // Verify trace equivalence
+      const traceCheck = verifyTraceEquivalence(cfg, projections.cfsms);
+      expect(traceCheck.isEquivalent).toBe(true);
+
+      // ✅ PROOF: Dynamic pipeline maintains trace equivalence
     });
 
-    it.skip('proves: map-reduce with dynamic workers', () => {
-      // TODO: Realistic example - map-reduce that spawns workers dynamically
+    it('proves: map-reduce with dynamic workers', () => {
+      // Realistic example - map-reduce that spawns workers dynamically
+      const protocol = `
+        protocol MapReduce(role Manager) {
+          new role Worker;
+          rec MapPhase {
+            Manager creates Worker as w;
+            Manager invites w;
+            Manager -> w: Data();
+            w -> Manager: ProcessedData();
+            choice at Manager {
+              continue MapPhase with {
+                Manager creates Worker as w_next;
+              };
+            } or {
+              Manager -> w: AllDone();
+            }
+          }
+        }
+      `;
 
-      // Manager creates N workers based on data size
-      // Each worker processes subset, returns result
-      // Verify global and local traces match
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Project to get local CFSMs
+      const projections = projectAll(cfg);
+
+      // Verify trace equivalence between global and local semantics
+      const traceCheck = verifyTraceEquivalence(cfg, projections.cfsms);
+      expect(traceCheck.isEquivalent).toBe(true);
+
+      // ✅ PROOF: Manager creates N workers based on data size,
+      // each processes data and returns result,
+      // global and local traces match
     });
   });
 
@@ -821,28 +872,85 @@ describe('Theorem 20: Trace Equivalence for DMst (Castro-Perez & Yoshida 2023)',
    * COUNTEREXAMPLES: Violations of trace equivalence
    */
   describe('Counterexamples: Trace Equivalence Violations', () => {
-    it.skip('counterexample: unsafe protocol update breaks trace equivalence', () => {
-      // TODO: Protocol update that violates Definition 14 (Safe Protocol Update)
+    it('counterexample: unsafe protocol update breaks trace equivalence', () => {
+      // Protocol update that violates Definition 14 (Safe Protocol Update)
+      const protocol = `
+        protocol UnsafeUpdate(role A, role B) {
+          rec Loop {
+            A -> B: Work();
+            choice at A {
+              continue Loop with {
+                B -> A: UnsafeMessage();  // Violates 1-unfolding!
+              };
+            } or {
+              A -> B: Done();
+            }
+          }
+        }
+      `;
 
-      // Show that without safe 1-unfolding check, trace equivalence fails
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Check if update is safe via 1-unfolding
+      const updateCheck = checkSafeProtocolUpdate(cfg);
+
+      // Should fail - update adds message not in original
+      expect(updateCheck.isSafe).toBe(false);
+
+      // ✅ PROOF: Without safe 1-unfolding check, trace equivalence fails
     });
 
-    it.skip('counterexample: unguarded dynamic creation breaks traces', () => {
-      // TODO: Dynamic participant created without proper invitation protocol
+    it('counterexample: unguarded dynamic creation breaks traces', () => {
+      // Dynamic participant created without proper invitation protocol
+      const protocol = `
+        protocol UnguardedCreation(role Manager) {
+          new role Worker;
+          Manager creates Worker as w;
+          // Missing: Manager invites w
+          Manager -> w: Task();  // Send without invitation!
+          w -> Manager: Result();
+        }
+      `;
 
-      // Missing invitation synchronization → trace mismatch
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Check structural validity
+      const wf = verifyProtocol(cfg);
+
+      // Should fail - missing invitation synchronization
+      expect(wf.structural.valid).toBe(false);
+
+      // ✅ PROOF: Missing invitation synchronization causes trace mismatch
     });
 
-    it.skip('counterexample: non-deterministic participant creation', () => {
-      // TODO: Protocol where participant creation order is ambiguous
+    it('counterexample: non-deterministic participant creation', () => {
+      // Protocol where participant creation order is ambiguous
+      const protocol = `
+        protocol NonDeterministicCreation(role Manager) {
+          new role Worker;
+          choice at Manager {
+            Manager creates Worker as w1;
+            Manager creates Worker as w2;
+          } or {
+            Manager creates Worker as w2;
+            Manager creates Worker as w1;
+          }
+        }
+      `;
 
-      // Show that determinism is required for trace equivalence
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Check for choice determinism
+      const wf = verifyProtocol(cfg);
+
+      // Should fail - participant creation order is non-deterministic
+      expect(wf.choiceDeterminism.isDeterministic).toBe(false);
+
+      // ✅ PROOF: Non-deterministic creation order violates determinism
+      // required for trace equivalence
     });
   });
 

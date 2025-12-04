@@ -105,6 +105,7 @@ import {
   buildParticipantStateGraphs,
   checkParticipantProgress,
   simulateFIFODelivery,
+  checkBoundedBuffers,
   verifyLiveness,
 } from '../../../core/verification/dmst/liveness';
 import type { GlobalProtocolDeclaration } from '../../../core/ast/types';
@@ -437,31 +438,67 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       // ✅ PROOF: Parallel branches have independent send/receive actions
     });
 
-    it.skip('proves: dynamic participants deliver all messages', () => {
-      // TODO: Test message delivery with dynamic participants
+    it('proves: dynamic participants deliver all messages', () => {
+      // Protocol with dynamic participants - all messages should be delivered
+      const protocol = `
+        protocol DynamicDelivery(role Manager) {
+          new role Worker;
+          Manager creates Worker as w;
+          Manager invites w;
+          Manager -> w: Task();
+          w -> Manager: Result();
+        }
+      `;
 
-      // Messages sent to dynamically created participants should
-      // eventually be delivered
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Project to get CFSMs
+      const projections = projectAll(cfg);
+
+      // Extract send/receive pairs
+      const pairs = extractSendReceivePairs(projections.cfsms);
+
+      // Check orphan freedom
+      const orphanCheck = checkOrphanFreedom(pairs);
+
+      // All messages to/from dynamic participants should have matching pairs
+      expect(orphanCheck.isOrphanFree).toBe(true);
+      expect(orphanCheck.orphanedMessages.length).toBe(0);
+
+      // ✅ PROOF: Dynamic participants deliver all messages (no orphans)
     });
 
-    it.skip('proves: updatable recursion has bounded buffers', () => {
-      // TODO: Test buffer growth in updatable recursion
+    it('proves: updatable recursion has bounded buffers', () => {
+      // Protocol with updatable recursion - buffers should stay bounded
+      const protocol = `
+        protocol BoundedBuffers(role A, role B) {
+          rec Loop {
+            A -> B: Work();
+            B -> A: Done();
+            choice at A {
+              continue Loop with {
+                A -> B: MoreWork();
+              };
+            } or {
+              A -> B: Finish();
+            }
+          }
+        }
+      `;
 
-      // rec Loop {
-      //   A -> B: Work();
-      //   B -> A: Done();
-      //   continue Loop with { ... };
-      // }
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // Buffer size should not grow unboundedly over iterations
-      // Each iteration should consume previous messages
+      // Check bounded buffers
+      const bufferCheck = checkBoundedBuffers(cfg);
 
-      // const simulation = simulateFIFODelivery(...);
-      // expect(simulation.hasUnboundedGrowth()).toBe(false);
+      // Updatable recursion should maintain bounded buffers
+      // Each iteration consumes messages from previous iteration
+      expect(bufferCheck.areBounded).toBe(true);
+      expect(bufferCheck.unboundedChannels.length).toBe(0);
 
-      expect(true).toBe(true); // Placeholder
+      // ✅ PROOF: Updatable recursion has bounded message buffers
     });
   });
 
@@ -477,50 +514,100 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
    *   Liveness must hold even if messages are arbitrarily delayed.
    */
   describe('Proof Obligation 4: Asynchronous Liveness', () => {
-    it.skip('proves: delayed messages eventually delivered', () => {
-      // TODO: Simulate arbitrary message delays
+    it('proves: delayed messages eventually delivered', () => {
+      // Messages in FIFO buffers are eventually delivered despite delays
+      const protocol = `
+        protocol AsyncDelivery(role A, role B) {
+          A -> B: M1();
+          A -> B: M2();
+          B -> A: Ack1();
+          B -> A: Ack2();
+        }
+      `;
 
-      // const protocol = `
-      //   protocol Async(role A, role B) {
-      //     A -> B: M1();
-      //     A -> B: M2();
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // Simulate with random delays
-      // Verify all messages eventually reach receiver
+      // Simulate FIFO delivery
+      const simulation = simulateFIFODelivery(cfg);
 
-      expect(true).toBe(true); // Placeholder
+      // All messages should be delivered
+      expect(simulation.allMessagesDelivered).toBe(true);
+
+      // Buffers should be bounded (no infinite growth from delays)
+      expect(simulation.maxBufferSize).toBeLessThan(10);
+
+      // ✅ PROOF: Delayed messages eventually delivered in FIFO order
     });
 
-    it.skip('proves: asynchronous choice preserves liveness', () => {
-      // TODO: Test choice with asynchronous delivery
+    it('proves: asynchronous choice preserves liveness', () => {
+      // Choice with asynchronous delivery - liveness preserved
+      const protocol = `
+        protocol AsyncChoice(role A, role B) {
+          choice at A {
+            A -> B: Login();
+            B -> A: LoginAck();
+          } or {
+            A -> B: Register();
+            B -> A: RegisterAck();
+          }
+        }
+      `;
 
-      // choice at A {
-      //   A -> B: Login();
-      // } or {
-      //   A -> B: Register();
-      // }
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // B receives choice asynchronously
-      // Should still satisfy liveness
+      // Project to get CFSMs
+      const projections = projectAll(cfg);
 
-      expect(true).toBe(true); // Placeholder
+      // Check orphan freedom (all messages have receivers)
+      const pairs = extractSendReceivePairs(projections.cfsms);
+      const orphanCheck = checkOrphanFreedom(pairs);
+
+      expect(orphanCheck.isOrphanFree).toBe(true);
+
+      // Check that both branches are live
+      const wf = verifyProtocol(cfg);
+      expect(wf.choiceDeterminism.isDeterministic).toBe(true);
+
+      // ✅ PROOF: Asynchronous choice preserves liveness
     });
 
-    it.skip('proves: concurrent sends preserve liveness', () => {
-      // TODO: Test multiple concurrent sends to same receiver
+    it('proves: concurrent sends preserve liveness', () => {
+      // Test multiple concurrent sends to same receiver
+      const protocol = `
+        protocol ConcurrentSends(role A, role B, role C) {
+          par {
+            A -> C: M1();
+            A -> C: M2();
+          } and {
+            B -> C: M3();
+            B -> C: M4();
+          }
+          C -> A: Ack1();
+          C -> B: Ack2();
+        }
+      `;
 
-      // par {
-      //   A -> C: M1();
-      // } and {
-      //   B -> C: M2();
-      // }
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // Both messages should eventually reach C
-      // FIFO per sender, arbitrary interleaving
+      // Check well-formedness (no races)
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
 
-      expect(true).toBe(true); // Placeholder
+      // Check that all messages eventually delivered
+      const projections = projectAll(cfg);
+      const pairs = extractSendReceivePairs(projections.cfsms);
+      const orphanCheck = checkOrphanFreedom(pairs);
+      expect(orphanCheck.isOrphanFree).toBe(true);
+
+      // Verify FIFO per sender is maintained
+      const simulation = simulateFIFODelivery(cfg);
+      expect(simulation.allMessagesDelivered).toBe(true);
+
+      // ✅ PROOF: Both A->C and B->C messages reach C
+      // FIFO per sender guarantees order within each stream
     });
   });
 
@@ -531,46 +618,93 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
    *   Protocol using all DMst features satisfies all liveness properties.
    */
   describe('Proof Obligation 5: Complete DMst Liveness', () => {
-    it.skip('proves: dynamic pipeline satisfies all liveness properties', () => {
-      // TODO: Canonical example with all DMst features
+    it('proves: dynamic pipeline satisfies all liveness properties', () => {
+      // Canonical example with all DMst features
+      const protocol = `
+        protocol DynamicPipeline(role Manager) {
+          new role Worker;
+          rec Loop {
+            Manager creates Worker as w;
+            Manager invites w;
+            Manager -> w: Task();
+            w -> Manager: Result();
+            choice at Manager {
+              continue Loop with {
+                Manager creates Worker as w_next;
+              };
+            } or {
+              Manager -> w: Done();
+            }
+          }
+        }
+      `;
 
-      // const protocol = `
-      //   protocol DynamicPipeline(role Manager) {
-      //     new role Worker;
-      //     rec Loop {
-      //       Manager creates Worker as w;
-      //       Manager -> w: Task();
-      //       w -> Manager: Result();
-      //       choice at Manager {
-      //         continue Loop with {
-      //           Manager calls ProcessResult(w);
-      //         };
-      //       } or {
-      //         Manager -> w: Done();
-      //       }
-      //     }
-      //   }
-      // `;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // Verify:
-      // 1. No orphan messages
-      // 2. No stuck participants
-      // 3. Eventual delivery
-      // 4. Bounded buffers
+      // 1. Check well-formedness
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
 
-      expect(true).toBe(true); // Placeholder
+      // 2. Check no orphan messages
+      const projections = projectAll(cfg);
+      const pairs = extractSendReceivePairs(projections.cfsms);
+      const orphanCheck = checkOrphanFreedom(pairs);
+      expect(orphanCheck.isOrphanFree).toBe(true);
+
+      // 3. Check eventual delivery
+      const simulation = simulateFIFODelivery(cfg);
+      expect(simulation.allMessagesDelivered).toBe(true);
+
+      // 4. Check bounded buffers (updatable recursion)
+      const bufferCheck = checkBoundedBuffers(cfg);
+      expect(bufferCheck.areBounded).toBe(true);
+
+      // ✅ PROOF: Dynamic pipeline satisfies all 4 liveness properties
+      // (orphan-freedom, no stuck participants, eventual delivery, bounded buffers)
     });
 
-    it.skip('proves: map-reduce satisfies liveness', () => {
-      // TODO: Realistic distributed example
+    it('proves: map-reduce satisfies liveness', () => {
+      // Realistic distributed example
+      const protocol = `
+        protocol MapReduce(role Manager) {
+          new role Worker;
+          rec MapPhase {
+            Manager creates Worker as w;
+            Manager invites w;
+            Manager -> w: Data();
+            w -> Manager: ProcessedData();
+            choice at Manager {
+              continue MapPhase with {
+                Manager creates Worker as w_next;
+              };
+            } or {
+              Manager -> w: AllDone();
+            }
+          }
+        }
+      `;
 
-      // Manager spawns N workers
-      // Each processes data
-      // All results eventually collected
-      // No worker gets stuck
-      // No messages lost
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      expect(true).toBe(true); // Placeholder
+      // Verify all liveness properties
+      const wf = verifyProtocol(cfg);
+      expect(wf.structural.valid).toBe(true);
+
+      const projections = projectAll(cfg);
+      const pairs = extractSendReceivePairs(projections.cfsms);
+      const orphanCheck = checkOrphanFreedom(pairs);
+      expect(orphanCheck.isOrphanFree).toBe(true);
+
+      const simulation = simulateFIFODelivery(cfg);
+      expect(simulation.allMessagesDelivered).toBe(true);
+
+      const bufferCheck = checkBoundedBuffers(cfg);
+      expect(bufferCheck.areBounded).toBe(true);
+
+      // ✅ PROOF: Manager spawns N workers, all messages delivered,
+      // no worker gets stuck, no messages lost
     });
   });
 
@@ -671,29 +805,60 @@ describe('Theorem 29: Liveness for DMst (Castro-Perez & Yoshida 2023)', () => {
       expect(progressResult.stuckParticipants[0].participant).toBe('A');
     });
 
-    it.skip('counterexample: unbounded buffer growth', () => {
-      // TODO: Protocol with infinite sends without receives
+    it('counterexample: unbounded buffer growth', () => {
+      // Protocol with infinite sends without receives
+      const protocol = `
+        protocol UnboundedSpam(role A, role B) {
+          rec Loop {
+            A -> B: Spam();
+            choice at A {
+              continue Loop;
+            } or {
+              A -> B: Done();
+            }
+          }
+        }
+      `;
 
-      // rec Loop {
-      //   A -> B: Spam();
-      //   continue Loop; // No receive!
-      // }
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // Buffer grows unboundedly → violates liveness
+      // Check for unbounded buffer growth
+      const bufferCheck = checkBoundedBuffers(cfg);
 
-      expect(true).toBe(true); // Placeholder
+      // This should fail - buffers can grow without bound
+      // because B never receives in the loop continuation
+      expect(bufferCheck.areBounded).toBe(false);
+
+      // ✅ PROOF: Protocol violates liveness due to unbounded buffer growth
     });
 
-    it.skip('counterexample: orphaned dynamic participant', () => {
-      // TODO: Dynamic participant created but never used
+    it('counterexample: orphaned dynamic participant', () => {
+      // Dynamic participant created but never used
+      const protocol = `
+        protocol OrphanedWorker(role Manager) {
+          new role Worker;
+          Manager creates Worker as w;
+          // Missing: Manager invites w
+          // Missing: Any messages to/from w
+        }
+      `;
 
-      // Manager creates Worker;
-      // // Missing invitation and messages
-      // Manager terminates;
+      const ast = parse(protocol);
+      const cfg = buildCFG(ast.declarations[0] as GlobalProtocolDeclaration);
 
-      // Worker orphaned → violates liveness
+      // Project to get CFSMs
+      const projections = projectAll(cfg);
+      const pairs = extractSendReceivePairs(projections.cfsms);
 
-      expect(true).toBe(true); // Placeholder
+      // Check for orphaned participants
+      const orphanCheck = checkOrphanFreedom(pairs);
+
+      // Should detect the orphaned dynamic participant
+      // (created but never invited or communicated with)
+      expect(orphanCheck.isOrphanFree).toBe(false);
+
+      // ✅ PROOF: Dynamic participant created but never used violates liveness
     });
   });
 
